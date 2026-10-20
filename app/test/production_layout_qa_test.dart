@@ -29,7 +29,7 @@ void main() {
       );
       await tester.pump();
       expect(tester.takeException(), isNull);
-      expect(find.text('Send OTP'), findsOneWidget);
+      expect(find.text('Login'), findsOneWidget);
       expect(find.byType(OverflowBox), findsNothing);
     });
 

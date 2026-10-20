@@ -85,7 +85,8 @@ async function setupSociety(prefix: string) {
   const guardRes = await request(app)
     .post('/api/v1/admin/guards')
     .set('Authorization', `Bearer ${ctx.token}`)
-    .send({ name: 'Guard', email: `${prefix}-guard@example.com` });
+    .send({ name: 'Guard', email: `${prefix}-guard@example.com`,
+      password: 'TestPassw0rd!',});
   expect(guardRes.status).toBe(201);
 
   return {

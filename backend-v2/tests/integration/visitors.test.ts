@@ -56,7 +56,7 @@ async function setupSociety(prefix: string) {
       name: 'Gate Guard',
       email: `${prefix}-guard@example.com`,
       phone: '+91 9000000001',
-    });
+      password: 'TestPassw0rd!',});
   expect(guardRes.status).toBe(201);
   const guardToken = await login(`${prefix}-guard@example.com`);
 
@@ -78,7 +78,8 @@ describe('Guard provisioning', () => {
     const created = await request(app)
       .post('/api/v1/admin/guards')
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ name: 'Guard One', email: 'gprov-guard@example.com' });
+      .send({ name: 'Guard One', email: 'gprov-guard@example.com',
+      password: 'TestPassw0rd!',});
     expect(created.status).toBe(201);
     expect(created.body.data.guard.roles).toContain('GUARD');
     expect(JSON.stringify(created.body)).not.toMatch(/otpHash|tokenHash|refreshToken/);
@@ -92,13 +93,15 @@ describe('Guard provisioning', () => {
     const denied = await request(app)
       .post('/api/v1/admin/guards')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: 'X', email: 'x@example.com' });
+      .send({ name: 'X', email: 'x@example.com',
+      password: 'TestPassw0rd!',});
     expect(denied.status).toBe(403);
 
     const dup = await request(app)
       .post('/api/v1/admin/guards')
       .set('Authorization', `Bearer ${ctx.token}`)
-      .send({ name: 'Guard One', email: 'gprov-guard@example.com' });
+      .send({ name: 'Guard One', email: 'gprov-guard@example.com',
+      password: 'TestPassw0rd!',});
     expect(dup.status).toBe(409);
 
     const guardToken = await login('gprov-guard@example.com');

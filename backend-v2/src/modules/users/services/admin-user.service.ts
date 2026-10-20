@@ -2,12 +2,19 @@ import { conflict, forbidden, notFound } from '../../../shared/errors/app-error'
 import { normalizeEmail } from '../../../utils/crypto';
 import { isDuplicateKeyError } from '../../../utils/mongo-errors';
 import { parseObjectId } from '../../../utils/object-id';
+import {
+  generateTemporaryPassword,
+  hashPassword,
+} from '../../../utils/password';
 import { normalizeMobileE164 } from '../../../utils/phone';
+import { assertValidUsername, usernameFromEmail } from '../../../utils/username';
 import { writeAuditLog } from '../../auth/services/audit.service';
+import { RefreshSessionModel } from '../../auth/models/refresh-session.model';
 import { OccupancyRecordModel } from '../../society/models/occupancy-record.model';
 import { MembershipModel } from '../models/membership.model';
 import { UserModel } from '../models/user.model';
 import type {
+  AdminSetPasswordInput,
   ListUsersQuery,
   ProvisionUserInput,
   UpdateUserInput,
@@ -18,6 +25,7 @@ type Actor = { userId: string; ipAddress?: string; userAgent?: string };
 function serializeUser(user: {
   _id: { toString(): string };
   email: string;
+  username?: string;
   name: string;
   phone?: string;
   mobileE164?: string;
@@ -25,6 +33,9 @@ function serializeUser(user: {
   roles: string[];
   isActive: boolean;
   canLogin: boolean;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: Date;
+  hasPassword?: boolean;
   primarySocietyId?: { toString(): string };
   lastLoginAt?: Date;
   createdAt: Date;
@@ -33,6 +44,7 @@ function serializeUser(user: {
   return {
     id: String(user._id),
     email: user.email,
+    username: user.username,
     name: user.name,
     phone: user.phone,
     mobileE164: user.mobileE164,
@@ -41,11 +53,21 @@ function serializeUser(user: {
     roles: user.roles,
     isActive: user.isActive,
     canLogin: user.canLogin,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    hasPassword: user.hasPassword ?? false,
+    passwordChangedAt: user.passwordChangedAt?.toISOString(),
     primarySocietyId: user.primarySocietyId ? String(user.primarySocietyId) : undefined,
     lastLoginAt: user.lastLoginAt?.toISOString(),
     createdAt: new Date(user.createdAt).toISOString(),
     updatedAt: new Date(user.updatedAt).toISOString(),
   };
+}
+
+async function withPasswordFlag<T extends { _id: { toString(): string } }>(
+  user: T,
+): Promise<T & { hasPassword: boolean }> {
+  const row = await UserModel.findById(user._id).select('+passwordHash').lean();
+  return { ...user, hasPassword: Boolean(row?.passwordHash) };
 }
 
 export async function provisionResident(
@@ -55,14 +77,23 @@ export async function provisionResident(
 ) {
   const email = normalizeEmail(input.email);
   const role = input.role;
+  const username = assertValidUsername(input.username ?? usernameFromEmail(email));
+  const temporaryPassword = input.password ?? generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const passwordWasGenerated = !input.password;
 
-  let user = await UserModel.findOne({ email });
+  let user = await UserModel.findOne({ email }).select('+passwordHash');
   let created = false;
+  let credentialsIssued = false;
 
   if (!user) {
     try {
       user = await UserModel.create({
         email,
+        username,
+        passwordHash,
+        mustChangePassword: true,
+        passwordChangedAt: new Date(),
         name: input.name.trim(),
         phone: input.phone,
         roles: [role],
@@ -72,8 +103,13 @@ export async function provisionResident(
         provisionedBy: actor.userId,
       });
       created = true;
+      credentialsIssued = true;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
+        const msg = String((error as { message?: string }).message ?? '');
+        if (msg.includes('username')) {
+          throw conflict('A user with this username already exists', 'DUPLICATE_USERNAME');
+        }
         throw conflict('A user with this email already exists', 'DUPLICATE_EMAIL');
       }
       throw error;
@@ -91,9 +127,28 @@ export async function provisionResident(
     if (input.name) user.name = input.name.trim();
     if (input.phone !== undefined) user.phone = input.phone;
     if (!user.primarySocietyId) user.primarySocietyId = parseObjectId(societyId, 'societyId');
+    if (!user.username) {
+      user.username = username;
+    } else if (user.username !== username) {
+      throw conflict('User already has a different username', 'USERNAME_MISMATCH');
+    }
+    // Re-provisioning an existing account without a password sets credentials once.
+    if (!user.passwordHash) {
+      user.passwordHash = passwordHash;
+      user.mustChangePassword = true;
+      user.passwordChangedAt = new Date();
+      credentialsIssued = true;
+    }
     user.isActive = true;
     user.canLogin = true;
-    await user.save();
+    try {
+      await user.save();
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw conflict('A user with this username already exists', 'DUPLICATE_USERNAME');
+      }
+      throw error;
+    }
   }
 
   // Society membership with flatId:null — does not grant flat access.
@@ -134,18 +189,29 @@ export async function provisionResident(
     targetId: String(user._id),
     metadata: {
       email,
+      username,
       role,
       reusedExisting: !created,
       flatAssigned: false,
+      passwordGenerated: passwordWasGenerated,
+      // Never include the password or hash in audit metadata.
     },
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent,
   });
 
+  const serialized = serializeUser({
+    ...(await withPasswordFlag(user.toObject())),
+  });
+
   return {
-    user: serializeUser(user.toObject()),
+    user: serialized,
     reusedExisting: !created,
     flatAssigned: false,
+    /** Returned once — admin must deliver out-of-band. Never logged. */
+    temporaryPassword: credentialsIssued ? temporaryPassword : undefined,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    passwordGenerated: credentialsIssued ? passwordWasGenerated : undefined,
   };
 }
 
@@ -193,11 +259,15 @@ export async function listAdminUsers(societyId: string, query: ListUsersQuery) {
     rolesByUser.set(key, current);
   }
 
-  return {
-    items: users.map((user) => ({
-      ...serializeUser(user),
+  const items = await Promise.all(
+    users.map(async (user) => ({
+      ...serializeUser(await withPasswordFlag(user)),
       societyRoles: rolesByUser.get(String(user._id)) ?? [],
     })),
+  );
+
+  return {
+    items,
     pagination: {
       page,
       limit,
@@ -228,7 +298,7 @@ export async function getAdminUser(societyId: string, userId: string) {
   }).lean();
 
   return {
-    ...serializeUser(user),
+    ...serializeUser(await withPasswordFlag(user)),
     activeOccupancies: activeOccupancies.map((row) => ({
       id: String(row._id),
       flatId: String(row.flatId),
@@ -277,6 +347,14 @@ export async function updateAdminUser(
 
   if (input.name !== undefined) user.name = input.name;
   if (input.phone !== undefined) user.phone = input.phone;
+  if (input.username !== undefined) {
+    const nextUsername = assertValidUsername(input.username);
+    if (user.username && user.username !== nextUsername) {
+      user.username = nextUsername;
+    } else if (!user.username) {
+      user.username = nextUsername;
+    }
+  }
 
   if (input.isActive !== undefined || input.canLogin !== undefined) {
     if (user.roles.includes('ADMIN') || user.roles.includes('GUARD')) {
@@ -289,7 +367,14 @@ export async function updateAdminUser(
     if (input.canLogin !== undefined) user.canLogin = input.canLogin;
   }
 
-  await user.save();
+  try {
+    await user.save();
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw conflict('A user with this username already exists', 'DUPLICATE_USERNAME');
+    }
+    throw error;
+  }
 
   await writeAuditLog({
     action: 'USER_UPDATED',
@@ -297,12 +382,12 @@ export async function updateAdminUser(
     societyId,
     targetType: 'User',
     targetId: userId,
-    metadata: { before, after: input },
+    metadata: { before, after: { ...input, password: undefined } },
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent,
   });
 
-  return serializeUser(user.toObject());
+  return serializeUser(await withPasswordFlag(user.toObject()));
 }
 
 export async function deactivateAdminUser(
@@ -477,5 +562,71 @@ export async function confirmUserMobileVerified(
     userAgent: actor.userAgent,
   });
 
-  return serializeUser(user.toObject());
+  return serializeUser(await withPasswordFlag(user.toObject()));
+}
+
+/**
+ * Admin-assisted password set/reset. Returns a one-time temporary password when
+ * none was supplied. Revokes all refresh sessions. Never logs the password.
+ */
+export async function adminSetUserPassword(
+  societyId: string,
+  userId: string,
+  input: AdminSetPasswordInput,
+  actor: Actor,
+) {
+  const membership = await MembershipModel.findOne({
+    societyId: parseObjectId(societyId, 'societyId'),
+    userId: parseObjectId(userId, 'userId'),
+  });
+  if (!membership) {
+    throw notFound('User not found in this society');
+  }
+
+  const user = await UserModel.findById(userId).select('+passwordHash');
+  if (!user) {
+    throw notFound('User not found');
+  }
+  if (!user.username) {
+    throw conflict(
+      'Assign a username before setting a password',
+      'USERNAME_REQUIRED',
+    );
+  }
+
+  const temporaryPassword = input.password ?? generateTemporaryPassword();
+  const passwordWasGenerated = !input.password;
+  user.passwordHash = await hashPassword(temporaryPassword);
+  user.mustChangePassword = input.mustChangePassword ?? true;
+  user.passwordChangedAt = new Date();
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
+  await user.save();
+
+  await RefreshSessionModel.updateMany(
+    { userId: user._id, revokedAt: { $exists: false } },
+    { $set: { revokedAt: new Date() } },
+  );
+
+  await writeAuditLog({
+    action: 'AUTH_PASSWORD_RESET',
+    actorUserId: actor.userId,
+    societyId,
+    targetType: 'User',
+    targetId: userId,
+    metadata: {
+      passwordGenerated: passwordWasGenerated,
+      mustChangePassword: user.mustChangePassword,
+      // Never include password or hash.
+    },
+    ipAddress: actor.ipAddress,
+    userAgent: actor.userAgent,
+  });
+
+  return {
+    user: serializeUser(await withPasswordFlag(user.toObject())),
+    temporaryPassword,
+    passwordGenerated: passwordWasGenerated,
+    mustChangePassword: user.mustChangePassword,
+  };
 }

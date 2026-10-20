@@ -2,12 +2,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Platform secure storage for the refresh token and minimal identity.
 ///
-/// Access tokens are never written here. Values are never logged.
+/// Access tokens and passwords are never written here. Values are never logged.
 abstract class SecureTokenStore {
   Future<void> writeRefreshToken(String token);
   Future<String?> readRefreshToken();
   Future<void> writeUserId(String userId);
   Future<String?> readUserId();
+  Future<void> writeRememberedUsername(String username);
+  Future<String?> readRememberedUsername();
+  Future<void> clearRememberedUsername();
   Future<void> clear();
 }
 
@@ -20,6 +23,7 @@ class FlutterSecureTokenStore implements SecureTokenStore {
 
   static const _refreshKey = 'apna_refresh_token';
   static const _userIdKey = 'apna_user_id';
+  static const _rememberUsernameKey = 'apna_remember_username';
 
   final FlutterSecureStorage _storage;
 
@@ -38,9 +42,23 @@ class FlutterSecureTokenStore implements SecureTokenStore {
   Future<String?> readUserId() => _storage.read(key: _userIdKey);
 
   @override
+  Future<void> writeRememberedUsername(String username) =>
+      _storage.write(key: _rememberUsernameKey, value: username.trim());
+
+  @override
+  Future<String?> readRememberedUsername() =>
+      _storage.read(key: _rememberUsernameKey);
+
+  @override
+  Future<void> clearRememberedUsername() =>
+      _storage.delete(key: _rememberUsernameKey);
+
+  @override
   Future<void> clear() async {
     await _storage.delete(key: _refreshKey);
     await _storage.delete(key: _userIdKey);
+    // Remembered username survives logout when "Remember me" was enabled;
+    // callers clear it explicitly when the option is unchecked.
   }
 }
 
@@ -65,5 +83,24 @@ class MemorySecureTokenStore implements SecureTokenStore {
   Future<String?> readUserId() async => _values['userId'];
 
   @override
-  Future<void> clear() async => _values.clear();
+  Future<void> writeRememberedUsername(String username) async {
+    _values['rememberUsername'] = username.trim();
+  }
+
+  @override
+  Future<String?> readRememberedUsername() async => _values['rememberUsername'];
+
+  @override
+  Future<void> clearRememberedUsername() async {
+    _values.remove('rememberUsername');
+  }
+
+  @override
+  Future<void> clear() async {
+    final remembered = _values['rememberUsername'];
+    _values.clear();
+    if (remembered != null) {
+      _values['rememberUsername'] = remembered;
+    }
+  }
 }

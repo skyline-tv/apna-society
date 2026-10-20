@@ -5,6 +5,7 @@ export interface TokenPair {
   refreshToken: string;
   expiresIn: string;
   tokenType: 'Bearer';
+  mustChangePassword?: boolean;
 }
 
 export interface AccessTokenPayload {
@@ -18,6 +19,7 @@ export interface AccessTokenPayload {
 export interface AuthProfile {
   id: string;
   email: string;
+  username?: string;
   name: string;
   phone?: string;
   mobileE164?: string;
@@ -26,6 +28,7 @@ export interface AuthProfile {
   societyIds: string[];
   primarySocietyId?: string;
   lastLoginAt?: string;
+  mustChangePassword: boolean;
 }
 
 export interface RequestMeta {

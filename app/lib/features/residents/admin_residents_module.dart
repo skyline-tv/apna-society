@@ -338,6 +338,7 @@ class _AdminProvisionResidentPageState
   final name = TextEditingController();
   final email = TextEditingController();
   final phone = TextEditingController();
+  final username = TextEditingController();
   late String role = widget.initialRole;
   bool saving = false;
   bool reviewing = false;
@@ -348,6 +349,7 @@ class _AdminProvisionResidentPageState
     name.dispose();
     email.dispose();
     phone.dispose();
+    username.dispose();
     super.dispose();
   }
 
@@ -376,8 +378,32 @@ class _AdminProvisionResidentPageState
         email: email.text,
         role: role,
         phone: phone.text.trim().isEmpty ? null : phone.text,
+        username: username.text.trim().isEmpty ? null : username.text.trim(),
       );
       repos.invalidateAfterResidentMutation();
+      if (!mounted) return;
+      final temp = result.temporaryPassword;
+      if (temp != null && temp.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Credentials issued'),
+            content: Text(
+              'Username: ${result.user.username ?? username.text.trim()}\n'
+              'Temporary password: $temp\n\n'
+              'Share this out-of-band. The user must change it on first login. '
+              'It will not be shown again.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('I saved it'),
+              ),
+            ],
+          ),
+        );
+      }
       if (!mounted) return;
       showSuccessSnack(
           context,
@@ -489,6 +515,27 @@ class _AdminProvisionResidentPageState
         ),
         const SizedBox(height: 12),
         TextFormField(
+          controller: username,
+          enabled: !saving,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(
+            labelText: 'Username *',
+            helperText: '3–32 chars: letters, numbers, underscore, hyphen.',
+            prefixIcon: Icon(Icons.badge_outlined),
+          ),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return 'Username is required.';
+            if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$').hasMatch(t)) {
+              return 'Enter a valid username.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
           controller: phone,
           enabled: !saving,
           keyboardType: TextInputType.phone,
@@ -497,14 +544,13 @@ class _AdminProvisionResidentPageState
           decoration: const InputDecoration(
             labelText: 'Phone',
             hintText: '+91 98765 43210',
-            helperText:
-                'Optional now. Confirm a mobile later for SMS OTP login.',
+            helperText: 'Optional contact number (not used for login).',
             prefixIcon: Icon(Icons.phone_outlined),
           ),
         ),
         const SizedBox(height: 16),
         const InfoNote(
-          'If this email already exists, the server reuses that account and adds the role. Duplicate accounts are not created.',
+          'A temporary password is generated securely. Share it out-of-band; the resident must change it on first login. If this email already exists, the server reuses that account.',
         ),
         InlineError(formError),
       ];
@@ -516,13 +562,14 @@ class _AdminProvisionResidentPageState
             ('Role', _roleLabel),
             ('Name', name.text.trim()),
             ('Email', email.text.trim()),
+            ('Username', username.text.trim()),
             (
               'Phone',
               phone.text.trim().isEmpty ? 'Not set yet' : phone.text.trim()
             ),
           ],
           note:
-              'After creation, assign this person to a flat from Flat details. Mobile OTP login requires a confirmed mobile number.',
+              'After creation, assign this person to a flat from Flat details. A temporary password will be shown once for you to share securely.',
         ),
         InlineError(formError),
       ];
@@ -591,6 +638,51 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
     });
   }
 
+  Future<void> _resetPassword(AdminUser user) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Reset password for ${user.name}?',
+      message:
+          'A temporary password will be generated once. All active sessions for this account will be revoked. Share the password out-of-band; it is never logged.',
+      confirmLabel: 'Reset password',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        final result = await repos.users.setPassword(user.id);
+        repos.invalidateAfterResidentMutation();
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Temporary password'),
+            content: Text(
+              'Username: ${result.user.username ?? user.username}\n'
+              'Temporary password: ${result.temporaryPassword}\n\n'
+              'Share this securely. The user must change it on next login.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('I saved it'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, adminApiErrorMessage(e));
+      }
+    });
+  }
+
   Future<void> _setMobile(AdminUser user) async {
     final entered = await promptTextDialog(
       context,
@@ -598,7 +690,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
           ? 'Set mobile number'
           : 'Update mobile number',
       message:
-          'Indian mobile number used for SMS OTP login. After saving, confirm ownership to enable login.',
+          'Optional contact number. Login uses username and password.',
       label: 'Mobile number',
       hint: '+91 98765 43210 or 10 digits',
       initialValue: user.mobileE164 == null ? null : '+${user.mobileE164}',
@@ -714,23 +806,24 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (needsMobile)
+                if ((user.username ?? '').isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12),
                     child: InfoNote(
-                      'No mobile on file. Set and confirm a number so this resident can sign in with SMS OTP.',
+                      'No username yet. Assign one, then reset the password so this resident can sign in.',
                       tone: NoteTone.warning,
                     ),
                   )
-                else if (needsConfirm)
+                else if (!user.hasPassword)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12),
                     child: InfoNote(
-                      'Mobile is saved but not confirmed. Confirm ownership to enable SMS OTP login.',
+                      'Username is set but no password yet. Use Reset password to issue a temporary credential.',
                       tone: NoteTone.warning,
                     ),
                   ),
                 DetailCard(title: 'Contact', children: [
+                  DetailRow('Username', user.username ?? 'Not set'),
                   DetailRow(
                     'Mobile',
                     user.mobileE164 == null ? '—' : '+${user.mobileE164}',
@@ -760,6 +853,14 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                 ]),
                 DetailCard(title: 'Account', children: [
                   DetailRow('Roles', roles.map(_roleLabel).join(', ')),
+                  DetailRow(
+                    'Password',
+                    user.hasPassword
+                        ? (user.mustChangePassword
+                            ? 'Temporary (must change)'
+                            : 'Set')
+                        : 'Not set',
+                  ),
                   DetailRow('Last login', fmtIsoDateTime(user.lastLoginAt)),
                   DetailRow('Created', fmtIsoDate(user.createdAt)),
                 ]),
@@ -820,27 +921,37 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                 const SectionTitle('Manage access'),
                 ActionRail(
                   busy: _busy,
-                  primary: needsMobile
+                  primary: (user.username ?? '').isNotEmpty
                       ? ToolLink(
-                          icon: Icons.phone_android_outlined,
-                          label: 'Set mobile number',
-                          subtitle: 'Required for SMS OTP sign-in',
-                          onTap: () => _setMobile(user),
+                          icon: Icons.password_rounded,
+                          label: user.hasPassword
+                              ? 'Reset password'
+                              : 'Issue temporary password',
+                          subtitle:
+                              'Shows a one-time credential; sessions are revoked',
+                          onTap: () => _resetPassword(user),
                         )
-                      : needsConfirm
+                      : needsMobile
                           ? ToolLink(
-                              icon: Icons.verified_outlined,
-                              label: 'Confirm mobile ownership',
-                              subtitle: 'Enables login for +${user.mobileE164}',
-                              onTap: () => _confirmMobile(user),
+                              icon: Icons.phone_android_outlined,
+                              label: 'Set mobile number',
+                              subtitle: 'Optional contact number',
+                              onTap: () => _setMobile(user),
                             )
-                          : null,
+                          : needsConfirm
+                              ? ToolLink(
+                                  icon: Icons.verified_outlined,
+                                  label: 'Confirm mobile ownership',
+                                  subtitle: 'Marks +${user.mobileE164} verified',
+                                  onTap: () => _confirmMobile(user),
+                                )
+                              : null,
                   secondary: [
                     if (!needsMobile)
                       ToolLink(
                         icon: Icons.phone_android_outlined,
                         label: 'Update mobile number',
-                        subtitle: 'Used for SMS OTP sign-in',
+                        subtitle: 'Optional contact number',
                         onTap: () => _setMobile(user),
                       ),
                     if (canDeactivate)

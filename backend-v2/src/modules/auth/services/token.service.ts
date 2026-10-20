@@ -30,6 +30,7 @@ export function buildTokenPair(input: {
   roles: Role[];
   societyIds: string[];
   refreshToken: string;
+  mustChangePassword?: boolean;
 }): TokenPair {
   const env = getEnv();
   return {
@@ -42,6 +43,7 @@ export function buildTokenPair(input: {
     refreshToken: input.refreshToken,
     expiresIn: env.ACCESS_TOKEN_EXPIRY,
     tokenType: 'Bearer',
+    mustChangePassword: Boolean(input.mustChangePassword),
   };
 }
 

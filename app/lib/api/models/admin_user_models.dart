@@ -12,18 +12,22 @@ class AdminUser {
     required this.canLogin,
     required this.createdAt,
     required this.updatedAt,
+    this.username,
     this.phone,
     this.mobileE164,
     this.mobileVerified = false,
     this.mobileVerifiedAt,
     this.primarySocietyId,
     this.lastLoginAt,
+    this.mustChangePassword = false,
+    this.hasPassword = false,
     this.societyRoles = const [],
     this.activeOccupancies = const [],
   });
 
   final String id;
   final String email;
+  final String? username;
   final String name;
   final String? phone;
   final String? mobileE164;
@@ -32,6 +36,8 @@ class AdminUser {
   final List<String> roles;
   final bool isActive;
   final bool canLogin;
+  final bool mustChangePassword;
+  final bool hasPassword;
   final String? primarySocietyId;
   final String? lastLoginAt;
   final String createdAt;
@@ -58,6 +64,7 @@ class AdminUser {
     return AdminUser(
       id: requireString(json, 'id'),
       email: requireString(json, 'email'),
+      username: optionalString(json, 'username'),
       name: requireString(json, 'name'),
       phone: optionalString(json, 'phone'),
       mobileE164: optionalString(json, 'mobileE164'),
@@ -66,6 +73,8 @@ class AdminUser {
       roles: roles,
       isActive: requireBool(json, 'isActive'),
       canLogin: requireBool(json, 'canLogin'),
+      mustChangePassword: json['mustChangePassword'] == true,
+      hasPassword: json['hasPassword'] == true,
       primarySocietyId: optionalString(json, 'primarySocietyId'),
       lastLoginAt: optionalString(json, 'lastLoginAt'),
       createdAt: requireString(json, 'createdAt'),
@@ -110,11 +119,17 @@ class ProvisionUserResult {
     required this.user,
     required this.reusedExisting,
     required this.flatAssigned,
+    this.temporaryPassword,
+    this.mustChangePassword = false,
+    this.passwordGenerated,
   });
 
   final AdminUser user;
   final bool reusedExisting;
   final bool flatAssigned;
+  final String? temporaryPassword;
+  final bool mustChangePassword;
+  final bool? passwordGenerated;
 
   factory ProvisionUserResult.fromJson(Object? data) {
     final json = requireMap(data, 'provision');
@@ -122,6 +137,35 @@ class ProvisionUserResult {
       user: AdminUser.fromJson(json['user']),
       reusedExisting: requireBool(json, 'reusedExisting'),
       flatAssigned: requireBool(json, 'flatAssigned'),
+      temporaryPassword: optionalString(json, 'temporaryPassword'),
+      mustChangePassword: json['mustChangePassword'] == true,
+      passwordGenerated: json['passwordGenerated'] is bool
+          ? json['passwordGenerated'] as bool
+          : null,
+    );
+  }
+}
+
+class AdminSetPasswordResult {
+  const AdminSetPasswordResult({
+    required this.user,
+    required this.temporaryPassword,
+    required this.mustChangePassword,
+    this.passwordGenerated = true,
+  });
+
+  final AdminUser user;
+  final String temporaryPassword;
+  final bool mustChangePassword;
+  final bool passwordGenerated;
+
+  factory AdminSetPasswordResult.fromJson(Object? data) {
+    final json = requireMap(data, 'set-password');
+    return AdminSetPasswordResult(
+      user: AdminUser.fromJson(json['user']),
+      temporaryPassword: requireString(json, 'temporaryPassword'),
+      mustChangePassword: json['mustChangePassword'] == true,
+      passwordGenerated: json['passwordGenerated'] != false,
     );
   }
 }

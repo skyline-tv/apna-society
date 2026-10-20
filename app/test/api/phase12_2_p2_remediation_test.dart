@@ -159,7 +159,7 @@ void main() {
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -195,7 +195,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
+      await session.login(username: 'owner1', password: 'TestPassw0rd!');
       expect(session.residentFlats, hasLength(2));
       expect(session.selectedResidentFlat, isNull);
       expect(session.primaryResidentFlat?.flat.id, flatA);
@@ -211,7 +211,7 @@ void main() {
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -247,7 +247,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
+      await session.login(username: 'owner1', password: 'TestPassw0rd!');
       expect(session.residentFlats, hasLength(2));
       expect(session.selectedResidentFlat, isNull);
       expect(session.primaryResidentFlat?.flat.id, flatA);
@@ -264,7 +264,7 @@ void main() {
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -297,7 +297,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
+      await session.login(username: 'owner1', password: 'TestPassw0rd!');
       expect(session.selectedResidentFlatId, flatA);
     });
 
@@ -305,7 +305,7 @@ void main() {
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -338,7 +338,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
+      await session.login(username: 'owner1', password: 'TestPassw0rd!');
       expect(session.selectedResidentFlatId, flatA);
       expect(session.selectedResidentFlat?.access.role, 'TENANT');
     });

@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import {
+  changePassword,
   getProfile,
+  loginWithPassword,
   logout,
   logoutAll,
   refreshTokens,
@@ -8,6 +10,8 @@ import {
   verifyOtp,
 } from '../services/auth.service';
 import type {
+  ChangePasswordInput,
+  LoginInput,
   RefreshInput,
   RequestOtpInput,
   VerifyOtpInput,
@@ -20,12 +24,31 @@ function metaFromRequest(req: Request) {
   };
 }
 
+export async function loginHandler(req: Request, res: Response): Promise<void> {
+  const body = req.body as LoginInput;
+  const tokens = await loginWithPassword(body.username, body.password, metaFromRequest(req));
+  res.status(200).json({ success: true, data: tokens });
+}
+
+export async function changePasswordHandler(req: Request, res: Response): Promise<void> {
+  const body = req.body as ChangePasswordInput;
+  const result = await changePassword(
+    req.user!.id,
+    body.currentPassword,
+    body.newPassword,
+    metaFromRequest(req),
+  );
+  res.status(200).json({ success: true, data: result });
+}
+
+/** @deprecated Prefer username/password login. Kept for transitional rollback only. */
 export async function requestOtpHandler(req: Request, res: Response): Promise<void> {
   const body = req.body as RequestOtpInput;
   const result = await requestOtp(body.mobile, metaFromRequest(req));
   res.status(200).json({ success: true, data: result });
 }
 
+/** @deprecated Prefer username/password login. Kept for transitional rollback only. */
 export async function verifyOtpHandler(req: Request, res: Response): Promise<void> {
   const body = req.body as VerifyOtpInput;
   const tokens = await verifyOtp(body.mobile, body.otp, metaFromRequest(req));

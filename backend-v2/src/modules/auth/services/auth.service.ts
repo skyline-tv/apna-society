@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
+  LOGIN_LOCKOUT_MS,
+  LOGIN_MAX_FAILED_ATTEMPTS,
   OTP_MAX_ATTEMPTS,
   OTP_MAX_REQUESTS_PER_WINDOW,
   OTP_REQUEST_WINDOW_MS,
@@ -13,8 +15,10 @@ import {
   unauthorized,
 } from '../../../shared/errors/app-error';
 import { generateSecureToken, hashToken } from '../../../utils/crypto';
-import { normalizeMobileE164 } from '../../../utils/phone';
 import { getLogger } from '../../../utils/logger';
+import { hashPassword, verifyPassword } from '../../../utils/password';
+import { normalizeMobileE164 } from '../../../utils/phone';
+import { normalizeUsername } from '../../../utils/username';
 import { MembershipModel } from '../../users/models/membership.model';
 import { UserModel } from '../../users/models/user.model';
 import { OtpChallengeModel } from '../models/otp-challenge.model';
@@ -26,6 +30,9 @@ import { buildTokenPair, parseDurationToMs } from './token.service';
 
 const GENERIC_OTP_MESSAGE =
   'If an account exists for this mobile number, a one-time code has been sent.';
+
+/** Generic message — do not reveal whether username exists. */
+const GENERIC_INVALID_CREDENTIALS = 'Invalid username or password';
 
 async function getSocietyIdsForUser(userId: string): Promise<string[]> {
   const memberships = await MembershipModel.find({
@@ -248,6 +255,150 @@ export async function verifyOtp(
   return tokens;
 }
 
+export async function loginWithPassword(
+  usernameRaw: string,
+  password: string,
+  meta: RequestMeta = {},
+): Promise<TokenPair> {
+  const logger = getLogger();
+  const username = normalizeUsername(usernameRaw);
+  const now = new Date();
+
+  const fail = async (reason: string, actorUserId?: string): Promise<never> => {
+    await writeAuditLog({
+      action: 'AUTH_LOGIN_FAILED',
+      actorUserId,
+      metadata: { reason, usernameSuffix: username.slice(-3) },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    throw unauthorized(GENERIC_INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
+  };
+
+  // Load hash explicitly (select: false).
+  const user = await UserModel.findOne({ username }).select('+passwordHash');
+  if (!user) {
+    logger.info({ usernamePresent: false }, 'Password login for unknown username');
+    return fail('UNKNOWN_USER');
+  }
+
+  if (user.lockUntil && user.lockUntil.getTime() > now.getTime()) {
+    await writeAuditLog({
+      action: 'AUTH_LOGIN_FAILED',
+      actorUserId: user._id,
+      metadata: { reason: 'LOCKED', usernameSuffix: username.slice(-3) },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    throw tooManyRequests(
+      'Too many failed attempts. Try again later.',
+      'LOGIN_LOCKED',
+    );
+  }
+
+  if (!user.isActive || !user.canLogin) {
+    return fail('LOGIN_DISABLED', String(user._id));
+  }
+
+  if (!user.passwordHash) {
+    // Migrated OTP user without credentials yet — same generic response.
+    return fail('NO_PASSWORD', String(user._id));
+  }
+
+  const passwordOk = await verifyPassword(password, user.passwordHash);
+  if (!passwordOk) {
+    user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+    if (user.failedLoginAttempts >= LOGIN_MAX_FAILED_ATTEMPTS) {
+      user.lockUntil = new Date(now.getTime() + LOGIN_LOCKOUT_MS);
+      user.failedLoginAttempts = 0;
+    }
+    await user.save();
+    if (user.lockUntil && user.lockUntil.getTime() > now.getTime()) {
+      await writeAuditLog({
+        action: 'AUTH_LOGIN_FAILED',
+        actorUserId: user._id,
+        metadata: { reason: 'LOCKOUT_TRIGGERED', usernameSuffix: username.slice(-3) },
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+      });
+      throw tooManyRequests(
+        'Too many failed attempts. Try again later.',
+        'LOGIN_LOCKED',
+      );
+    }
+    return fail('BAD_PASSWORD', String(user._id));
+  }
+
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
+  user.lastLoginAt = now;
+  await user.save();
+
+  const tokens = await issueTokenPair(String(user._id), meta);
+
+  await writeAuditLog({
+    action: 'AUTH_LOGIN_SUCCESS',
+    actorUserId: user._id,
+    societyId: user.primarySocietyId,
+    targetType: 'User',
+    targetId: String(user._id),
+    metadata: { usernameSuffix: username.slice(-3) },
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+  });
+
+  return tokens;
+}
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  meta: RequestMeta = {},
+): Promise<{ mustChangePassword: false }> {
+  const user = await UserModel.findById(userId).select('+passwordHash');
+  if (!user || !user.isActive || !user.canLogin) {
+    throw unauthorized('Account is not allowed to change password', 'LOGIN_DISABLED');
+  }
+  if (!user.passwordHash) {
+    throw badRequest('Password has not been set for this account', 'NO_PASSWORD');
+  }
+
+  const ok = await verifyPassword(currentPassword, user.passwordHash);
+  if (!ok) {
+    throw unauthorized('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
+  }
+
+  if (currentPassword === newPassword) {
+    throw badRequest('New password must be different from the current password', 'PASSWORD_UNCHANGED');
+  }
+
+  user.passwordHash = await hashPassword(newPassword);
+  user.mustChangePassword = false;
+  user.passwordChangedAt = new Date();
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
+  await user.save();
+
+  // Revoke all refresh sessions so other devices must re-authenticate.
+  await RefreshSessionModel.updateMany(
+    { userId: user._id, revokedAt: { $exists: false } },
+    { $set: { revokedAt: new Date() } },
+  );
+
+  await writeAuditLog({
+    action: 'AUTH_PASSWORD_CHANGED',
+    actorUserId: user._id,
+    societyId: user.primarySocietyId,
+    targetType: 'User',
+    targetId: String(user._id),
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+  });
+
+  return { mustChangePassword: false };
+}
+
 async function issueTokenPair(userId: string, meta: RequestMeta, familyId?: string): Promise<TokenPair> {
   const user = await UserModel.findById(userId).lean();
   if (!user) {
@@ -275,6 +426,7 @@ async function issueTokenPair(userId: string, meta: RequestMeta, familyId?: stri
     roles: user.roles,
     societyIds,
     refreshToken,
+    mustChangePassword: Boolean(user.mustChangePassword),
   });
 }
 
@@ -348,6 +500,7 @@ export async function refreshTokens(refreshToken: string, meta: RequestMeta = {}
     roles: user.roles,
     societyIds,
     refreshToken: newRefreshToken,
+    mustChangePassword: Boolean(user.mustChangePassword),
   });
 }
 
@@ -394,6 +547,7 @@ export async function getProfile(userId: string): Promise<AuthProfile> {
   return {
     id: String(user._id),
     email: user.email,
+    username: user.username,
     name: user.name,
     phone: user.phone,
     mobileE164: user.mobileE164,
@@ -402,6 +556,7 @@ export async function getProfile(userId: string): Promise<AuthProfile> {
     societyIds,
     primarySocietyId: user.primarySocietyId ? String(user.primarySocietyId) : undefined,
     lastLoginAt: user.lastLoginAt?.toISOString(),
+    mustChangePassword: Boolean(user.mustChangePassword),
   };
 }
 

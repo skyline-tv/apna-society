@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { getRequestSocietyId } from '../../../middleware/admin-society';
 import {
+  adminSetUserPassword,
   confirmUserMobileVerified,
   deactivateAdminUser,
   getAdminUser,
@@ -10,6 +11,7 @@ import {
   updateAdminUser,
 } from '../services/admin-user.service';
 import type {
+  AdminSetPasswordInput,
   ListUsersQuery,
   ProvisionUserInput,
   SetUserMobileInput,
@@ -81,6 +83,16 @@ export async function confirmUserMobileHandler(req: Request, res: Response): Pro
   const data = await confirmUserMobileVerified(
     getRequestSocietyId(req),
     String(req.params.userId),
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function setUserPasswordHandler(req: Request, res: Response): Promise<void> {
+  const data = await adminSetUserPassword(
+    getRequestSocietyId(req),
+    String(req.params.userId),
+    req.body as AdminSetPasswordInput,
     actorFrom(req),
   );
   res.json({ success: true, data });

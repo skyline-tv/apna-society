@@ -4,6 +4,8 @@ import { authenticate } from '../../../middleware/authenticate';
 import { authRateLimiter } from '../../../middleware/rate-limit';
 import { validateBody } from '../../../middleware/validate';
 import {
+  changePasswordHandler,
+  loginHandler,
   logoutAllHandler,
   logoutHandler,
   meHandler,
@@ -12,6 +14,8 @@ import {
   verifyOtpHandler,
 } from '../controllers/auth.controller';
 import {
+  changePasswordSchema,
+  loginSchema,
   logoutSchema,
   refreshSchema,
   requestOtpSchema,
@@ -20,6 +24,21 @@ import {
 
 const router = Router();
 
+router.post(
+  '/login',
+  authRateLimiter,
+  validateBody(loginSchema),
+  asyncHandler(loginHandler),
+);
+
+router.post(
+  '/change-password',
+  authenticate,
+  validateBody(changePasswordSchema),
+  asyncHandler(changePasswordHandler),
+);
+
+/** Transitional OTP login — not used by the Flutter password login journey. */
 router.post(
   '/request-otp',
   authRateLimiter,

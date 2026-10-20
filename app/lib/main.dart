@@ -229,11 +229,14 @@ class _AuthGateState extends State<AuthGate> {
       if (profile == null) {
         return const LoginScreen();
       }
+      if (profile.mustChangePassword) {
+        return const ChangePasswordScreen(forced: true);
+      }
       final destination = await HomeResolver(session).resolve();
       return _widgetForDestination(destination);
     } catch (error) {
       // Only wipe credentials for terminal auth failures. Network / context
-      // errors keep the refresh token so Retry can succeed without re-OTP.
+      // errors keep the refresh token so Retry can succeed without re-login.
       if (isTerminalSessionError(error)) {
         await session.clearLocal();
         await SessionStore.clear();
@@ -284,100 +287,76 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   String role = 'owner';
-  String countryDialCode = '+91';
-  final mobile = TextEditingController();
-  final otp = TextEditingController();
-  bool otpStep = false;
+  final username = TextEditingController();
+  final password = TextEditingController();
+  bool obscurePassword = true;
+  bool rememberMe = true;
   bool busy = false;
   String? error;
-  int resendSeconds = 0;
-  Timer? _resendTimer;
 
-  /// Backend OTP resend cooldown (`OTP_RESEND_COOLDOWN_MS` = 60s).
-  static const _resendCooldown = 60;
-
-  static const _countryCodes = <String>['+91', '+1', '+44', '+971', '+65'];
-
-  String get _mobileForApi => composeMobileForApi(
-        countryDialCode: countryDialCode,
-        localNumber: mobile.text,
-      );
+  static const _roleOptions = <(String, String, IconData)>[
+    ('owner', 'Flat Owner', Icons.home_outlined),
+    ('tenant', 'Flat Tenant', Icons.person_pin_circle_outlined),
+    ('admin', 'Admin', Icons.admin_panel_settings_outlined),
+    ('guard', 'Security Guard', Icons.shield_outlined),
+  ];
 
   @override
-  void dispose() {
-    _resendTimer?.cancel();
-    mobile.dispose();
-    otp.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadRemembered();
   }
 
-  void _startResendCountdown([int seconds = _resendCooldown]) {
-    _resendTimer?.cancel();
-    setState(() => resendSeconds = seconds);
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (resendSeconds <= 1) {
-        t.cancel();
-        setState(() => resendSeconds = 0);
-      } else {
-        setState(() => resendSeconds--);
-      }
+  Future<void> _loadRemembered() async {
+    final remembered =
+        await ensureAuthSession().readRememberedUsername();
+    if (!mounted || remembered == null || remembered.isEmpty) return;
+    setState(() {
+      username.text = remembered;
+      rememberMe = true;
     });
   }
 
-  Future<void> sendOtp({bool resend = false}) async {
+  @override
+  void dispose() {
+    username.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> submitLogin() async {
     if (busy) return;
     setState(() {
       error = null;
       busy = true;
     });
     try {
-      if (countryDialCode == '+91' && !isValidIndianMobile(mobile.text)) {
-        setState(() => error = 'Enter a valid 10-digit mobile number.');
+      final user = username.text.trim();
+      if (!isValidUsername(user)) {
+        setState(() => error = 'Enter a valid username (3–32 characters).');
         return;
       }
-      if (mobile.text.replaceAll(RegExp(r'\D'), '').length < 8) {
-        setState(() => error = 'Enter a valid mobile number.');
-        return;
-      }
-      final session = ensureAuthSession();
-      final otpResult = await session.requestOtp(_mobileForApi);
-      if (!mounted) return;
-      setState(() {
-        otpStep = true;
-        if (!resend) otp.clear();
-        // Local/dev memory SMS: backend returns debugOtp (no real SMS).
-        final debug = otpResult.debugOtp;
-        if (debug != null && debug.isNotEmpty) {
-          otp.text = debug;
-        }
-      });
-      _startResendCountdown();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => error = authErrorMessage(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> verifyAndLogin() async {
-    setState(() {
-      error = null;
-      busy = true;
-    });
-    try {
-      final code = otp.text.trim();
-      if (!RegExp(r'^\d{6}$').hasMatch(code)) {
-        setState(() => error = 'Enter the 6-digit code from your SMS.');
+      if (password.text.isEmpty) {
+        setState(() => error = 'Enter your password.');
         return;
       }
       final session = ensureAuthSession();
-      await session.verifyOtp(mobile: _mobileForApi, otp: code);
+      final profile = await session.login(
+        username: user,
+        password: password.text,
+        rememberMe: rememberMe,
+      );
       if (!mounted) return;
+      if (profile.mustChangePassword) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const ChangePasswordScreen(forced: true),
+          ),
+          (_) => false,
+        );
+        return;
+      }
       final destination = await HomeResolver(session).resolve();
       if (!mounted) return;
       final selected = tryParseDropdownRole(role);
@@ -414,62 +393,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> continueLogin() async {
-    if (otpStep) {
-      await verifyAndLogin();
-    } else {
-      await sendOtp();
-    }
-  }
-
   void _onRoleChanged(String? value) {
-    if (value == null || busy || otpStep) return;
+    if (value == null || busy) return;
     setState(() {
       role = value;
       error = null;
-    });
-  }
-
-  String get _roleLabel {
-    switch (role) {
-      case 'admin':
-        return 'Admin';
-      case 'guard':
-        return 'Security Guard';
-      case 'tenant':
-        return 'Flat Tenant';
-      default:
-        return 'Flat Owner';
-    }
-  }
-
-  IconData get _roleIcon {
-    switch (role) {
-      case 'admin':
-        return Icons.admin_panel_settings_outlined;
-      case 'guard':
-        return Icons.shield_outlined;
-      case 'tenant':
-        return Icons.person_pin_circle_outlined;
-      default:
-        return Icons.home_outlined;
-    }
-  }
-
-  static const _roleOptions = <(String, String, IconData)>[
-    ('owner', 'Flat Owner', Icons.home_outlined),
-    ('tenant', 'Flat Tenant', Icons.person_pin_circle_outlined),
-    ('admin', 'Admin', Icons.admin_panel_settings_outlined),
-    ('guard', 'Security Guard', Icons.shield_outlined),
-  ];
-
-  void _backToMobile() {
-    setState(() {
-      otpStep = false;
-      error = null;
-      otp.clear();
-      _resendTimer?.cancel();
-      resendSeconds = 0;
     });
   }
 
@@ -501,25 +429,102 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 6),
                       const Text(kAppTagline, style: T.secondary),
                       const SizedBox(height: 8),
-                      Text(
-                        otpStep
-                            ? 'Enter the code sent to your mobile.'
-                            : 'Sign in with the mobile number on your society account.',
+                      const Text(
+                        'Sign in with the username and password from your society admin.',
                         style: T.body,
                       ),
                       const SizedBox(height: 24),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: otpStep ? _otpStep() : _mobileStep(),
+                      const Text('Login As', style: T.title),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Your account role is confirmed by the server. This only sets the sign-in context.',
+                        style: T.caption,
+                      ),
+                      const SizedBox(height: 12),
+                      _roleChooser(),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: username,
+                        enabled: !busy,
+                        autofocus: true,
+                        textInputAction: TextInputAction.next,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        autofillHints: const [AutofillHints.username],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[a-zA-Z0-9_-]'),
+                          ),
+                          LengthLimitingTextInputFormatter(32),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          prefixIcon: Icon(Icons.person_outline_rounded),
+                        ),
+                        onChanged: (_) {
+                          if (error != null) setState(() => error = null);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: password,
+                        enabled: !busy,
+                        obscureText: obscurePassword,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => busy ? null : submitLogin(),
+                        autofillHints: const [AutofillHints.password],
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          suffixIcon: IconButton(
+                            tooltip: obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
+                            onPressed: busy
+                                ? null
+                                : () => setState(
+                                      () => obscurePassword = !obscurePassword,
+                                    ),
+                            icon: Icon(
+                              obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                          ),
+                        ),
+                        onChanged: (_) {
+                          if (error != null) setState(() => error = null);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        value: rememberMe,
+                        onChanged: busy
+                            ? null
+                            : (value) =>
+                                setState(() => rememberMe = value ?? false),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: const Text('Remember me', style: T.body),
+                        subtitle: const Text(
+                          'Saves your username on this device. Session uses the secure refresh token.',
+                          style: T.caption,
                         ),
                       ),
+                      InlineError(error),
+                      const SizedBox(height: 16),
+                      PrimaryButton(
+                        label: 'Login',
+                        icon: Icons.login_rounded,
+                        busy: busy,
+                        onPressed: submitLogin,
+                      ),
                       const SizedBox(height: 28),
-                      Text('SMS OTP · SkyLine Tech Ventures',
-                          style: T.caption.copyWith(color: C.faint)),
+                      Text(
+                        'Username & password · SkyLine Tech Ventures',
+                        style: T.caption.copyWith(color: C.faint),
+                      ),
                     ],
                   ),
                 ),
@@ -528,29 +533,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
-
-  List<Widget> _mobileStep() => [
-        const Text('Login As', style: T.title),
-        const SizedBox(height: 4),
-        const Text(
-          'Your account role is confirmed after the code. This only sets the sign-in context.',
-          style: T.caption,
-        ),
-        const SizedBox(height: 12),
-        _roleChooser(),
-        const SizedBox(height: 20),
-        const Text('Mobile number', style: T.title),
-        const SizedBox(height: 12),
-        _mobileRow(enabled: !busy),
-        InlineError(error),
-        const SizedBox(height: 20),
-        PrimaryButton(
-          label: 'Send OTP',
-          icon: Icons.sms_outlined,
-          busy: busy,
-          onPressed: continueLogin,
-        ),
-      ];
 
   Widget _roleChooser() => LayoutBuilder(builder: (context, c) {
         final wide = c.maxWidth >= 360;
@@ -586,139 +568,199 @@ class _LoginScreenState extends State<LoginScreen> {
           ]),
         ]);
       });
+}
 
-  List<Widget> _otpStep() => [
-        Row(children: [
-          AppAvatar(icon: _roleIcon, size: 40, square: true),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Verify OTP', style: T.title),
-                const SizedBox(height: 2),
-                Text('Logging in as $_roleLabel', style: T.caption),
-              ],
-            ),
-          ),
-        ]),
-        const SizedBox(height: 18),
-        _mobileRow(enabled: false),
-        const SizedBox(height: 12),
-        TextField(
-          controller: otp,
-          autofocus: true,
-          enabled: !busy,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => busy ? null : continueLogin(),
-          maxLength: 6,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 6,
-              color: C.navy),
-          decoration: InputDecoration(
-            labelText: 'SMS OTP',
-            prefixIcon: const Icon(Icons.lock_outline_rounded),
-            counterText: '',
-            helperText:
-                'Enter the 6-digit code sent to $countryDialCode ${mobile.text.trim()}',
-          ),
-        ),
-        InlineError(error),
-        const SizedBox(height: 16),
-        PrimaryButton(
-          label: 'Verify & Login',
-          icon: Icons.login_rounded,
-          busy: busy,
-          onPressed: continueLogin,
-        ),
-        const SizedBox(height: 6),
-        Row(children: [
-          Expanded(
-            child: TextButton.icon(
-              onPressed: (busy || resendSeconds > 0)
-                  ? null
-                  : () => sendOtp(resend: true),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(
-                resendSeconds > 0
-                    ? 'Resend in ${resendSeconds}s'
-                    : 'Resend OTP',
-              ),
-            ),
-          ),
-          Expanded(
-            child: TextButton.icon(
-              onPressed: busy ? null : _backToMobile,
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Change number'),
-            ),
-          ),
-        ]),
-      ];
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key, this.forced = false});
 
-  Widget _mobileRow({required bool enabled}) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 104,
-            child: DropdownButtonFormField<String>(
-              initialValue: countryDialCode,
-              isExpanded: true,
-              icon: const Icon(Icons.expand_more_rounded, color: C.muted),
-              borderRadius: BorderRadius.circular(Rd.md),
-              decoration: const InputDecoration(
-                labelText: 'Code',
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+  /// When true, user cannot dismiss without changing (temporary credential).
+  final bool forced;
+
+  @override
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  final currentPassword = TextEditingController();
+  final newPassword = TextEditingController();
+  final confirmPassword = TextEditingController();
+  bool obscureCurrent = true;
+  bool obscureNew = true;
+  bool obscureConfirm = true;
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    currentPassword.dispose();
+    newPassword.dispose();
+    confirmPassword.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    if (busy) return;
+    setState(() {
+      error = null;
+      busy = true;
+    });
+    try {
+      if (currentPassword.text.isEmpty) {
+        setState(() => error = 'Enter your current password.');
+        return;
+      }
+      if (!isValidPasswordStrength(newPassword.text)) {
+        setState(() =>
+            error = 'New password needs 10+ characters with a letter and a number.');
+        return;
+      }
+      if (newPassword.text != confirmPassword.text) {
+        setState(() => error = 'Password confirmation does not match.');
+        return;
+      }
+      final session = ensureAuthSession();
+      await session.changePassword(
+        currentPassword: currentPassword.text,
+        newPassword: newPassword.text,
+        confirmPassword: confirmPassword.text,
+      );
+      // Server revoked sessions — clear local and require fresh login.
+      await session.clearLocal();
+      if (!mounted) return;
+      showInfoSnack(context, 'Password updated. Please sign in again.');
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => error = authErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: C.bg,
+        appBar: widget.forced
+            ? null
+            : AppBar(
+                title: const Text('Change password'),
               ),
-              items: [
-                for (final code in _countryCodes)
-                  DropdownMenuItem(
-                    value: code,
-                    child: Text(code, style: T.bodyStrong),
+        body: KeyboardDismissOnTap(
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.forced) ...[
+                        const BrandLogo(size: 48, radius: 12),
+                        const SizedBox(height: 20),
+                        const Text('Set a new password', style: T.h1),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your temporary password must be changed before continuing.',
+                          style: T.body,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                      TextField(
+                        controller: currentPassword,
+                        obscureText: obscureCurrent,
+                        enabled: !busy,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: InputDecoration(
+                          labelText: 'Current password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                                () => obscureCurrent = !obscureCurrent),
+                            icon: Icon(obscureCurrent
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: newPassword,
+                        obscureText: obscureNew,
+                        enabled: !busy,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'New password',
+                          helperText:
+                              'At least 10 characters, with a letter and a number.',
+                          prefixIcon: const Icon(Icons.password_rounded),
+                          suffixIcon: IconButton(
+                            onPressed: () =>
+                                setState(() => obscureNew = !obscureNew),
+                            icon: Icon(obscureNew
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: confirmPassword,
+                        obscureText: obscureConfirm,
+                        enabled: !busy,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => busy ? null : submit(),
+                        decoration: InputDecoration(
+                          labelText: 'Confirm new password',
+                          prefixIcon: const Icon(Icons.lock_rounded),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                                () => obscureConfirm = !obscureConfirm),
+                            icon: Icon(obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                          ),
+                        ),
+                      ),
+                      InlineError(error),
+                      const SizedBox(height: 20),
+                      PrimaryButton(
+                        label: 'Update password',
+                        icon: Icons.check_rounded,
+                        busy: busy,
+                        onPressed: submit,
+                      ),
+                      if (widget.forced) ...[
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () async {
+                                  await ensureAuthSession().logout();
+                                  if (!context.mounted) return;
+                                  Navigator.pushAndRemoveUntil(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const LoginScreen(),
+                                    ),
+                                    (_) => false,
+                                  );
+                                },
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ],
                   ),
-              ],
-              onChanged: !enabled
-                  ? null
-                  : (value) {
-                      if (value == null) return;
-                      setState(() {
-                        countryDialCode = value;
-                        error = null;
-                      });
-                    },
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: mobile,
-              enabled: enabled,
-              autofocus: enabled && !otpStep,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => busy ? null : continueLogin(),
-              onChanged: (_) {
-                if (error != null) setState(() => error = null);
-              },
-              autocorrect: false,
-              autofillHints: const [AutofillHints.telephoneNumberNational],
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
-              ],
-              decoration: const InputDecoration(
-                labelText: 'Mobile number',
-                hintText: '10-digit number',
-                prefixIcon: Icon(Icons.phone_android_outlined),
+                ),
               ),
             ),
           ),
-        ],
+        ),
       );
 }
 

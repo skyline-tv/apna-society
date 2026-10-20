@@ -2,9 +2,10 @@
  * Admin provisioning helper (no public registration).
  *
  * Usage:
- *   npm run prepare:admin -- --email admin@example.com --name "Society Admin" --mobile 9876543210
+ *   npm run prepare:admin -- --email admin@example.com --username admin \
+ *     --password 'YourSecurePass1' --name "Society Admin"
  *
- * Mobile is optional. When provided it is stored as verified so SMS OTP login works.
+ * Optional: --mobile 9876543210 (contact only; login is username/password).
  */
 import { loadEnv } from '../src/config/env';
 import { connectDatabase, disconnectDatabase } from '../src/database/connection';
@@ -12,7 +13,9 @@ import { UserModel } from '../src/modules/users/models/user.model';
 import { SocietyModel } from '../src/modules/society/models/society.model';
 import { MembershipModel } from '../src/modules/users/models/membership.model';
 import { normalizeEmail } from '../src/utils/crypto';
+import { hashPassword } from '../src/utils/password';
 import { normalizeMobileE164 } from '../src/utils/phone';
+import { assertValidUsername } from '../src/utils/username';
 import { writeAuditLog } from '../src/modules/auth/services/audit.service';
 
 function arg(name: string): string | undefined {
@@ -27,10 +30,18 @@ async function main(): Promise<void> {
   const name = (arg('name') ?? 'Platform Admin').trim();
   const societyCode = (arg('society') ?? 'MONARCH_SOLITAIRE').toUpperCase();
   const mobileRaw = arg('mobile');
+  const username = assertValidUsername(arg('username') ?? '');
+  const password = arg('password');
+  const mustChange = process.argv.includes('--must-change-password');
 
   if (!email || !email.includes('@')) {
     throw new Error('Provide --email');
   }
+  if (!password) {
+    throw new Error('Provide --password');
+  }
+
+  const passwordHash = await hashPassword(password);
 
   await connectDatabase();
 
@@ -44,10 +55,14 @@ async function main(): Promise<void> {
     mobileE164 = normalizeMobileE164(mobileRaw);
   }
 
-  let user = await UserModel.findOne({ email });
+  let user = await UserModel.findOne({ email }).select('+passwordHash');
   if (!user) {
     user = await UserModel.create({
       email,
+      username,
+      passwordHash,
+      mustChangePassword: mustChange,
+      passwordChangedAt: new Date(),
       name,
       roles: ['ADMIN'],
       isActive: true,
@@ -68,6 +83,14 @@ async function main(): Promise<void> {
     user.canLogin = true;
     user.isActive = true;
     user.primarySocietyId = user.primarySocietyId ?? society._id;
+    if (!user.username) {
+      user.username = username;
+    } else if (user.username !== username) {
+      throw new Error(`User already has username "${user.username}"`);
+    }
+    user.passwordHash = passwordHash;
+    user.mustChangePassword = mustChange;
+    user.passwordChangedAt = new Date();
     if (mobileE164) {
       user.mobileE164 = mobileE164;
       user.mobileVerifiedAt = new Date();
@@ -100,9 +123,11 @@ async function main(): Promise<void> {
     targetId: String(user._id),
     metadata: {
       email,
+      username,
       role: 'ADMIN',
       mobileSuffix: user.mobileE164?.slice(-4),
       mobileVerified: Boolean(user.mobileVerifiedAt),
+      // Never include password.
     },
   });
 
@@ -111,9 +136,10 @@ async function main(): Promise<void> {
       {
         id: user.id,
         email: user.email,
+        username: user.username,
         mobileE164: user.mobileE164,
-        mobileVerified: Boolean(user.mobileVerifiedAt),
         roles: user.roles,
+        mustChangePassword: user.mustChangePassword,
       },
       null,
       2,

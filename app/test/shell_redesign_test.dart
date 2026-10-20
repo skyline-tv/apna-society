@@ -16,12 +16,12 @@ void main() {
     expect(find.text('Flat Tenant'), findsOneWidget);
     expect(find.text('Admin'), findsOneWidget);
     expect(find.text('Security Guard'), findsOneWidget);
-    expect(find.text('Send OTP'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
 
     await tester.tap(find.text('Security Guard'));
     await tester.pump();
 
-    expect(find.text('Send OTP'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
     expect(find.text('Verify & Login'), findsNothing);
   });
 

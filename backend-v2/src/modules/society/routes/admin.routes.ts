@@ -12,8 +12,10 @@ import {
   patchUserHandler,
   provisionUserHandler,
   setUserMobileHandler,
+  setUserPasswordHandler,
 } from '../../users/controllers/admin-user.controller';
 import {
+  adminSetPasswordSchema,
   deactivateUserSchema,
   listUsersQuerySchema,
   provisionUserSchema,
@@ -174,6 +176,12 @@ router.post(
   '/users/:userId/mobile/confirm',
   validateParams(userIdParamSchema),
   asyncHandler(confirmUserMobileHandler),
+);
+router.post(
+  '/users/:userId/password',
+  validateParams(userIdParamSchema),
+  validateBody(adminSetPasswordSchema),
+  asyncHandler(setUserPasswordHandler),
 );
 
 router.get('/dashboard', asyncHandler(getDashboardHandler));

@@ -139,33 +139,51 @@ class AuthSession {
     }
   }
 
-  Future<OtpRequestResult> requestOtp(String mobile) {
-    return _api.auth.requestOtp(mobile: mobile.trim());
-  }
-
-  /// Verifies OTP, stores tokens, loads `/me`, and role context.
+  /// Username/password login, stores tokens, loads `/me`, and role context.
   ///
   /// If context loading fails after tokens were applied, the new local session
   /// is rolled back so the app is not left half-authenticated.
-  Future<AuthProfile> verifyOtp({
-    required String mobile,
-    required String otp,
+  Future<AuthProfile> login({
+    required String username,
+    required String password,
+    bool rememberMe = false,
   }) async {
-    final tokens = await _api.auth.verifyOtp(
-      mobile: mobile.trim(),
-      otp: otp.trim(),
+    final tokens = await _api.auth.login(
+      username: username.trim(),
+      password: password,
     );
     final generation = _generation;
     await _applyTokens(tokens, generation);
+    if (rememberMe) {
+      await _tokenStore.writeRememberedUsername(username.trim());
+    } else {
+      await _tokenStore.clearRememberedUsername();
+    }
     try {
       return await loadProfileAndContext();
     } catch (_) {
-      // Only roll back if this verify still owns the generation (no newer login).
+      // Only roll back if this login still owns the generation (no newer login).
       if (generation == _generation) {
         await clearLocal();
       }
       rethrow;
     }
+  }
+
+  Future<String?> readRememberedUsername() =>
+      _tokenStore.readRememberedUsername();
+
+  /// Changes password. Revokes server sessions; caller should re-login.
+  Future<ChangePasswordResult> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) {
+    return _api.auth.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+      confirmPassword: confirmPassword,
+    );
   }
 
   /// Restores a previous session from the refresh token.

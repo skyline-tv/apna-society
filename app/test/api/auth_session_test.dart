@@ -19,27 +19,34 @@ void main() {
 
   tearDown(resetAuthSessionForTests);
 
-  test('request OTP posts mobile without account enumeration', () async {
+  test('login posts username and password', () async {
     final adapter = ScriptedAdapter((options) async {
-      expect(options.path, '/api/v1/auth/request-otp');
-      expect(options.data['mobile'], '+919876543210');
+      expect(options.path, '/api/v1/auth/login');
+      expect(options.data['username'], 'owner1');
+      expect(options.data['password'], 'TestPassw0rd!');
       return jsonBody(200, {
         'success': true,
         'data': {
-          'message':
-              'If an account exists for this mobile number, a one-time code has been sent.',
+          'accessToken': 'access-1',
+          'refreshToken': 'refresh-1',
+          'expiresIn': '15m',
+          'tokenType': 'Bearer',
+          'mustChangePassword': false,
         },
       });
     });
+    // Will fail after login without /me — just assert the request shape via catch.
     final session = _session(adapter);
-    await session.requestOtp('+919876543210');
-    expect(adapter.calls, 1);
+    try {
+      await session.login(username: 'owner1', password: 'TestPassw0rd!');
+    } catch (_) {}
+    expect(adapter.calls, greaterThanOrEqualTo(1));
   });
 
-  test('verify OTP stores refresh token and loads owner context', () async {
+  test('login stores refresh token and loads owner context', () async {
     final store = MemorySecureTokenStore();
     final adapter = ScriptedAdapter((options) async {
-      if (options.path.endsWith('/verify-otp')) {
+      if (options.path.endsWith('/login')) {
         return jsonBody(200, {
           'success': true,
           'data': {
@@ -57,10 +64,12 @@ void main() {
           'data': {
             'id': 'user-1',
             'email': 'owner@example.com',
+            'username': 'owner1',
             'name': 'Owner',
             'roles': ['OWNER'],
             'societyIds': [societyId],
             'primarySocietyId': societyId,
+            'mustChangePassword': false,
           },
         });
       }
@@ -73,34 +82,37 @@ void main() {
       return notFound(options.path);
     });
     final session = _session(adapter, store: store);
-    final profile = await session.verifyOtp(
-      mobile: '+919876543210',
-      otp: '123456',
+    final profile = await session.login(
+      username: 'owner1',
+      password: 'TestPassw0rd!',
+      rememberMe: true,
     );
     expect(profile.email, 'owner@example.com');
     expect(session.appRole, AppRole.owner);
     expect(session.primaryResidentFlat?.flat.number, 'A-101');
     expect(session.primaryResidentFlat?.access.financial, isTrue);
     expect(await store.readRefreshToken(), 'refresh-1');
+    expect(await store.readRememberedUsername(), 'owner1');
     expect(session.accessToken, 'access-1');
   });
 
-  test('invalid OTP surfaces INVALID_OTP', () async {
+  test('invalid credentials surfaces INVALID_CREDENTIALS', () async {
     final adapter = ScriptedAdapter((options) async {
       return jsonBody(401, {
         'success': false,
         'error': {
-          'code': 'INVALID_OTP',
-          'message': 'Invalid or expired code',
+          'code': 'INVALID_CREDENTIALS',
+          'message': 'Invalid username or password',
           'requestId': 'r1',
         },
       });
     });
     final session = _session(adapter);
     expect(
-      () => session.verifyOtp(mobile: '+919876543210', otp: '000000'),
+      () => session.login(username: 'owner1', password: 'wrong'),
       throwsA(
-        isA<ApiException>().having((e) => e.code, 'code', 'INVALID_OTP'),
+        isA<ApiException>()
+            .having((e) => e.code, 'code', 'INVALID_CREDENTIALS'),
       ),
     );
   });

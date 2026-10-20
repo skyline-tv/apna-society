@@ -1,14 +1,14 @@
 import request from 'supertest';
 import type { Express } from 'express';
-import { createSociety, createUser } from './factories';
-import { loginExistingUser } from './auth-login';
+import { createSociety, createUser, TEST_PASSWORD } from './factories';
+import { loginWithPassword } from './auth-login';
 import { WingModel } from '../../src/modules/society/models/wing.model';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
 import type { FlatType, OccupancyStatus } from '../../src/config/constants';
 
 export async function loginAsAdmin(app: Express, email: string, societyId: string) {
   const user = await createUser({ email, roles: ['ADMIN'], societyId });
-  const { token } = await loginExistingUser(app, user.mobileE164!);
+  const { token } = await loginWithPassword(app, user.username!, TEST_PASSWORD);
   return {
     token,
     societyId,
@@ -79,12 +79,9 @@ export async function seedMonarchLikeSociety(societyId: string) {
       sortOrder: w + 1,
       isActive: true,
     });
-
     for (let floor = 1; floor <= 7; floor += 1) {
       for (let position = 1; position <= 4; position += 1) {
-        let rate = 4000;
-        if (code === 'A') rate = position <= 2 ? 4000 : 5000;
-        if (code === 'E') rate = position <= 2 ? 5000 : 4000;
+        const rate = position <= 2 ? 4000 : 5000;
         await FlatModel.create({
           societyId,
           wingId: wing._id,

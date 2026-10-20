@@ -66,12 +66,16 @@ class AdminUserRepository {
     required String email,
     required String role,
     String? phone,
+    String? username,
+    String? password,
   }) async {
     final result = await _api.provision(
       name: name,
       email: email,
       role: role,
       phone: phone,
+      username: username,
+      password: password,
     );
     _byId[result.user.id] = result.user;
     invalidateLists();
@@ -82,6 +86,7 @@ class AdminUserRepository {
     String userId, {
     String? name,
     String? phone,
+    String? username,
     bool? canLogin,
     bool? isActive,
   }) async {
@@ -89,12 +94,28 @@ class AdminUserRepository {
       userId,
       name: name,
       phone: phone,
+      username: username,
       canLogin: canLogin,
       isActive: isActive,
     );
     _byId[userId] = user;
     invalidateLists();
     return user;
+  }
+
+  Future<AdminSetPasswordResult> setPassword(
+    String userId, {
+    String? password,
+    bool mustChangePassword = true,
+  }) async {
+    final result = await _api.setPassword(
+      userId,
+      password: password,
+      mustChangePassword: mustChangePassword,
+    );
+    _byId[userId] = result.user;
+    invalidateLists();
+    return result;
   }
 
   Future<AdminUser> deactivateUser(String userId, {String? reason}) async {

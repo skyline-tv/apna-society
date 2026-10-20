@@ -40,21 +40,21 @@ void main() {
       return jsonBody(401, {
         'success': false,
         'error': {
-          'code': 'INVALID_OTP',
-          'message': 'Invalid or expired code',
+          'code': 'INVALID_CREDENTIALS',
+          'message': 'Invalid username or password',
           'requestId': 'req-9',
         },
       });
     });
     final api = _api(adapter);
     expect(
-      () => api.auth.verifyOtp(mobile: '+919876543210', otp: '000000'),
+      () => api.auth.login(username: 'owner1', password: 'wrong'),
       throwsA(
         isA<ApiException>()
-            .having((error) => error.code, 'code', 'INVALID_OTP')
+            .having((error) => error.code, 'code', 'INVALID_CREDENTIALS')
             .having((error) => error.requestId, 'requestId', 'req-9')
             .having((error) => error.statusCode, 'statusCode', 401)
-            .having((error) => error.toString(), 'string', isNot(contains('000000'))),
+            .having((error) => error.toString(), 'string', isNot(contains('wrong'))),
       ),
     );
   });
@@ -99,14 +99,21 @@ void main() {
     final adapter = ScriptedAdapter((options) async {
       expect(options.headers.containsKey('x-society-id'), isFalse);
       expect(options.headers.containsKey('authorization'), isFalse);
+      expect(options.path, '/api/v1/auth/login');
       return jsonBody(200, {
         'success': true,
-        'data': {'message': 'If an account exists for this mobile number, a one-time code has been sent.'},
+        'data': {
+          'accessToken': 'a',
+          'refreshToken': 'r-token-at-least-20-chars',
+          'expiresIn': '15m',
+          'tokenType': 'Bearer',
+        },
       });
     });
     final api = _api(adapter);
-    final result = await api.auth.requestOtp(mobile: '+919876543210');
-    expect(result.message, contains('one-time code'));
+    final result =
+        await api.auth.login(username: 'owner1', password: 'TestPassw0rd!');
+    expect(result.accessToken, 'a');
   });
 
   test('rejects an invalid society id before the request is sent', () async {

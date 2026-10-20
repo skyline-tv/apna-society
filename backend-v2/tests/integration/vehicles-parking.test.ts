@@ -48,7 +48,7 @@ async function setupSociety(prefix: string) {
       name: 'Gate Guard',
       email: `${prefix}-guard@example.com`,
       phone: '+91 9000000099',
-    });
+      password: 'TestPassw0rd!',});
   expect(guardRes.status).toBe(201);
 
   const ownerToken = await login(`${prefix}-owner@example.com`);
@@ -562,7 +562,8 @@ describe('Guard vehicle logs', () => {
     const otherGuard = await request(app)
       .post('/api/v1/admin/guards')
       .set('Authorization', `Bearer ${other.token}`)
-      .send({ name: 'Other Guard', email: 'vlog-other-guard@example.com' });
+      .send({ name: 'Other Guard', email: 'vlog-other-guard@example.com',
+      password: 'TestPassw0rd!',});
     expect(otherGuard.status).toBe(201);
     const otherGuardToken = await login('vlog-other-guard@example.com');
     const cross = await request(app)

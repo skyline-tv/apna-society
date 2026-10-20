@@ -3,10 +3,19 @@ import { ROLES, type Role } from '../../../config/constants';
 
 export interface UserDocument extends Document {
   email: string;
+  /** Unique login username (normalized lowercase). Required for password auth. */
+  username?: string;
+  /** bcrypt hash — never select by default; never return in API responses. */
+  passwordHash?: string;
+  /** When true, client must force a password change before normal use. */
+  mustChangePassword: boolean;
+  failedLoginAttempts: number;
+  lockUntil?: Date;
+  passwordChangedAt?: Date;
   name: string;
-  /** Free-form display phone (legacy). Prefer mobileE164 for login. */
+  /** Free-form display phone (legacy). Prefer mobileE164 for contact. */
   phone?: string;
-  /** E.164 digits without '+', e.g. 919876543210. Used for SMS OTP login. */
+  /** E.164 digits without '+', e.g. 919876543210. Contact / legacy OTP — not primary login. */
   mobileE164?: string;
   /** Set when ownership of mobileE164 has been confirmed (admin or OTP). */
   mobileVerifiedAt?: Date;
@@ -30,6 +39,28 @@ const userSchema = new Schema<UserDocument>(
       trim: true,
       index: true,
     },
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+    passwordHash: {
+      type: String,
+      select: false,
+    },
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: { type: Date },
+    passwordChangedAt: { type: Date },
     name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true },
     mobileE164: {
@@ -59,7 +90,7 @@ const userSchema = new Schema<UserDocument>(
 
 userSchema.index({ roles: 1, isActive: 1 });
 userSchema.index({ primarySocietyId: 1, isActive: 1 });
-userSchema.index({ name: 'text', email: 'text', phone: 'text', mobileE164: 'text' });
+userSchema.index({ name: 'text', email: 'text', phone: 'text', mobileE164: 'text', username: 'text' });
 userSchema.index({ phone: 1, isActive: 1 });
 userSchema.index({ mobileE164: 1, isActive: 1 });
 

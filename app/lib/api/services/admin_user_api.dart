@@ -35,6 +35,8 @@ class AdminUserApi {
     required String email,
     required String role,
     String? phone,
+    String? username,
+    String? password,
     String? societyId,
   }) {
     return _client.post(
@@ -45,6 +47,9 @@ class AdminUserApi {
         'email': email.trim(),
         'role': role,
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (username != null && username.trim().isNotEmpty)
+          'username': username.trim(),
+        if (password != null && password.isNotEmpty) 'password': password,
       },
       decode: ProvisionUserResult.fromJson,
     );
@@ -54,6 +59,7 @@ class AdminUserApi {
     String userId, {
     String? name,
     String? phone,
+    String? username,
     bool? canLogin,
     bool? isActive,
     String? societyId,
@@ -64,10 +70,29 @@ class AdminUserApi {
       body: {
         if (name != null) 'name': name.trim(),
         if (phone != null) 'phone': phone.trim(),
+        if (username != null) 'username': username.trim(),
         if (canLogin != null) 'canLogin': canLogin,
         if (isActive != null) 'isActive': isActive,
       },
       decode: AdminUser.fromJson,
+    );
+  }
+
+  /// Admin-assisted password set/reset. Returns a one-time temporary password.
+  Future<AdminSetPasswordResult> setPassword(
+    String userId, {
+    String? password,
+    bool mustChangePassword = true,
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_root/$userId/password',
+      societyId: societyId,
+      body: {
+        if (password != null && password.isNotEmpty) 'password': password,
+        'mustChangePassword': mustChangePassword,
+      },
+      decode: AdminSetPasswordResult.fromJson,
     );
   }
 

@@ -5,27 +5,40 @@ import '../models/auth_models.dart';
 
 /// Auth routes under `/api/v1/auth`.
 ///
-/// These methods do not store tokens. `verifyOtp` and `refresh` return the
+/// These methods do not store tokens. `login` and `refresh` return the
 /// pair to the caller.
 class AuthApi {
   AuthApi(this._client);
   final ApiClient _client;
 
-  Future<OtpRequestResult> requestOtp({required String mobile}) {
+  Future<TokenPair> login({
+    required String username,
+    required String password,
+  }) {
     return _client.post(
-      '${ApiConfig.apiPrefix}/auth/request-otp',
-      body: {'mobile': mobile},
+      '${ApiConfig.apiPrefix}/auth/login',
+      body: {
+        'username': username.trim(),
+        'password': password,
+      },
       authenticate: false,
-      decode: OtpRequestResult.fromJson,
+      decode: TokenPair.fromJson,
     );
   }
 
-  Future<TokenPair> verifyOtp({required String mobile, required String otp}) {
+  Future<ChangePasswordResult> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) {
     return _client.post(
-      '${ApiConfig.apiPrefix}/auth/verify-otp',
-      body: {'mobile': mobile, 'otp': otp},
-      authenticate: false,
-      decode: TokenPair.fromJson,
+      '${ApiConfig.apiPrefix}/auth/change-password',
+      body: {
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+        'confirmPassword': confirmPassword,
+      },
+      decode: ChangePasswordResult.fromJson,
     );
   }
 

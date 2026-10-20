@@ -1,40 +1,36 @@
 import '../http/api_exception.dart';
 
-/// User-facing copy for auth errors. Never reveals whether a mobile exists.
+/// User-facing copy for auth errors. Avoids username enumeration where practical.
 String authErrorMessage(Object error) {
   if (error is ApiException) {
     switch (error.code) {
-      case 'OTP_COOLDOWN':
-        return 'Please wait before requesting another code.';
-      case 'OTP_RATE_LIMIT':
+      case 'INVALID_CREDENTIALS':
+        return 'Invalid username or password.';
+      case 'LOGIN_LOCKED':
       case 'RATE_LIMITED':
-        return 'Too many requests. Try again later.';
-      case 'OTP_ATTEMPTS_EXCEEDED':
-        return 'Too many invalid attempts. Request a new code.';
-      case 'INVALID_OTP':
-        return 'Invalid or expired code.';
+        return 'Too many attempts. Try again later.';
       case 'LOGIN_DISABLED':
         return 'This account cannot sign in right now.';
-      case 'SMS_SEND_FAILED':
-      case 'SMS_TIMEOUT':
-      case 'SMS_NOT_CONFIGURED':
-      case 'SMS_VERIFY_FAILED':
-        return 'Unable to send or verify SMS right now. Try again later.';
-      case 'INVALID_MOBILE':
-        return 'Enter a valid mobile number.';
+      case 'INVALID_CURRENT_PASSWORD':
+        return 'Current password is incorrect.';
+      case 'WEAK_PASSWORD':
+      case 'PASSWORD_UNCHANGED':
+        return error.message;
+      case 'INVALID_USERNAME':
+        return 'Enter a valid username.';
       case 'NETWORK_TIMEOUT':
       case 'NETWORK_UNAVAILABLE':
       case 'NETWORK_ERROR':
       case 'TLS_ERROR':
         return error.message;
       case 'VALIDATION_ERROR':
-        return 'Enter a valid mobile number.';
+        return 'Check your username and password and try again.';
       default:
         if (error.statusCode == 401) {
-          return 'Invalid or expired code.';
+          return 'Invalid username or password.';
         }
         if (error.statusCode == 429) {
-          return 'Too many requests. Try again later.';
+          return 'Too many attempts. Try again later.';
         }
         return error.message;
     }
@@ -49,30 +45,12 @@ final emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
 bool isValidEmail(String value) => emailPattern.hasMatch(value.trim());
 
-/// Indian mobile: 10 digits starting 6–9, optionally with +91 / 91 / 0 prefix.
-bool isValidIndianMobile(String value) {
-  final digits = value.replaceAll(RegExp(r'\D'), '');
-  if (digits.length == 10) {
-    return RegExp(r'^[6-9]\d{9}$').hasMatch(digits);
-  }
-  if (digits.length == 12 && digits.startsWith('91')) {
-    return RegExp(r'^91[6-9]\d{9}$').hasMatch(digits);
-  }
-  if (digits.length == 11 && digits.startsWith('0')) {
-    return RegExp(r'^0[6-9]\d{9}$').hasMatch(digits);
-  }
-  return false;
-}
+final usernamePattern = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$');
 
-/// Build API mobile payload from country dial code (+91) and local digits.
-String composeMobileForApi({
-  required String countryDialCode,
-  required String localNumber,
-}) {
-  final dial = countryDialCode.trim().replaceAll(RegExp(r'[^\d+]'), '');
-  final local = localNumber.replaceAll(RegExp(r'\D'), '');
-  if (dial.startsWith('+')) {
-    return '$dial$local';
-  }
-  return '+$dial$local';
+bool isValidUsername(String value) => usernamePattern.hasMatch(value.trim());
+
+bool isValidPasswordStrength(String value) {
+  if (value.length < 10 || value.length > 128) return false;
+  if (RegExp(r'\s').hasMatch(value)) return false;
+  return RegExp(r'[A-Za-z]').hasMatch(value) && RegExp(r'\d').hasMatch(value);
 }

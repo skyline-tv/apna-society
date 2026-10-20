@@ -16,6 +16,15 @@ export const provisionGuardSchema = z
     name: z.string().trim().min(1).max(120),
     email: z.string().trim().email().max(254),
     phone: phoneSchema.optional(),
+    /** When omitted, derived from the email local-part (still unique). */
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(32)
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, 'Invalid username')
+      .optional(),
+    password: z.string().min(10).max(128).optional(),
   })
   .strict();
 

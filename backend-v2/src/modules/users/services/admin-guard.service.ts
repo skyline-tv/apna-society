@@ -2,6 +2,11 @@ import { conflict, forbidden, notFound } from '../../../shared/errors/app-error'
 import { normalizeEmail } from '../../../utils/crypto';
 import { isDuplicateKeyError } from '../../../utils/mongo-errors';
 import { parseObjectId } from '../../../utils/object-id';
+import {
+  generateTemporaryPassword,
+  hashPassword,
+} from '../../../utils/password';
+import { assertValidUsername, usernameFromEmail } from '../../../utils/username';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { MembershipModel } from '../models/membership.model';
 import { UserModel } from '../models/user.model';
@@ -11,11 +16,13 @@ type Actor = { userId: string; ipAddress?: string; userAgent?: string };
 function serializeGuard(user: {
   _id: { toString(): string };
   email: string;
+  username?: string;
   name: string;
   phone?: string;
   roles: string[];
   isActive: boolean;
   canLogin: boolean;
+  mustChangePassword?: boolean;
   primarySocietyId?: { toString(): string };
   lastLoginAt?: Date;
   createdAt: Date;
@@ -24,11 +31,13 @@ function serializeGuard(user: {
   return {
     id: String(user._id),
     email: user.email,
+    username: user.username,
     name: user.name,
     phone: user.phone,
     roles: user.roles,
     isActive: user.isActive,
     canLogin: user.canLogin,
+    mustChangePassword: Boolean(user.mustChangePassword),
     primarySocietyId: user.primarySocietyId ? String(user.primarySocietyId) : undefined,
     lastLoginAt: user.lastLoginAt?.toISOString(),
     membershipActive: membership?.isActive ?? false,
@@ -41,17 +50,33 @@ function serializeGuard(user: {
 
 export async function provisionGuard(
   societyId: string,
-  input: { name: string; email: string; phone?: string },
+  input: {
+    name: string;
+    email: string;
+    phone?: string;
+    username?: string;
+    password?: string;
+  },
   actor: Actor,
 ) {
   const email = normalizeEmail(input.email);
-  let user = await UserModel.findOne({ email });
+  const username = assertValidUsername(input.username ?? usernameFromEmail(email));
+  const temporaryPassword = input.password ?? generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const passwordWasGenerated = !input.password;
+
+  let user = await UserModel.findOne({ email }).select('+passwordHash');
   let created = false;
+  let credentialsIssued = false;
 
   if (!user) {
     try {
       user = await UserModel.create({
         email,
+        username,
+        passwordHash,
+        mustChangePassword: true,
+        passwordChangedAt: new Date(),
         name: input.name.trim(),
         phone: input.phone,
         roles: ['GUARD'],
@@ -61,8 +86,13 @@ export async function provisionGuard(
         provisionedBy: actor.userId,
       });
       created = true;
+      credentialsIssued = true;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
+        const msg = String((error as { message?: string }).message ?? '');
+        if (msg.includes('username')) {
+          throw conflict('A user with this username already exists', 'DUPLICATE_USERNAME');
+        }
         throw conflict('A user with this email already exists', 'DUPLICATE_EMAIL');
       }
       throw error;
@@ -77,9 +107,27 @@ export async function provisionGuard(
     if (input.name) user.name = input.name.trim();
     if (input.phone !== undefined) user.phone = input.phone;
     if (!user.primarySocietyId) user.primarySocietyId = parseObjectId(societyId, 'societyId');
+    if (!user.username) {
+      user.username = username;
+    } else if (user.username !== username) {
+      throw conflict('User already has a different username', 'USERNAME_MISMATCH');
+    }
+    if (!user.passwordHash) {
+      user.passwordHash = passwordHash;
+      user.mustChangePassword = true;
+      user.passwordChangedAt = new Date();
+      credentialsIssued = true;
+    }
     user.isActive = true;
     user.canLogin = true;
-    await user.save();
+    try {
+      await user.save();
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw conflict('A user with this username already exists', 'DUPLICATE_USERNAME');
+      }
+      throw error;
+    }
   }
 
   const existing = await MembershipModel.findOne({
@@ -116,7 +164,12 @@ export async function provisionGuard(
     societyId,
     targetType: 'User',
     targetId: String(user._id),
-    metadata: { email, reusedExisting: !created },
+    metadata: {
+      email,
+      username,
+      reusedExisting: !created,
+      passwordGenerated: credentialsIssued ? passwordWasGenerated : undefined,
+    },
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent,
   });
@@ -131,6 +184,9 @@ export async function provisionGuard(
   return {
     guard: serializeGuard(user.toObject(), membership ?? undefined),
     reusedExisting: !created,
+    temporaryPassword: credentialsIssued ? temporaryPassword : undefined,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    passwordGenerated: credentialsIssued ? passwordWasGenerated : undefined,
   };
 }
 

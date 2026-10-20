@@ -54,7 +54,8 @@ async function setup(prefix: string) {
   const guardRes = await request(app)
     .post('/api/v1/admin/guards')
     .set('Authorization', `Bearer ${ctx.token}`)
-    .send({ name: 'Gate', email: `${prefix}-guard@example.com`, phone: '+919876500001' });
+    .send({ name: 'Gate', email: `${prefix}-guard@example.com`, phone: '+919876500001',
+      password: 'TestPassw0rd!',});
   expect(guardRes.status).toBe(201);
 
   return {

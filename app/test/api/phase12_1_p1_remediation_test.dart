@@ -204,7 +204,7 @@ void main() {
       var clearedHook = 0;
       AuthSession.onLocalSessionCleared = () => clearedHook += 1;
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -225,7 +225,7 @@ void main() {
       });
       final session = _session(adapter, store: store);
       await expectLater(
-        session.verifyOtp(mobile: '+919876543210', otp: '123456'),
+        session.login(username: 'owner1', password: 'TestPassw0rd!'),
         throwsA(isA<ApiException>()),
       );
       expect(await store.readRefreshToken(), isNull);
@@ -238,7 +238,7 @@ void main() {
     test('empty flats context failure rolls back session', () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -269,7 +269,7 @@ void main() {
       });
       final session = _session(adapter, store: store);
       await expectLater(
-        session.verifyOtp(mobile: '+919876543210', otp: '123456'),
+        session.login(username: 'owner1', password: 'TestPassw0rd!'),
         throwsA(isA<StateError>()),
       );
       expect(await store.readRefreshToken(), isNull);
@@ -280,7 +280,7 @@ void main() {
     test('successful login keeps tokens and profile', () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -307,10 +307,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      final profile = await session.verifyOtp(
-        mobile: '+919876543210',
-        otp: '123456',
-      );
+      final profile = await session.login(username: 'owner1', password: 'TestPassw0rd!');
       expect(profile.roles, ['ADMIN']);
       expect(await store.readRefreshToken(), 'refresh-1');
       expect(session.isAuthenticated, isTrue);
@@ -415,7 +412,7 @@ void main() {
             'data': {'message': 'ok'},
           });
         }
-        if (options.path.endsWith('/verify-otp')) {
+        if (options.path.endsWith('/login')) {
           return jsonBody(200, {
             'success': true,
             'data': {
@@ -446,10 +443,7 @@ void main() {
       await refreshStarted.future;
       await session.logout();
       phase = 'login';
-      final profile = await session.verifyOtp(
-        mobile: '+919876543210',
-        otp: '123456',
-      );
+      final profile = await session.login(username: 'owner1', password: 'TestPassw0rd!');
       releaseRefresh.complete();
       await refreshFuture;
       expect(profile.email, 'admin2@example.com');
