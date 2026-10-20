@@ -13,4 +13,5 @@ npm-debug.log*
 .mongo-data/
 tmp/
 .vitest/
-storage/
+# Runtime attachment blobs only (never ignore TypeScript under src/**/storage/)
+/storage/

@@ -1099,61 +1099,67 @@ export async function addComplaintAttachment(
   });
 
   const attachmentId = new Types.ObjectId();
-  const updated = await withTransaction(async (session) => {
-    const claimed = await ComplaintModel.findOneAndUpdate(
-      {
-        _id: complaint._id,
-        [`attachments.${env.COMPLAINT_ATTACHMENT_MAX_COUNT - 1}`]: { $exists: false },
-      },
-      {
-        $push: {
-          attachments: {
-            _id: attachmentId,
-            storageKey: stored.storageKey,
-            mimeType,
-            sizeBytes: stored.sizeBytes,
-            originalFilename: file.originalname.slice(0, 255),
-            uploadedByUserId: userId,
-            createdAt: new Date(),
+  let updated;
+  try {
+    updated = await withTransaction(async (session) => {
+      const claimed = await ComplaintModel.findOneAndUpdate(
+        {
+          _id: complaint._id,
+          [`attachments.${env.COMPLAINT_ATTACHMENT_MAX_COUNT - 1}`]: { $exists: false },
+        },
+        {
+          $push: {
+            attachments: {
+              _id: attachmentId,
+              storageKey: stored.storageKey,
+              mimeType,
+              sizeBytes: stored.sizeBytes,
+              originalFilename: file.originalname.slice(0, 255),
+              uploadedByUserId: userId,
+              createdAt: new Date(),
+            },
           },
         },
-      },
-      { session, new: true },
-    );
-    if (!claimed) {
-      throw conflict('Attachment could not be added', 'ATTACHMENT_CONFLICT');
-    }
+        { session, new: true },
+      );
+      if (!claimed) {
+        throw conflict('Attachment could not be added', 'ATTACHMENT_CONFLICT');
+      }
 
-    await appendHistory(
-      {
-        complaintId,
-        societyId,
-        action: 'ATTACHMENT_ADDED',
-        previousStatus: claimed.status,
-        newStatus: claimed.status,
-        actor,
-        publicNotes: 'Attachment added',
-        metadata: { attachmentId: String(attachmentId), mimeType },
-      },
-      session,
-    );
+      await appendHistory(
+        {
+          complaintId,
+          societyId,
+          action: 'ATTACHMENT_ADDED',
+          previousStatus: claimed.status,
+          newStatus: claimed.status,
+          actor,
+          publicNotes: 'Attachment added',
+          metadata: { attachmentId: String(attachmentId), mimeType },
+        },
+        session,
+      );
 
-    await writeAuditLog(
-      {
-        action: 'COMPLAINT_ATTACHMENT_ADDED',
-        actorUserId: actor.userId,
-        societyId,
-        targetType: 'Complaint',
-        targetId: complaintId,
-        metadata: { attachmentId: String(attachmentId), mimeType, sizeBytes: stored.sizeBytes },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent,
-      },
-      session,
-    );
+      await writeAuditLog(
+        {
+          action: 'COMPLAINT_ATTACHMENT_ADDED',
+          actorUserId: actor.userId,
+          societyId,
+          targetType: 'Complaint',
+          targetId: complaintId,
+          metadata: { attachmentId: String(attachmentId), mimeType, sizeBytes: stored.sizeBytes },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
+        },
+        session,
+      );
 
-    return claimed;
-  });
+      return claimed;
+    });
+  } catch (error) {
+    await storage.delete(stored.storageKey).catch(() => undefined);
+    throw error;
+  }
 
   const att = updated.attachments.find((a) => String(a._id) === String(attachmentId));
   return {

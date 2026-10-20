@@ -662,7 +662,8 @@ export async function addAnnouncementAttachment(
     env.ANNOUNCEMENT_ALLOWED_MIME_TYPES.split(',').map((s) => s.trim()),
   );
 
-  const stored = await getAnnouncementStorage().put({
+  const storage = getAnnouncementStorage();
+  const stored = await storage.put({
     societyId,
     announcementId,
     buffer: file.buffer,
@@ -679,7 +680,12 @@ export async function addAnnouncementAttachment(
     uploadedByUserId: parseObjectId(userId, 'userId'),
     createdAt: new Date(),
   } as never);
-  await doc.save();
+  try {
+    await doc.save();
+  } catch (error) {
+    await storage.delete(stored.storageKey).catch(() => undefined);
+    throw error;
+  }
 
   await writeAuditLog({
     action: 'ANNOUNCEMENT_ATTACHMENT_ADDED',
@@ -718,8 +724,11 @@ export async function removeAnnouncementAttachment(
 
   const idx = doc.attachments.findIndex((a) => String(a._id) === attachmentId);
   if (idx < 0) throw notFound('Attachment not found');
-  doc.attachments.splice(idx, 1);
+  const [removed] = doc.attachments.splice(idx, 1);
   await doc.save();
+  if (removed?.storageKey) {
+    await getAnnouncementStorage().delete(removed.storageKey).catch(() => undefined);
+  }
 
   await writeAuditLog({
     action: 'ANNOUNCEMENT_ATTACHMENT_REMOVED',
