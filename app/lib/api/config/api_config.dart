@@ -1,10 +1,8 @@
 /// API base URLs for the Flutter client.
 ///
-/// The only host defined by `backend-v2` is the local server
-/// (`PORT` default `4000`, OpenAPI server `http://localhost:4000`).
-/// Staging and production hosts are not in that repository, so selecting
-/// those flavors requires `STAGING_API_URL` / `PRODUCTION_API_URL` or
-/// `API_BASE_URL` at build time.
+/// Default development host is the deployed Skyline API.
+/// Override with `API_BASE_URL`, or use `STAGING_API_URL` /
+/// `PRODUCTION_API_URL` for those flavors.
 enum ApiFlavor {
   development,
   staging,
@@ -29,8 +27,8 @@ class ApiConfig {
     this.captureTrafficLog = false,
   });
 
-  /// Local API from backend-v2 (`PORT` default and `/api/docs` server URL).
-  static const developmentBaseUrl = 'http://127.0.0.1:4000';
+  /// Deployed backend used by default for development builds.
+  static const developmentBaseUrl = 'https://apiapnesociety.skylinetv.in';
 
   static const apiPrefix = '/api/v1';
 

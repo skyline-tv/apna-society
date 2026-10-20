@@ -2,10 +2,10 @@ import 'package:apna_society/api/config/api_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('development uses the local backend port when no override is set', () {
+  test('development uses the Skyline API host when no override is set', () {
     final config = ApiConfig.resolve(flavorName: 'development');
     expect(config.flavor, ApiFlavor.development);
-    expect(config.baseUrl, 'http://127.0.0.1:4000');
+    expect(config.baseUrl, 'https://apiapnesociety.skylinetv.in');
     expect(ApiConfig.apiPrefix, '/api/v1');
   });
 
