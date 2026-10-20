@@ -1,7 +1,8 @@
 import { conflict, forbidden, notFound } from '../../../shared/errors/app-error';
 import { normalizeEmail } from '../../../utils/crypto';
-import { parseObjectId } from '../../../utils/object-id';
 import { isDuplicateKeyError } from '../../../utils/mongo-errors';
+import { parseObjectId } from '../../../utils/object-id';
+import { normalizeMobileE164 } from '../../../utils/phone';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { OccupancyRecordModel } from '../../society/models/occupancy-record.model';
 import { MembershipModel } from '../models/membership.model';
@@ -19,6 +20,8 @@ function serializeUser(user: {
   email: string;
   name: string;
   phone?: string;
+  mobileE164?: string;
+  mobileVerifiedAt?: Date;
   roles: string[];
   isActive: boolean;
   canLogin: boolean;
@@ -32,6 +35,9 @@ function serializeUser(user: {
     email: user.email,
     name: user.name,
     phone: user.phone,
+    mobileE164: user.mobileE164,
+    mobileVerified: Boolean(user.mobileVerifiedAt),
+    mobileVerifiedAt: user.mobileVerifiedAt?.toISOString(),
     roles: user.roles,
     isActive: user.isActive,
     canLogin: user.canLogin,
@@ -362,6 +368,111 @@ export async function deactivateAdminUser(
     targetType: 'User',
     targetId: userId,
     metadata: { reason },
+    ipAddress: actor.ipAddress,
+    userAgent: actor.userAgent,
+  });
+
+  return serializeUser(user.toObject());
+}
+
+/**
+ * Assign or replace a login mobile number. Clears verification until confirmed.
+ * Does not auto-verify migrated numbers.
+ */
+export async function setUserMobile(
+  societyId: string,
+  userId: string,
+  mobileRaw: string,
+  actor: Actor,
+) {
+  const membership = await MembershipModel.findOne({
+    societyId: parseObjectId(societyId, 'societyId'),
+    userId: parseObjectId(userId, 'userId'),
+  });
+  if (!membership) {
+    throw notFound('User not found in this society');
+  }
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw notFound('User not found');
+  }
+
+  const mobileE164 = normalizeMobileE164(mobileRaw);
+  const duplicate = await UserModel.findOne({
+    mobileE164,
+    _id: { $ne: user._id },
+  }).lean();
+  if (duplicate) {
+    throw conflict('This mobile number is already assigned to another user', 'DUPLICATE_MOBILE');
+  }
+
+  const before = { mobileE164: user.mobileE164, mobileVerifiedAt: user.mobileVerifiedAt };
+  user.mobileE164 = mobileE164;
+  user.mobileVerifiedAt = undefined;
+  user.phone = user.phone ?? `+${mobileE164}`;
+  try {
+    await user.save();
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw conflict('This mobile number is already assigned to another user', 'DUPLICATE_MOBILE');
+    }
+    throw error;
+  }
+
+  await writeAuditLog({
+    action: 'USER_UPDATED',
+    actorUserId: actor.userId,
+    societyId,
+    targetType: 'User',
+    targetId: userId,
+    metadata: { field: 'mobileE164', before, after: { mobileE164, mobileVerified: false } },
+    ipAddress: actor.ipAddress,
+    userAgent: actor.userAgent,
+  });
+
+  return serializeUser(user.toObject());
+}
+
+/**
+ * Admin attestation that mobile ownership was verified offline/in-person.
+ * Required before SMS OTP login is allowed.
+ */
+export async function confirmUserMobileVerified(
+  societyId: string,
+  userId: string,
+  actor: Actor,
+) {
+  const membership = await MembershipModel.findOne({
+    societyId: parseObjectId(societyId, 'societyId'),
+    userId: parseObjectId(userId, 'userId'),
+  });
+  if (!membership) {
+    throw notFound('User not found in this society');
+  }
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw notFound('User not found');
+  }
+  if (!user.mobileE164) {
+    throw conflict('Set a mobile number before confirming verification', 'MOBILE_REQUIRED');
+  }
+
+  user.mobileVerifiedAt = new Date();
+  await user.save();
+
+  await writeAuditLog({
+    action: 'USER_UPDATED',
+    actorUserId: actor.userId,
+    societyId,
+    targetType: 'User',
+    targetId: userId,
+    metadata: {
+      field: 'mobileVerifiedAt',
+      mobileSuffix: user.mobileE164.slice(-4),
+      verified: true,
+    },
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent,
   });

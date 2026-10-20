@@ -75,8 +75,38 @@ class _GuardHomeState extends State<GuardHome> {
   int tab = 0;
   int get guardId => widget.guard.read<int>('id');
 
+  static const _titles = ['Gate desk', 'Verify', 'Inside', 'Account'];
+
   void refresh() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _confirmLogout() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Log out?',
+      message: 'You will need an SMS OTP to sign in again.',
+      confirmLabel: 'Log out',
+      icon: Icons.logout_rounded,
+    );
+    if (ok) await logout();
+  }
+
+  void _openQueue() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: brandAppBarTitle(
+              title: 'Gate queue',
+              subtitle: kSocietyName,
+            ),
+          ),
+          body: const LiveGateVisitorBoardPage(),
+        ),
+      ),
+    );
   }
 
   Future<void> logout() async {
@@ -97,38 +127,56 @@ class _GuardHomeState extends State<GuardHome> {
       LiveGuardDashboardPage(
         guardName: guardName,
         onNavigate: (i) => setState(() => tab = i),
+        onOpenQueue: _openQueue,
       ),
       LiveVerifyVisitorOtpPage(
-        onEntered: () => setState(() => tab = 3),
+        onEntered: () => setState(() => tab = 2),
       ),
-      const LiveGateVisitorBoardPage(),
       const LiveInsideVisitorsPage(),
-      GuardProfilePage(guard: widget.guard, onLogout: logout, guardId: guardId),
+      GuardProfilePage(
+          guard: widget.guard, onLogout: _confirmLogout, guardId: guardId),
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: brandAppBarTitle(
-            title: '$kAppName Security', subtitle: kSocietyName),
-        actions: [
-          IconButton(onPressed: logout, icon: const Icon(Icons.logout_rounded)),
-        ],
-      ),
-      body: pages[tab],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (v) => setState(() => tab = v),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
-          NavigationDestination(
-              icon: Icon(Icons.pin_outlined), label: 'Verify OTP'),
-          NavigationDestination(
-              icon: Icon(Icons.fact_check_outlined), label: 'Gate'),
-          NavigationDestination(
-              icon: Icon(Icons.login_outlined), label: 'Inside'),
-          NavigationDestination(
-              icon: Icon(Icons.person_outline), label: 'Profile'),
-        ],
+    return PopScope(
+      canPop: tab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => tab = 0);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: brandAppBarTitle(
+              title: tab == 0 ? '$kAppName Security' : _titles[tab],
+              subtitle: kSocietyName),
+          actions: [
+            IconButton(
+              tooltip: 'Logout',
+              onPressed: _confirmLogout,
+              icon: const Icon(Icons.logout_rounded),
+            ),
+          ],
+        ),
+        body: IndexedStack(index: tab, children: pages),
+        bottomNavigationBar: AppBottomNav(
+          selectedIndex: tab,
+          onDestinationSelected: (v) => setState(() => tab = v),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.sensor_door_outlined),
+                selectedIcon: Icon(Icons.sensor_door_rounded),
+                label: 'Desk'),
+            NavigationDestination(
+                icon: Icon(Icons.pin_outlined),
+                selectedIcon: Icon(Icons.pin_rounded),
+                label: 'Verify'),
+            NavigationDestination(
+                icon: Icon(Icons.meeting_room_outlined),
+                selectedIcon: Icon(Icons.meeting_room_rounded),
+                label: 'Inside'),
+            NavigationDestination(
+                icon: Icon(Icons.person_outline_rounded),
+                selectedIcon: Icon(Icons.person_rounded),
+                label: 'Account'),
+          ],
+        ),
       ),
     );
   }
@@ -350,33 +398,36 @@ class GuardProfilePage extends StatelessWidget {
   final int guardId;
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Center(child: BrandLogo(size: 72, radius: 18)),
-          const SizedBox(height: 14),
-          Text(guard.read<String>('name'),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: C.navy)),
-          const Text('Security Guard',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: C.blue, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 22),
-          AppCard(
-              child: ListTile(
-                  leading: const Icon(Icons.phone_android, color: C.blue),
-                  title: const Text('Mobile'),
-                  subtitle: Text(guard.read<String>('mobile')))),
-          const AppCard(
-              child: ListTile(
-                  leading: Icon(Icons.apartment, color: C.blue),
-                  title: Text('Society'),
-                  subtitle: Text(kSocietyName))),
-          const SizedBox(height: 12),
-          QuickActionTile(
+  Widget build(BuildContext context) {
+    final name = guard.read<String>('name') as String;
+    final mobile = guard.read<String>('mobile') as String;
+    return ListView(
+      padding: Sp.pagePadding,
+      children: [
+        DetailHero(
+          title: name,
+          subtitle: 'Security desk · $kSocietyName',
+          leading: AppAvatar(text: initialsOf(name), size: Sz.avatarLg),
+          badges: const [
+            StatusBadge('Security guard', tone: BadgeTone.info),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SettingsGroup(title: 'Account', children: [
+          SettingsRow(
+              icon: Icons.phone_android_outlined,
+              title: 'Mobile',
+              value: mobile),
+          const SettingsRow(
+              icon: Icons.apartment_outlined,
+              title: 'Society',
+              value: kSocietyName),
+        ]),
+        SettingsGroup(title: 'Gate tools', children: [
+          SettingsRow(
             icon: Icons.directions_car_outlined,
-            label: 'Vehicle gate',
+            title: 'Vehicle gate',
+            value: 'Log vehicle entry and exit',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -384,13 +435,23 @@ class GuardProfilePage extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-              onPressed: onLogout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Logout')),
-        ],
-      );
+        ]),
+        const SizedBox(height: 8),
+        SettingsGroup(title: 'Session', children: [
+          SettingsRow(
+            icon: Icons.logout_rounded,
+            title: 'Log out',
+            value: 'Requires SMS OTP to sign in again',
+            onTap: onLogout,
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Text('$kAppName · $kSocietyName',
+            textAlign: TextAlign.center,
+            style: T.caption.copyWith(color: C.faint)),
+      ],
+    );
+  }
 }
 
 // ─── Guard: Verify app-generated visitor OTP ─────────────────────────────────
@@ -2405,10 +2466,6 @@ class AdminMorePage extends StatelessWidget {
               icon: Icons.settings_outlined,
               label: 'Settings',
               onTap: () => onOpen('settings')),
-          const SizedBox(height: 12),
-          const InfoNote(
-            'Visitor gate OTPs are generated in the owner app (local demo). Login OTP for roles remains $kDemoOtp for presentation only.',
-          ),
         ],
       );
 }

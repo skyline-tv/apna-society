@@ -66,6 +66,15 @@ describe('production env hardening', () => {
     expect(env.NODE_ENV).toBe('production');
     expect(env.RESEND_API_KEY).toBeTruthy();
   });
+
+  it('rejects SMS_OTP_DEV_BYPASS in production', () => {
+    expect(() =>
+      loadEnv({
+        ...base,
+        SMS_OTP_DEV_BYPASS: 'true',
+      }),
+    ).toThrow(/SMS_OTP_DEV_BYPASS/);
+  });
 });
 
 describe('security helpers still active', () => {

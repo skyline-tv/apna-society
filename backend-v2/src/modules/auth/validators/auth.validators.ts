@@ -1,15 +1,15 @@
 import { z } from 'zod';
 
 export const requestOtpSchema = z.object({
-  email: z.string().email('Valid email is required').max(254),
+  mobile: z.string().trim().min(8).max(20),
 });
 
 export const verifyOtpSchema = z.object({
-  email: z.string().email('Valid email is required').max(254),
+  mobile: z.string().trim().min(8).max(20),
   otp: z
     .string()
     .trim()
-    .regex(/^\d{6}$/, 'OTP must be a 6-digit code'),
+    .regex(/^\d{4,9}$/, 'OTP must be a numeric code'),
 });
 
 export const refreshSchema = z.object({

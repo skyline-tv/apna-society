@@ -1,8 +1,18 @@
+import 'package:flutter/foundation.dart';
+
 /// API base URLs for the Flutter client.
 ///
-/// Default development host is the deployed Skyline API.
-/// Override with `API_BASE_URL`, or use `STAGING_API_URL` /
-/// `PRODUCTION_API_URL` for those flavors.
+/// Dio [baseUrl] is the **origin only** (scheme + host). Route modules append
+/// [apiPrefix] (`/api/v1/...`). Passing a URL that already ends in `/api/v1`
+/// is normalized so paths are not doubled.
+///
+/// Flavors:
+/// - **development** — LAN backend-v2 (override with `API_BASE_URL`).
+/// - **staging** — requires `STAGING_API_URL` or `API_BASE_URL`.
+/// - **production** — VPS origin [productionBaseUrl] by default.
+///
+/// Release APKs/AABs default to the production flavor when `API_ENV` is unset.
+/// Local `flutter run` defaults to development.
 enum ApiFlavor {
   development,
   staging,
@@ -27,8 +37,11 @@ class ApiConfig {
     this.captureTrafficLog = false,
   });
 
-  /// Deployed backend used by default for development builds.
-  static const developmentBaseUrl = 'https://apiapnesociety.skylinetv.in';
+  /// LAN API from backend-v2 (device/emulator reachability on the local network).
+  static const developmentBaseUrl = 'http://192.168.1.130:4000';
+
+  /// Deployed VPS API origin (no `/api/v1` path — see [apiPrefix]).
+  static const productionBaseUrl = 'https://apiapnasociety.skylinetv.in';
 
   static const apiPrefix = '/api/v1';
 
@@ -46,15 +59,23 @@ class ApiConfig {
   /// `API_ENV` (`development` | `staging` | `production`),
   /// `API_BASE_URL` (overrides the flavor URL),
   /// `STAGING_API_URL`, `PRODUCTION_API_URL`.
+  ///
+  /// When `API_ENV` is omitted: release → production, debug/profile → development.
   factory ApiConfig.fromEnvironment() {
+    const definedFlavor = String.fromEnvironment('API_ENV');
+    final flavorName = definedFlavor.isNotEmpty
+        ? definedFlavor
+        : (kReleaseMode ? 'production' : 'development');
     return ApiConfig.resolve(
-      flavorName: const String.fromEnvironment(
-        'API_ENV',
-        defaultValue: 'development',
-      ),
+      flavorName: flavorName,
       baseUrlOverride: const String.fromEnvironment('API_BASE_URL'),
       stagingBaseUrl: const String.fromEnvironment('STAGING_API_URL'),
-      productionBaseUrl: const String.fromEnvironment('PRODUCTION_API_URL'),
+      productionBaseUrl: const String.fromEnvironment(
+        'PRODUCTION_API_URL',
+        defaultValue: productionBaseUrl,
+      ),
+      captureTrafficLog: !kReleaseMode &&
+          const bool.fromEnvironment('API_TRAFFIC_LOG', defaultValue: false),
     );
   }
 
@@ -78,11 +99,15 @@ class ApiConfig {
                 stagingBaseUrl,
                 'STAGING_API_URL',
               ),
-            ApiFlavor.production => _requiredUrl(
-                productionBaseUrl,
-                'PRODUCTION_API_URL',
+            ApiFlavor.production => _normalizeBaseUrl(
+                productionBaseUrl.isNotEmpty
+                    ? productionBaseUrl
+                    : ApiConfig.productionBaseUrl,
               ),
           };
+    if (baseUrl.isEmpty) {
+      throw ApiConfigurationException('Resolved API base URL is empty.');
+    }
     return ApiConfig(
       flavor: flavor,
       baseUrl: baseUrl,
@@ -115,17 +140,25 @@ class ApiConfig {
     if (url.isEmpty) {
       throw ApiConfigurationException(
         '$defineName is required for this API flavor. '
-        'backend-v2 does not define a staging or production host. '
         'Pass --dart-define=$defineName=https://… or --dart-define=API_BASE_URL=https://…',
       );
     }
     return url;
   }
 
+  /// Trims trailing slashes and a trailing `/api/v1` so Dio + [apiPrefix] do
+  /// not produce `/api/v1/api/v1/...`.
   static String _normalizeBaseUrl(String raw) {
     var url = raw.trim();
     while (url.endsWith('/')) {
       url = url.substring(0, url.length - 1);
+    }
+    const suffix = '/api/v1';
+    if (url.toLowerCase().endsWith(suffix)) {
+      url = url.substring(0, url.length - suffix.length);
+      while (url.endsWith('/')) {
+        url = url.substring(0, url.length - 1);
+      }
     }
     return url;
   }

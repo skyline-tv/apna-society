@@ -31,15 +31,28 @@ class ResidentProfile {
     required this.societyIds,
     required this.activeFlatIds,
     this.phone,
+    this.mobileE164,
   });
 
   final String id;
   final String email;
   final String name;
   final String? phone;
+  final String? mobileE164;
   final List<String> roles;
   final List<String> societyIds;
   final List<String> activeFlatIds;
+
+  /// Preferred display phone for UI (login mobile, then legacy phone).
+  String get displayPhone {
+    final mobile = mobileE164?.trim();
+    if (mobile != null && mobile.isNotEmpty) {
+      return mobile.startsWith('+') ? mobile : '+$mobile';
+    }
+    final legacy = phone?.trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return '—';
+  }
 
   factory ResidentProfile.fromJson(Object? data) {
     final json = requireMap(data, 'resident profile');
@@ -48,6 +61,7 @@ class ResidentProfile {
       email: requireString(json, 'email'),
       name: requireString(json, 'name'),
       phone: optionalString(json, 'phone'),
+      mobileE164: optionalString(json, 'mobileE164'),
       roles: requireStringList(json, 'roles'),
       societyIds: requireStringList(json, 'societyIds'),
       activeFlatIds: requireStringList(json, 'activeFlatIds'),

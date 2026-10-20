@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { loginByEmail } from '../helpers/auth-login';
 import { createUser } from '../helpers/factories';
 import { createAdminContext, createWingWithFlats } from '../helpers/admin';
-import { testOtpInbox } from '../helpers/setup';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
 import { UserModel } from '../../src/modules/users/models/user.model';
 import { MembershipModel } from '../../src/modules/users/models/membership.model';
@@ -26,10 +26,8 @@ import { addCivilDays, localDateString } from '../../src/modules/staff/utils/soc
 const app = createApp();
 
 async function login(email: string) {
-  await request(app).post('/api/v1/auth/request-otp').send({ email });
-  const otp = testOtpInbox.find((item) => item.email === email)!.otp;
-  const res = await request(app).post('/api/v1/auth/verify-otp').send({ email, otp });
-  return res.body.data.accessToken as string;
+  const { token } = await loginByEmail(app, email);
+  return token;
 }
 
 async function setup(prefix: string) {

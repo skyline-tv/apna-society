@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
-import { createSociety, createUser } from '../helpers/factories';
-import { testOtpInbox } from '../helpers/setup';
+import { loginAs as loginAsHelper } from '../helpers/auth-login';
+import { createSociety } from '../helpers/factories';
 import { signAccessToken } from '../../src/modules/auth/services/token.service';
 
 const app = createApp();
 
 async function loginAs(email: string, roles: ('ADMIN' | 'OWNER' | 'TENANT' | 'GUARD')[], societyId?: string) {
-  await createUser({ email, roles, societyId });
-  await request(app).post('/api/v1/auth/request-otp').send({ email });
-  const otp = testOtpInbox.find((x) => x.email === email)!.otp;
-  const login = await request(app).post('/api/v1/auth/verify-otp').send({ email, otp });
-  return login.body.data.accessToken as string;
+  const { token } = await loginAsHelper(app, email, roles, societyId);
+  return token;
 }
 
 describe('Role middleware and society isolation', () => {
@@ -75,7 +72,7 @@ describe('Role middleware and society isolation', () => {
 
 describe('Input validation and error handling', () => {
   it('validates request-otp body', async () => {
-    const res = await request(app).post('/api/v1/auth/request-otp').send({ email: 'not-an-email' });
+    const res = await request(app).post('/api/v1/auth/request-otp').send({});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.requestId).toBeTruthy();
@@ -84,7 +81,7 @@ describe('Input validation and error handling', () => {
   it('validates verify-otp otp format', async () => {
     const res = await request(app)
       .post('/api/v1/auth/verify-otp')
-      .send({ email: 'a@example.com', otp: 'abc' });
+      .send({ mobile: '9876543210', otp: 'abc' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });

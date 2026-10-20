@@ -136,6 +136,23 @@ class ApiClient {
     );
   }
 
+  Future<T> put<T>(
+    String path, {
+    Object? body,
+    String? societyId,
+    bool authenticate = true,
+    required T Function(Object? data) decode,
+  }) {
+    return _send(
+      method: 'PUT',
+      path: path,
+      body: body,
+      societyId: societyId,
+      authenticate: authenticate,
+      decode: decode,
+    );
+  }
+
   Future<T> delete<T>(
     String path, {
     Object? body,

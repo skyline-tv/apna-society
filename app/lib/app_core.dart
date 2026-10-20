@@ -147,19 +147,7 @@ String shortDate(String iso) {
   return '${d.day.toString().padLeft(2, '0')} ${kMonths[d.month - 1].substring(0, 3)} ${d.year}';
 }
 
-Widget billDetailLine(String label, String value) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(children: [
-        SizedBox(
-            width: 140,
-            child: Text(label,
-                style: const TextStyle(color: C.muted, fontSize: 12))),
-        Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: C.navy, fontSize: 13))),
-      ]),
-    );
+Widget billDetailLine(String label, String value) => DetailRow(label, value);
 
 List<Map<String, dynamic>> billOtherChargesOf(dynamic bill) {
   final raw = bill is Map
@@ -302,7 +290,7 @@ class BrandLogo extends StatelessWidget {
 
 Widget brandAppBarTitle({required String title, String? subtitle}) => Row(
       children: [
-        const BrandLogo(size: 36, radius: 10),
+        const BrandLogo(size: 34, radius: 10),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -310,16 +298,22 @@ Widget brandAppBarTitle({required String title, String? subtitle}) => Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                      color: C.navy)),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: C.navy,
+                      height: 1.2)),
               if (subtitle != null)
                 Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.5,
                         color: C.muted,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w600,
+                        height: 1.2)),
             ],
           ),
         ),

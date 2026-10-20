@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
 import '../../api/models/common.dart';
+import '../../api/models/resident_home_context.dart' show occupancyStatusLabel;
 import '../../api/models/society_models.dart';
 import '../../api/models/visitor_models.dart';
 import '../../api/repositories/live_repositories.dart';
@@ -59,25 +60,105 @@ String visitorErrorMessage(Object error) {
   return '$error';
 }
 
-String _shortIso(String? iso) {
-  if (iso == null || iso.isEmpty) return '—';
-  final d = DateTime.tryParse(iso)?.toLocal();
-  if (d == null) return iso;
-  return '${d.day}/${d.month}/${d.year} '
-      '${d.hour.toString().padLeft(2, '0')}:'
-      '${d.minute.toString().padLeft(2, '0')}';
-}
-
+/// Approval + entry badges for a visitor.
 Widget visitorStatusChips(Visitor v) {
   return Wrap(
-    spacing: 8,
+    spacing: 6,
     runSpacing: 6,
     children: [
       StatusBadge(approvalStatusLabel(v.approvalStatus)),
       StatusBadge(entryStatusLabel(v.entryStatus)),
+      if (v.hasActiveOtp)
+        const StatusBadge('OTP active',
+            tone: BadgeTone.info, icon: Icons.key_rounded),
     ],
   );
 }
+
+IconData _visitorTypeIcon(String type) {
+  switch (type) {
+    case 'DELIVERY':
+      return Icons.local_shipping_outlined;
+    case 'CAB':
+      return Icons.local_taxi_outlined;
+    case 'COURIER':
+      return Icons.inventory_2_outlined;
+    case 'SERVICE_PROVIDER':
+      return Icons.handyman_outlined;
+    case 'OTHER':
+      return Icons.person_outline_rounded;
+    default:
+      return Icons.person_outline_rounded;
+  }
+}
+
+Color _visitorTone(Visitor v) {
+  if (v.entryStatus == 'ENTERED') return C.green;
+  switch (v.approvalStatus) {
+    case 'PENDING':
+      return C.amber;
+    case 'REJECTED':
+      return C.error;
+    case 'APPROVED':
+      return C.blue;
+    default:
+      return C.muted;
+  }
+}
+
+String _flatLabel(Visitor v) => '${v.wingCodeSnapshot}-${v.flatNumberSnapshot}';
+
+/// Shared visitor list row.
+class _VisitorRow extends StatelessWidget {
+  const _VisitorRow({
+    required this.visitor,
+    this.onTap,
+    this.footer,
+    this.trailing,
+    this.extra,
+  });
+  final Visitor visitor;
+  final VoidCallback? onTap;
+  final Widget? footer;
+  final Widget? trailing;
+  final String? extra;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = visitor;
+    return ListRow(
+      onTap: onTap,
+      leading: AppAvatar(
+        icon: _visitorTypeIcon(v.visitorType),
+        color: _visitorTone(v),
+        size: 42,
+      ),
+      title: v.visitorName,
+      subtitle:
+          '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}${extra == null ? '' : ' · $extra'}',
+      badges: [
+        StatusBadge(approvalStatusLabel(v.approvalStatus)),
+        StatusBadge(entryStatusLabel(v.entryStatus)),
+        if (v.hasActiveOtp)
+          const StatusBadge('OTP active',
+              tone: BadgeTone.info, icon: Icons.key_rounded),
+      ],
+      trailing: trailing,
+      footer: footer,
+      showChevron: onTap != null && trailing == null,
+    );
+  }
+}
+
+Widget _emptyScrollable(Widget child, Future<void> Function() onRefresh) =>
+    RefreshIndicator(
+      color: C.blue,
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [const SizedBox(height: 60), child],
+      ),
+    );
 
 // ─── Guard shell pages ───────────────────────────────────────────────────────
 
@@ -86,10 +167,12 @@ class LiveGuardDashboardPage extends StatefulWidget {
     super.key,
     required this.guardName,
     required this.onNavigate,
+    required this.onOpenQueue,
   });
 
   final String guardName;
   final ValueChanged<int> onNavigate;
+  final VoidCallback onOpenQueue;
 
   @override
   State<LiveGuardDashboardPage> createState() => _LiveGuardDashboardPageState();
@@ -123,6 +206,17 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
 
   void reload() => setState(() => _future = _load(force: true));
 
+  Future<void> _register() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const LiveAddGateVisitorPage()),
+    );
+    if (changed == true) {
+      reload();
+      widget.onOpenQueue();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<GuardDashboard>(
@@ -130,7 +224,7 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading gate overview…');
+          return const SkeletonList(items: 4, showHeader: true);
         }
         if (snapshot.hasError) {
           return LoadFailure(
@@ -143,189 +237,93 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
         final first = widget.guardName.split(' ').first;
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => reload(),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          onRefresh: () async {
+            reload();
+            await _future;
+          },
+            child: ListView(
+            padding: Sp.pagePadding,
             children: [
-              Text(
-                'Hello, $first',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
+              PageHeader('Hello, $first',
+                  subtitle: 'Register, verify, then let them in'),
+              PrimaryButton(
+                label: 'Register visitor',
+                icon: Icons.person_add_alt_1_outlined,
+                onPressed: _register,
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: SecondaryButton(
+                    label: 'Verify OTP',
+                    icon: Icons.pin_outlined,
+                    onPressed: () => widget.onNavigate(1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SecondaryButton(
+                    label: 'Visitor exit',
+                    icon: Icons.logout_rounded,
+                    onPressed: () => widget.onNavigate(2),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+              MetricBand(items: [
+                MetricItem('Inside', '${d.currentlyInside}',
+                    valueColor: C.green,
+                    onTap: () => widget.onNavigate(2)),
+                MetricItem('Pending', '${d.pendingApprovals}',
+                    valueColor: d.pendingApprovals > 0 ? C.amber : C.navy,
+                    onTap: widget.onOpenQueue),
+                MetricItem('Awaiting OTP', '${d.awaitingEntry}',
+                    onTap: () => widget.onNavigate(1)),
+                MetricItem('Entered today', '${d.enteredToday}',
+                    onTap: widget.onOpenQueue),
+              ]),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: widget.onOpenQueue,
+                  icon: const Icon(Icons.fact_check_outlined, size: 18),
+                  label: Text(
+                    'Gate queue · ${d.exitedToday} exited today',
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'Security desk · live visitors',
-                style: TextStyle(color: C.muted, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 18),
-              AppCard(
-                onTap: () async {
-                  final changed = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const LiveAddGateVisitorPage(),
-                    ),
-                  );
-                  if (changed == true) {
-                    reload();
-                    widget.onNavigate(2);
-                  }
-                },
-                padding: const EdgeInsets.all(18),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: C.chip,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.person_add_alt_1_outlined,
-                        color: C.blue,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Register visitor',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Send approval request to the flat resident',
-                            style: TextStyle(color: C.muted, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, color: C.muted),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              AppCard(
-                onTap: () {
-                  Navigator.push(
+              const SizedBox(height: 8),
+              ToolDirectory(links: [
+                ToolLink(
+                  icon: Icons.directions_car_outlined,
+                  label: 'Vehicle gate',
+                  subtitle: 'Log vehicle entry and exit',
+                  onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => const LiveGuardVehiclesPage(),
                     ),
-                  );
-                },
-                padding: const EdgeInsets.all(18),
-                child: const Row(
-                  children: [
-                    Icon(Icons.directions_car_outlined, color: C.blue),
-                    SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Vehicle gate',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Record vehicle entry and exit',
-                            style: TextStyle(color: C.muted, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right_rounded, color: C.muted),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.45,
-                children: [
-                  _StatTile(
-                    label: 'Inside now',
-                    value: '${d.currentlyInside}',
-                    onTap: () => widget.onNavigate(3),
-                  ),
-                  _StatTile(
-                    label: 'Pending approval',
-                    value: '${d.pendingApprovals}',
-                    onTap: () => widget.onNavigate(2),
-                  ),
-                  _StatTile(
-                    label: 'Awaiting entry',
-                    value: '${d.awaitingEntry}',
-                    onTap: () => widget.onNavigate(1),
-                  ),
-                  _StatTile(
-                    label: 'Entered today',
-                    value: '${d.enteredToday}',
-                    onTap: () => widget.onNavigate(2),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Recent',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: C.navy,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
+              ]),
+              const SizedBox(height: 16),
+              SectionTitle('Recent',
+                  action: TextButton(
+                      onPressed: widget.onOpenQueue,
+                      child: const Text('Queue'))),
               if (d.recent.isEmpty)
-                const EmptyState('No recent visitors')
+                const EmptyState('No recent visitors',
+                    icon: Icons.groups_outlined, compact: true)
               else
                 ...d.recent.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              LiveGuardVisitorDetailPage(visitorId: v.id),
-                        ),
-                      ),
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.visitorName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${v.wingCodeSnapshot}-${v.flatNumberSnapshot} · '
-                            '${visitorTypeLabel(v.visitorType)}',
-                            style: const TextStyle(color: C.muted, fontSize: 13),
-                          ),
-                          const SizedBox(height: 8),
-                          visitorStatusChips(v),
-                        ],
+                  (v) => _VisitorRow(
+                    visitor: v,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            LiveGuardVisitorDetailPage(visitorId: v.id),
                       ),
                     ),
                   ),
@@ -338,48 +336,6 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: C.navy,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            label,
-            style: const TextStyle(
-              color: C.muted,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class LiveAddGateVisitorPage extends StatefulWidget {
   const LiveAddGateVisitorPage({super.key});
 
@@ -388,6 +344,7 @@ class LiveAddGateVisitorPage extends StatefulWidget {
 }
 
 class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
+  final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
@@ -400,7 +357,10 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
   List<SocietyFlatPick> _flats = const [];
   bool _loadingFlats = true;
   bool _submitting = false;
+  bool _reviewing = false;
   String? _flatError;
+  String? _flatFieldError;
+  String? _submitError;
 
   @override
   void initState() {
@@ -449,37 +409,62 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
     }
   }
 
-  Future<void> _submit() async {
-    if (_submitting) return;
+  Future<void> _pickFlat() async {
+    final picked = await showAppSheet<SocietyFlatPick>(
+      context,
+      title: 'Select flat',
+      builder: (sheet) => _FlatPickerSheet(flats: _flats, selected: _flat),
+    );
+    if (picked != null) {
+      setState(() {
+        _flat = picked;
+        _flatFieldError = null;
+      });
+    }
+  }
+
+  bool _validateForm() {
+    FocusManager.instance.primaryFocus?.unfocus();
     final flat = _flat;
+    final valid = _form.currentState?.validate() ?? false;
     if (flat == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a flat')),
-      );
+      setState(() => _flatFieldError = 'Select the flat being visited.');
+    }
+    return valid && flat != null;
+  }
+
+  void _openReview() {
+    if (_submitting) return;
+    if (!_validateForm()) return;
+    setState(() {
+      _reviewing = true;
+      _submitError = null;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_submitting || !_reviewing) return;
+    if (!_validateForm()) {
+      setState(() => _reviewing = false);
       return;
     }
-    final name = _name.text.trim();
-    final phone = _phone.text.trim();
-    final purpose = _purpose.text.trim();
-    if (name.isEmpty || phone.isEmpty || purpose.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name, phone, and purpose are required')),
-      );
-      return;
-    }
-    setState(() => _submitting = true);
+    final flat = _flat!;
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       await ensureLiveRepositories(session.api).visitors.createVisitor(
             CreateVisitorRequest(
               flatId: flat.id,
-              visitorName: name,
-              visitorPhone: phone,
+              visitorName: _name.text.trim(),
+              visitorPhone: _phone.text.trim(),
               visitorEmail:
                   _email.text.trim().isEmpty ? null : _email.text.trim(),
               visitorType: _type,
-              purpose: purpose,
+              purpose: _purpose.text.trim(),
               vehicleNumber:
                   _vehicle.text.trim().isEmpty ? null : _vehicle.text.trim(),
               numberOfVisitors: _count,
@@ -487,17 +472,11 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
             ),
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Visitor request sent for resident approval'),
-        ),
-      );
+      showSuccessSnack(context, 'Visitor request sent for resident approval');
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      setState(() => _submitError = visitorErrorMessage(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -505,136 +484,290 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Register visitor')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-        children: [
-          if (_loadingFlats)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_flatError != null)
-            LoadFailure(error: _flatError!, onRetry: _loadFlats)
-          else ...[
-            DropdownButtonFormField<SocietyFlatPick>(
-              value: _flat,
-              decoration: const InputDecoration(
-                labelText: 'Flat',
-                border: OutlineInputBorder(),
+    if (_loadingFlats) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Register visitor')),
+        body: const LoadingView(label: 'Loading flats…'),
+      );
+    }
+    if (_flatError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Register visitor')),
+        body: LoadFailure(
+          error: _flatError!,
+          title: 'Could not load flats',
+          onRetry: _loadFlats,
+        ),
+      );
+    }
+
+    final email = _email.text.trim();
+    final purpose = _purpose.text.trim();
+    final vehicle = _vehicle.text.trim();
+    final notes = _notes.text.trim();
+
+    return FormScaffold(
+      title: _reviewing ? 'Review visitor' : 'Register visitor',
+      formKey: _form,
+      actions: _reviewing
+          ? [
+              TextButton(
+                onPressed: _submitting
+                    ? null
+                    : () => setState(() {
+                          _reviewing = false;
+                          _submitError = null;
+                        }),
+                child: const Text('Edit'),
               ),
-              items: _flats
-                  .map(
-                    (f) => DropdownMenuItem(
-                      value: f,
-                      child: Text(f.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _flat = v),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Visitor name',
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _phone,
-              decoration: const InputDecoration(
-                labelText: 'Visitor phone',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _email,
-              decoration: const InputDecoration(
-                labelText: 'Visitor email (for OTP delivery)',
-                helperText:
-                    'Entry OTP is emailed by the server. Prefer visitor email.',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _type,
-              decoration: const InputDecoration(
-                labelText: 'Visitor type',
-                border: OutlineInputBorder(),
-              ),
-              items: kVisitorTypes
-                  .map(
-                    (t) => DropdownMenuItem(
-                      value: t,
-                      child: Text(visitorTypeLabel(t)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _type = v ?? 'GUEST'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purpose,
-              decoration: const InputDecoration(
-                labelText: 'Purpose',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _vehicle,
-              decoration: const InputDecoration(
-                labelText: 'Vehicle number (optional)',
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.characters,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('Visitors', style: TextStyle(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                IconButton(
-                  onPressed: _count > 1
-                      ? () => setState(() => _count--)
-                      : null,
-                  icon: const Icon(Icons.remove_circle_outline),
-                ),
-                Text('$_count', style: const TextStyle(fontWeight: FontWeight.w800)),
-                IconButton(
-                  onPressed: _count < 50
-                      ? () => setState(() => _count++)
-                      : null,
-                  icon: const Icon(Icons.add_circle_outline),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              child: Text(_submitting ? 'Submitting…' : 'Submit request'),
-            ),
-          ],
-        ],
+            ]
+          : null,
+      bottom: PrimaryButton(
+        label: _reviewing ? 'Send approval request' : 'Review request',
+        icon: _reviewing ? Icons.send_rounded : Icons.fact_check_outlined,
+        busy: _submitting,
+        onPressed: _reviewing ? _submit : _openReview,
       ),
+      children: _reviewing
+          ? [
+              ReviewSummary(
+                title: 'Visitor request',
+                rows: [
+                  ('Flat', _flat?.label ?? '—'),
+                  ('Name', _name.text.trim()),
+                  ('Phone', _phone.text.trim()),
+                  ('Type', visitorTypeLabel(_type)),
+                  (
+                    'Party size',
+                    '$_count ${_count == 1 ? 'person' : 'people'}'
+                  ),
+                  if (email.isNotEmpty) ('Email', email),
+                  ('Purpose', purpose.isEmpty ? '—' : purpose),
+                  if (vehicle.isNotEmpty) ('Vehicle', vehicle),
+                  if (notes.isNotEmpty) ('Notes', notes),
+                ],
+                note:
+                    'Resident approval is required before this visitor can enter. Entry OTP is emailed after approval.',
+              ),
+              InlineError(_submitError),
+            ]
+          : [
+              const FormSectionLabel('Visiting'),
+              PickerField(
+                label: 'Flat *',
+                icon: Icons.apartment_outlined,
+                value: _flat?.label,
+                onTap: _submitting ? () {} : _pickFlat,
+              ),
+              if (_flatFieldError != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, top: 6),
+                  child: Text(_flatFieldError!,
+                      style: const TextStyle(
+                          color: C.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ),
+              const SizedBox(height: 20),
+              const FormSectionLabel('Visitor'),
+              TextFormField(
+                controller: _name,
+                enabled: !_submitting,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Visitor name *',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+                validator: (v) => (v ?? '').trim().isEmpty
+                    ? 'Enter the visitor’s name.'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _phone,
+                enabled: !_submitting,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Visitor phone *',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                validator: (v) {
+                  final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
+                  if (digits.isEmpty) return 'Enter a phone number.';
+                  if (digits.length < 8) {
+                    return 'Enter a valid phone number.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _type,
+                decoration: const InputDecoration(
+                  labelText: 'Visitor type',
+                  prefixIcon: Icon(Icons.category_outlined),
+                ),
+                items: kVisitorTypes
+                    .map((t) => DropdownMenuItem(
+                          value: t,
+                          child: Row(children: [
+                            Icon(_visitorTypeIcon(t),
+                                size: 18, color: C.muted),
+                            const SizedBox(width: 10),
+                            Text(visitorTypeLabel(t)),
+                          ]),
+                        ))
+                    .toList(),
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _type = v ?? 'GUEST'),
+              ),
+              const SizedBox(height: 12),
+              QuantityStepper(
+                label: 'Number of visitors',
+                value: _count,
+                min: 1,
+                max: 50,
+                onChanged: _submitting
+                    ? (_) {}
+                    : (v) => setState(() => _count = v),
+              ),
+              const SizedBox(height: 20),
+              const FormSectionLabel('Optional'),
+              TextFormField(
+                controller: _email,
+                enabled: !_submitting,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Visitor email',
+                  helperText:
+                      'Entry OTP is emailed by the server. Prefer the visitor’s email.',
+                  prefixIcon: Icon(Icons.alternate_email_rounded),
+                ),
+                validator: (v) {
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return null;
+                  return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)
+                      ? null
+                      : 'Enter a valid email address.';
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _purpose,
+                enabled: !_submitting,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Purpose *',
+                  hintText: 'e.g. Family visit, parcel delivery',
+                  prefixIcon: Icon(Icons.notes_rounded),
+                ),
+                validator: (v) => (v ?? '').trim().isEmpty
+                    ? 'Enter the purpose of the visit.'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _vehicle,
+                enabled: !_submitting,
+                textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Vehicle number',
+                  prefixIcon: Icon(Icons.directions_car_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _notes,
+                enabled: !_submitting,
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'Notes',
+                  alignLabelWithHint: true,
+                ),
+              ),
+              InlineError(_submitError),
+            ],
     );
+  }
+}
+
+/// Searchable flat picker sheet used by the guard register form.
+class _FlatPickerSheet extends StatefulWidget {
+  const _FlatPickerSheet({required this.flats, this.selected});
+  final List<SocietyFlatPick> flats;
+  final SocietyFlatPick? selected;
+
+  @override
+  State<_FlatPickerSheet> createState() => _FlatPickerSheetState();
+}
+
+class _FlatPickerSheetState extends State<_FlatPickerSheet> {
+  final _q = TextEditingController();
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _q.text.trim().toLowerCase();
+    final rows = q.isEmpty
+        ? widget.flats
+        : widget.flats
+            .where((f) =>
+                f.label.toLowerCase().contains(q) ||
+                f.number.toLowerCase().contains(q))
+            .toList();
+    final maxH = MediaQuery.sizeOf(context).height * 0.5;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      SearchField(
+        controller: _q,
+        hint: 'Search flat (e.g. A-101)',
+        autofocus: true,
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 10),
+      if (rows.isEmpty)
+        const EmptyState('No flats match', compact: true)
+      else
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: rows.length,
+            itemBuilder: (context, i) {
+              final f = rows[i];
+              final selected = widget.selected?.id == f.id;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: AppAvatar(
+                    text: f.wingCode ?? '?',
+                    square: true,
+                    size: 38,
+                    color: selected ? C.blue : C.muted),
+                title: Text(f.label, style: T.bodyStrong),
+                subtitle: Text(occupancyStatusLabel(f.occupancyStatus),
+                    style: T.caption),
+                trailing: selected
+                    ? const Icon(Icons.check_circle_rounded, color: C.blue)
+                    : null,
+                onTap: () => Navigator.pop(context, f),
+              );
+            },
+          ),
+        ),
+    ]);
   }
 }
 
@@ -654,8 +787,12 @@ class LiveVerifyVisitorOtpPage extends StatefulWidget {
 class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
   late Future<Paged<Visitor>> _future = _load();
   final _otp = TextEditingController();
+  final _otpFocus = FocusNode();
   Visitor? _selected;
   bool _verifying = false;
+  bool _showOtp = false;
+  String? _error;
+
   StreamSubscription<VisitorEventPayload>? _sub;
 
   Future<Paged<Visitor>> _load({bool force = false}) async {
@@ -683,28 +820,37 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
   void dispose() {
     _sub?.cancel();
     _otp.dispose();
+    _otpFocus.dispose();
     super.dispose();
   }
 
   void reload() => setState(() => _future = _load(force: true));
+
+  void _select(Visitor v) {
+    setState(() {
+      _selected = _selected?.id == v.id ? null : v;
+      _error = null;
+    });
+    if (_selected != null) _otpFocus.requestFocus();
+  }
 
   Future<void> _verify() async {
     if (_verifying) return;
     final visitor = _selected;
     final otp = _otp.text.trim();
     if (visitor == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a visitor')),
-      );
+      setState(() => _error = 'Select the visitor first.');
       return;
     }
     if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter the 6-digit OTP')),
-      );
+      setState(() => _error = 'Enter the 6-digit OTP shown by the visitor.');
       return;
     }
-    setState(() => _verifying = true);
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _verifying = true;
+      _error = null;
+    });
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
@@ -714,16 +860,12 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
       if (!mounted) return;
       _otp.clear();
       setState(() => _selected = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entry recorded')),
-      );
+      showSuccessSnack(context, '${visitor.visitorName} entered.');
       reload();
       widget.onEntered();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      setState(() => _error = visitorErrorMessage(e));
     } finally {
       if (mounted) setState(() => _verifying = false);
     }
@@ -736,93 +878,139 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading awaiting entry…');
+          return const SkeletonList(items: 4, showHeader: true);
         }
         if (snapshot.hasError) {
           return LoadFailure(error: snapshot.error!, onRetry: reload);
         }
         final items = snapshot.data!.items;
-        return RefreshIndicator(
-          color: C.blue,
-          onRefresh: () async => reload(),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            children: [
-              const Text(
-                'Verify entry OTP',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'OTP is emailed by the server. Enter the code the visitor shows you.',
-                style: TextStyle(color: C.muted),
-              ),
-              const SizedBox(height: 16),
-              if (items.isEmpty)
-                const EmptyState('No approved visitors awaiting entry')
-              else ...[
-                ...items.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      onTap: () => setState(() => _selected = v),
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
+        final selected = _selected;
+        return Column(children: [
+          Expanded(
+            child: RefreshIndicator(
+              color: C.blue,
+              onRefresh: () async {
+                reload();
+                await _future;
+              },
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: Sp.pagePadding,
+                children: [
+                  const PageHeader('Allow entry',
+                      subtitle:
+                          'Tap the visitor at the gate → enter their 6-digit OTP → Verify.'),
+                  if (items.isEmpty)
+                    const EmptyState('No approved visitors awaiting entry',
+                        icon: Icons.key_off_outlined,
+                        title: 'Nothing to verify')
+                  else ...[
+                    ResultCount(items.length, 'visitor awaiting entry'),
+                    ...items.map((v) {
+                      final isSel = selected?.id == v.id;
+                      return AppCard(
+                        onTap: _verifying ? null : () => _select(v),
+                        borderColor: isSel ? C.blue : null,
+                        color: isSel ? C.chip : null,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        child: Row(children: [
+                          AppAvatar(
+                            icon: _visitorTypeIcon(v.visitorType),
+                            color: isSel ? C.blue : C.muted,
+                            size: 42,
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Text(v.visitorName, style: T.title),
+                                const SizedBox(height: 2),
                                 Text(
-                                  v.visitorName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    color: C.navy,
-                                  ),
-                                ),
-                                Text(
-                                  '${v.wingCodeSnapshot}-${v.flatNumberSnapshot}'
-                                  '${v.hasActiveOtp ? ' · OTP active' : ''}',
-                                  style: const TextStyle(
-                                    color: C.muted,
-                                    fontSize: 13,
-                                  ),
+                                  '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}'
+                                  '${v.otpExpiresAt == null ? '' : ' · OTP expires ${fmtIsoDateTime(v.otpExpiresAt)}'}',
+                                  style: T.secondary,
                                 ),
                               ],
                             ),
                           ),
-                          if (_selected?.id == v.id)
-                            const Icon(Icons.check_circle, color: C.blue),
-                        ],
+                          const SizedBox(width: 8),
+                          Icon(
+                            isSel
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_off_rounded,
+                            color: isSel ? C.blue : C.lineStrong,
+                          ),
+                        ]),
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (items.isNotEmpty)
+            BottomActionBar(children: [
+              if (selected != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(children: [
+                    const Icon(Icons.person_outline_rounded,
+                        size: 16, color: C.muted),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Verifying ${selected.visitorName} · ${_flatLabel(selected)}',
+                        style: T.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                  ]),
+                ),
+              TextField(
+                controller: _otp,
+                focusNode: _otpFocus,
+                enabled: !_verifying,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _verify(),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                obscureText: !_showOtp,
+                style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 6,
+                    color: C.navy),
+                decoration: InputDecoration(
+                  labelText: '6-digit OTP',
+                  counterText: '',
+                  errorText: _error,
+                  prefixIcon: const Icon(Icons.pin_outlined),
+                  suffixIcon: IconButton(
+                    tooltip: _showOtp ? 'Hide OTP' : 'Show OTP',
+                    onPressed: () => setState(() => _showOtp = !_showOtp),
+                    icon: Icon(_showOtp
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _otp,
-                  decoration: const InputDecoration(
-                    labelText: '6-digit OTP',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  obscureText: true,
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: _verifying ? null : _verify,
-                  child: Text(_verifying ? 'Verifying…' : 'Verify & enter'),
-                ),
-              ],
-            ],
-          ),
-        );
+              ),
+              const SizedBox(height: 4),
+              PrimaryButton(
+                label: 'Verify & allow entry',
+                icon: Icons.login_rounded,
+                busy: _verifying,
+                onPressed: selected == null ? null : _verify,
+              ),
+            ]),
+        ]);
       },
     );
   }
@@ -839,6 +1027,9 @@ class LiveGateVisitorBoardPage extends StatefulWidget {
 class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
   String? approvalFilter;
   String? entryFilter;
+  String _nameQuery = '';
+  final _searchCtrl = TextEditingController();
+  Timer? _searchTimer;
   late Future<Paged<Visitor>> _future = _load();
   StreamSubscription<VisitorEventPayload>? _sub;
 
@@ -850,6 +1041,8 @@ class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
           query: ListVisitorsQuery(
             approvalStatus: approvalFilter,
             entryStatus: entryFilter,
+            visitorName:
+                _nameQuery.trim().isEmpty ? null : _nameQuery.trim(),
             limit: 50,
           ),
         );
@@ -866,10 +1059,39 @@ class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
   @override
   void dispose() {
     _sub?.cancel();
+    _searchTimer?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
   void reload() => setState(() => _future = _load(force: true));
+
+  void _onSearch(String value) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(() {
+        _nameQuery = value;
+        _future = _load(force: true);
+      });
+    });
+  }
+
+  void _setFilter(String? approval, String? entry) {
+    setState(() {
+      approvalFilter = approval;
+      entryFilter = entry;
+      _future = _load(force: true);
+    });
+  }
+
+  Future<void> _register() async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const LiveAddGateVisitorPage()),
+    );
+    if (ok == true) reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -878,130 +1100,110 @@ class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading gate board…');
+          return const SkeletonList(items: 5, showHeader: true);
         }
         if (snapshot.hasError) {
           return LoadFailure(error: snapshot.error!, onRetry: reload);
         }
         final items = snapshot.data!.items;
-        return RefreshIndicator(
-          color: C.blue,
-          onRefresh: () async => reload(),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Gate board',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        color: C.navy,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () async {
-                      final ok = await Navigator.push<bool>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const LiveAddGateVisitorPage(),
-                        ),
-                      );
-                      if (ok == true) reload();
-                    },
-                    icon: const Icon(Icons.person_add_alt_1_outlined),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: approvalFilter == null && entryFilter == null,
-                    onSelected: (_) {
-                      setState(() {
-                        approvalFilter = null;
-                        entryFilter = null;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('Pending'),
-                    selected: approvalFilter == 'PENDING',
-                    onSelected: (_) {
-                      setState(() {
-                        approvalFilter = 'PENDING';
-                        entryFilter = null;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('Awaiting entry'),
-                    selected: approvalFilter == 'APPROVED' &&
-                        entryFilter == 'NOT_ENTERED',
-                    onSelected: (_) {
-                      setState(() {
-                        approvalFilter = 'APPROVED';
-                        entryFilter = 'NOT_ENTERED';
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (items.isEmpty)
-                const EmptyState('No visitors match these filters')
-              else
-                ...items.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                LiveGuardVisitorDetailPage(visitorId: v.id),
-                          ),
-                        );
-                        reload();
-                      },
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.visitorName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          Text(
-                            '${v.wingCodeSnapshot}-${v.flatNumberSnapshot} · '
-                            '${visitorTypeLabel(v.visitorType)} · ${v.purpose}',
-                            style: const TextStyle(
-                              color: C.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          visitorStatusChips(v),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+        final refreshing = snapshot.connectionState == ConnectionState.waiting;
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          floatingActionButton: FloatingActionButton.extended(
+            heroTag: 'gate-register',
+            onPressed: _register,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('Register'),
           ),
+          body: Column(children: [
+            if (refreshing)
+              const LinearProgressIndicator(minHeight: 2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              child: SearchField(
+                controller: _searchCtrl,
+                hint: 'Search visitor name',
+                onChanged: _onSearch,
+                onClear: () {
+                  _searchCtrl.clear();
+                  _onSearch('');
+                },
+              ),
+            ),
+            FilterBar(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: [
+                AppFilterChip(
+                  label: 'All',
+                  selected: approvalFilter == null && entryFilter == null,
+                  onSelected: () => _setFilter(null, null),
+                ),
+                AppFilterChip(
+                  label: 'Pending approval',
+                  icon: Icons.hourglass_top_rounded,
+                  selected: approvalFilter == 'PENDING',
+                  onSelected: () => _setFilter('PENDING', null),
+                ),
+                AppFilterChip(
+                  label: 'Awaiting entry',
+                  icon: Icons.key_outlined,
+                  selected: approvalFilter == 'APPROVED' &&
+                      entryFilter == 'NOT_ENTERED',
+                  onSelected: () => _setFilter('APPROVED', 'NOT_ENTERED'),
+                ),
+                AppFilterChip(
+                  label: 'Inside',
+                  icon: Icons.meeting_room_outlined,
+                  selected: entryFilter == 'ENTERED',
+                  onSelected: () => _setFilter(null, 'ENTERED'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: items.isEmpty
+                  ? _emptyScrollable(
+                      EmptyState(
+                        'No visitors match these filters',
+                        icon: Icons.groups_outlined,
+                        actionLabel: 'Show all',
+                        onAction: () => _setFilter(null, null),
+                      ),
+                      () async {
+                        reload();
+                        await _future;
+                      },
+                    )
+                  : RefreshIndicator(
+                      color: C.blue,
+                      onRefresh: () async {
+                        reload();
+                        await _future;
+                      },
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 96),
+                        itemCount: items.length,
+                        itemBuilder: (context, i) {
+                          final v = items[i];
+                          return _VisitorRow(
+                            visitor: v,
+                            extra: v.purpose,
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => LiveGuardVisitorDetailPage(
+                                      visitorId: v.id),
+                                ),
+                              );
+                              reload();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ]),
         );
       },
     );
@@ -1050,21 +1252,25 @@ class _LiveInsideVisitorsPageState extends State<LiveInsideVisitorsPage> {
 
   Future<void> _checkout(Visitor v) async {
     if (_busyIds.contains(v.id)) return;
+    final ok = await confirmDialog(
+      context,
+      title: 'Check out ${v.visitorName}?',
+      message: '${_flatLabel(v)} · inside since ${fmtIsoDateTime(v.entryAt)}',
+      confirmLabel: 'Check out',
+      icon: Icons.logout_rounded,
+    );
+    if (!ok || !mounted) return;
     setState(() => _busyIds.add(v.id));
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       await ensureLiveRepositories(session.api).visitors.checkout(v.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${v.visitorName} checked out')),
-      );
+      showSuccessSnack(context, '${v.visitorName} checked out');
       reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      showErrorSnack(context, visitorErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busyIds.remove(v.id));
     }
@@ -1077,7 +1283,7 @@ class _LiveInsideVisitorsPageState extends State<LiveInsideVisitorsPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading inside visitors…');
+          return const SkeletonList(items: 4, showHeader: true);
         }
         if (snapshot.hasError) {
           return LoadFailure(error: snapshot.error!, onRetry: reload);
@@ -1085,64 +1291,50 @@ class _LiveInsideVisitorsPageState extends State<LiveInsideVisitorsPage> {
         final items = snapshot.data!.items;
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => reload(),
+          onRefresh: () async {
+            reload();
+            await _future;
+          },
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: Sp.pagePadding,
             children: [
-              const Text(
-                'Inside now',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
-              ),
-              const SizedBox(height: 12),
+              PageHeader('Inside now',
+                  subtitle: items.isEmpty
+                      ? 'Visitors currently inside the premises'
+                      : '${items.length} ${items.length == 1 ? 'visitor' : 'visitors'} inside'),
               if (items.isEmpty)
-                const EmptyState('No visitors currently inside')
+                const EmptyState('No visitors currently inside',
+                    icon: Icons.meeting_room_outlined)
               else
-                ...items.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.visitorName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          Text(
-                            '${v.wingCodeSnapshot}-${v.flatNumberSnapshot} · '
-                            'In since ${_shortIso(v.entryAt)}',
-                            style: const TextStyle(
-                              color: C.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton(
-                              onPressed: _busyIds.contains(v.id)
-                                  ? null
-                                  : () => _checkout(v),
-                              child: Text(
-                                _busyIds.contains(v.id)
-                                    ? 'Checking out…'
-                                    : 'Checkout',
-                              ),
-                            ),
-                          ),
-                        ],
+                ...items.map((v) {
+                  final busy = _busyIds.contains(v.id);
+                  return _VisitorRow(
+                    visitor: v,
+                    extra: 'In since ${fmtIsoDateTime(v.entryAt)}',
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              LiveGuardVisitorDetailPage(visitorId: v.id),
+                        ),
+                      );
+                      reload();
+                    },
+                    trailing: SizedBox(
+                      width: 108,
+                      height: 48,
+                      child: PrimaryButton(
+                        label: 'Exit',
+                        icon: Icons.logout_rounded,
+                        color: C.amber,
+                        busy: busy,
+                        onPressed: () => _checkout(v),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }),
             ],
           ),
         );
@@ -1175,7 +1367,7 @@ class _LiveGuardVisitorDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Visitor detail')),
+      appBar: AppBar(title: const Text('Visitor details')),
       body: FutureBuilder<Visitor>(
         future: _future,
         builder: (context, snapshot) {
@@ -1189,7 +1381,13 @@ class _LiveGuardVisitorDetailPageState
               onRetry: () => setState(() => _future = _load(force: true)),
             );
           }
-          return _VisitorDetailBody(visitor: snapshot.data!);
+          return _VisitorDetailBody(
+            visitor: snapshot.data!,
+            onRefresh: () async {
+              setState(() => _future = _load(force: true));
+              await _future;
+            },
+          );
         },
       ),
     );
@@ -1197,78 +1395,158 @@ class _LiveGuardVisitorDetailPageState
 }
 
 class _VisitorDetailBody extends StatelessWidget {
-  const _VisitorDetailBody({required this.visitor});
+  const _VisitorDetailBody({
+    required this.visitor,
+    this.onRefresh,
+    this.footer,
+  });
   final Visitor visitor;
+  final Future<void> Function()? onRefresh;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
     final v = visitor;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    final timeline = <(String, String?, IconData)>[
+      ('Requested', v.createdAt, Icons.add_circle_outline_rounded),
+      if (v.approvedAt != null)
+        ('Approved', v.approvedAt, Icons.check_circle_outline_rounded),
+      if (v.rejectedAt != null)
+        ('Rejected', v.rejectedAt, Icons.cancel_outlined),
+      if (v.expiredAt != null)
+        ('Expired', v.expiredAt, Icons.timer_off_outlined),
+      if (v.entryAt != null) ('Entered', v.entryAt, Icons.login_rounded),
+      if (v.exitAt != null) ('Exited', v.exitAt, Icons.logout_rounded),
+    ];
+    final list = ListView(
+      padding: Sp.pagePadding,
       children: [
-        Text(
-          v.visitorName,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: C.navy,
+        DetailHero(
+          title: v.visitorName,
+          subtitle: '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}',
+          leading: AppAvatar(
+            icon: _visitorTypeIcon(v.visitorType),
+            color: _visitorTone(v),
+            size: Sz.avatarLg,
           ),
+          badges: [
+            StatusBadge(approvalStatusLabel(v.approvalStatus)),
+            StatusBadge(entryStatusLabel(v.entryStatus)),
+            if (v.hasActiveOtp)
+              const StatusBadge('OTP active',
+                  tone: BadgeTone.info, icon: Icons.key_rounded),
+          ],
         ),
-        const SizedBox(height: 8),
-        visitorStatusChips(v),
-        const SizedBox(height: 16),
-        _line('Flat', '${v.wingCodeSnapshot}-${v.flatNumberSnapshot}'),
-        _line('Type', visitorTypeLabel(v.visitorType)),
-        _line('Purpose', v.purpose),
-        _line('Phone', v.visitorPhone),
-        _line('Party size', '${v.numberOfVisitors}'),
-        if (v.vehicleNumber != null) _line('Vehicle', v.vehicleNumber!),
-        _line('Assigned role', v.assignedResidentRole),
-        _line('Requested', _shortIso(v.createdAt)),
-        if (v.approvedAt != null) _line('Approved', _shortIso(v.approvedAt)),
-        if (v.rejectedAt != null) _line('Rejected', _shortIso(v.rejectedAt)),
-        if (v.rejectionReason != null)
-          _line('Rejection reason', v.rejectionReason!),
-        if (v.entryAt != null) _line('Entered', _shortIso(v.entryAt)),
-        if (v.exitAt != null) _line('Exited', _shortIso(v.exitAt)),
-        if (v.expiredAt != null) _line('Expired', _shortIso(v.expiredAt)),
-        if (v.hasActiveOtp) _line('OTP', 'Active (code not shown)'),
-        if (v.otpExpiresAt != null)
-          _line('OTP expires', _shortIso(v.otpExpiresAt)),
-        if (v.notes != null) _line('Notes', v.notes!),
+        const SizedBox(height: 18),
+        DetailCard(title: 'Visit', children: [
+          DetailRow('Purpose', v.purpose),
+          DetailRow('Flat', _flatLabel(v)),
+          DetailRow('Party size',
+              '${v.numberOfVisitors} ${v.numberOfVisitors == 1 ? 'person' : 'people'}'),
+          if (v.vehicleNumber != null) DetailRow('Vehicle', v.vehicleNumber!),
+          DetailRow('Approver', humanizeStatus(v.assignedResidentRole)),
+          if (v.notes != null && v.notes!.trim().isNotEmpty)
+            DetailRow('Notes', v.notes!),
+        ]),
+        DetailCard(title: 'Contact', children: [
+          DetailRow('Phone', v.visitorPhone,
+              valueWidget: Row(children: [
+                Expanded(child: Text(v.visitorPhone, style: T.bodyStrong)),
+                IconButton(
+                  tooltip: 'Copy phone',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () async {
+                    await Clipboard.setData(
+                        ClipboardData(text: v.visitorPhone));
+                    if (context.mounted) {
+                      showInfoSnack(context, 'Phone number copied');
+                    }
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                ),
+              ])),
+        ]),
+        if (v.hasActiveOtp ||
+            v.otpExpiresAt != null ||
+            v.rejectionReason != null)
+          DetailCard(title: 'Entry', children: [
+            if (v.hasActiveOtp)
+              const DetailRow(
+                  'OTP', 'Active · code is emailed to the visitor'),
+            if (v.otpExpiresAt != null)
+              DetailRow('OTP expires', fmtIsoDateTime(v.otpExpiresAt)),
+            if (v.otpAttempts != null && v.otpAttempts! > 0)
+              DetailRow('OTP attempts', '${v.otpAttempts}'),
+            if (v.rejectionReason != null)
+              DetailRow('Rejection reason', v.rejectionReason!),
+          ]),
+        const SizedBox(height: 6),
+        const SectionTitle('Timeline'),
+        AppCard(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Column(children: [
+            for (var i = 0; i < timeline.length; i++)
+              _TimelineRow(
+                icon: timeline[i].$3,
+                label: timeline[i].$1,
+                value: fmtIsoDateTime(timeline[i].$2),
+                last: i == timeline.length - 1,
+              ),
+          ]),
+        ),
+        if (footer != null) ...[
+          const SizedBox(height: 20),
+          footer!,
+          const SizedBox(height: 12),
+        ] else
+          const SizedBox(height: 24),
       ],
     );
+    if (onRefresh == null) return list;
+    return RefreshIndicator(color: C.blue, onRefresh: onRefresh!, child: list);
   }
+}
 
-  Widget _line(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: C.muted,
-                fontWeight: FontWeight.w600,
-              ),
+class _TimelineRow extends StatelessWidget {
+  const _TimelineRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.last,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) => IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Column(children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration:
+                  const BoxDecoration(color: C.chip, shape: BoxShape.circle),
+              child: Icon(icon, size: 15, color: C.blue),
             ),
-          ),
+            if (!last) Expanded(child: Container(width: 2, color: C.line)),
+          ]),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: C.navy,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Padding(
+              padding: EdgeInsets.only(top: 4, bottom: last ? 4 : 16),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: T.bodyStrong),
+                    const SizedBox(height: 2),
+                    Text(value, style: T.secondary),
+                  ]),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ]),
+      );
 }
 
 // ─── Resident ────────────────────────────────────────────────────────────────
@@ -1283,8 +1561,7 @@ class LiveResidentVisitorsPage extends StatefulWidget {
 
 class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs =
-      TabController(length: 2, vsync: this);
+  late final TabController _tabs = TabController(length: 2, vsync: this);
   late Future<Paged<Visitor>> _pending = _loadPending();
   late Future<Paged<Visitor>> _history = _loadHistory();
   StreamSubscription<VisitorEventPayload>? _sub;
@@ -1336,23 +1613,27 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
 
   Future<void> _approve(Visitor v) async {
     if (_busy.contains(v.id)) return;
+    final ok = await confirmDialog(
+      context,
+      title: 'Approve ${v.visitorName}?',
+      message:
+          '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
+      confirmLabel: 'Approve',
+      icon: Icons.check_circle_outline_rounded,
+    );
+    if (!ok || !mounted) return;
     setState(() => _busy.add(v.id));
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       await ensureLiveRepositories(session.api).visitors.approve(v.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Approved. Entry OTP emailed by the server.'),
-        ),
-      );
+      showSuccessSnack(
+          context, '${v.visitorName} approved. Entry OTP sent by email.');
       reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      showErrorSnack(context, visitorErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy.remove(v.id));
     }
@@ -1360,73 +1641,60 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
 
   Future<void> _reject(Visitor v) async {
     if (_busy.contains(v.id)) return;
-    final reasonCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reject visitor'),
-        content: TextField(
-          controller: reasonCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Reason (optional)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
+    final reason = await promptTextDialog(
+      context,
+      title: 'Reject ${v.visitorName}?',
+      message: 'The guard will be notified. You can add a short reason.',
+      label: 'Reason (optional)',
+      confirmLabel: 'Reject',
+      destructive: true,
+      maxLines: 2,
     );
-    if (ok != true) return;
+    if (reason == null || !mounted) return;
     setState(() => _busy.add(v.id));
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
-      final reason = reasonCtrl.text.trim();
       await ensureLiveRepositories(session.api).visitors.reject(
             v.id,
             reason: reason.isEmpty ? null : reason,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visitor rejected')),
-      );
+      showAppSnack(context, 'Visitor rejected', tone: SnackTone.warning);
       reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      showErrorSnack(context, visitorErrorMessage(e));
     } finally {
-      reasonCtrl.dispose();
       if (mounted) setState(() => _busy.remove(v.id));
     }
   }
 
   Future<void> _cancel(Visitor v) async {
     if (_busy.contains(v.id)) return;
+    final ok = await confirmDialog(
+      context,
+      title: 'Cancel this visitor request?',
+      message:
+          '${v.visitorName} will no longer be able to enter with this request.',
+      confirmLabel: 'Cancel request',
+      cancelLabel: 'Keep',
+      destructive: true,
+      icon: Icons.cancel_outlined,
+    );
+    if (!ok || !mounted) return;
     setState(() => _busy.add(v.id));
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       await ensureLiveRepositories(session.api).visitors.cancel(v.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visitor request cancelled')),
-      );
+      showAppSnack(context, 'Visitor request cancelled',
+          tone: SnackTone.warning);
       reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(visitorErrorMessage(e))),
-      );
+      showErrorSnack(context, visitorErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy.remove(v.id));
     }
@@ -1435,38 +1703,38 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
   Widget _list(
     Future<Paged<Visitor>> future, {
     required bool showActions,
+    required String emptyMessage,
+    required IconData emptyIcon,
   }) {
     return FutureBuilder<Paged<Visitor>>(
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading visitors…');
+          return const SkeletonList(items: 4);
         }
         if (snapshot.hasError) {
           return LoadFailure(error: snapshot.error!, onRetry: reload);
         }
         final items = snapshot.data!.items;
+        Future<void> refresh() async {
+          reload();
+          await Future.wait([_pending, _history]);
+        }
+
         if (items.isEmpty) {
-          return RefreshIndicator(
-            color: C.blue,
-            onRefresh: () async => reload(),
-            child: ListView(
-              children: const [
-                SizedBox(height: 80),
-                EmptyState('No visitors'),
-              ],
-            ),
-          );
+          return _emptyScrollable(
+              EmptyState(emptyMessage, icon: emptyIcon), refresh);
         }
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => reload(),
+          onRefresh: refresh,
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            padding: Sp.pagePadding,
             itemCount: items.length,
             itemBuilder: (context, i) {
               final v = items[i];
+              final busy = _busy.contains(v.id);
               final canAct = showActions &&
                   v.approvalStatus == 'PENDING' &&
                   v.entryStatus == 'NOT_ENTERED';
@@ -1474,69 +1742,51 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
                   (v.approvalStatus == 'PENDING' ||
                       v.approvalStatus == 'APPROVED') &&
                   v.entryStatus == 'NOT_ENTERED';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: AppCard(
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            LiveResidentVisitorDetailPage(visitorId: v.id),
-                      ),
-                    );
-                    reload();
-                  },
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        v.visitorName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: C.navy,
-                        ),
-                      ),
-                      Text(
-                        '${v.wingCodeSnapshot}-${v.flatNumberSnapshot} · '
-                        '${visitorTypeLabel(v.visitorType)} · ${v.purpose}',
-                        style: const TextStyle(color: C.muted, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      visitorStatusChips(v),
-                      if (canAct || canCancel) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            if (canAct)
-                              FilledButton(
-                                onPressed: _busy.contains(v.id)
-                                    ? null
-                                    : () => _approve(v),
-                                child: const Text('Approve'),
-                              ),
-                            if (canAct)
-                              OutlinedButton(
-                                onPressed: _busy.contains(v.id)
-                                    ? null
-                                    : () => _reject(v),
-                                child: const Text('Reject'),
-                              ),
-                            if (canCancel && !canAct)
-                              OutlinedButton(
-                                onPressed: _busy.contains(v.id)
-                                    ? null
-                                    : () => _cancel(v),
-                                child: const Text('Cancel'),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
+              Widget? footer;
+              if (canAct) {
+                footer = Row(children: [
+                  Expanded(
+                    child: SecondaryButton(
+                      label: 'Reject',
+                      icon: Icons.close_rounded,
+                      destructive: true,
+                      onPressed: busy ? null : () => _reject(v),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: PrimaryButton(
+                      label: 'Approve',
+                      icon: Icons.check_rounded,
+                      color: C.green,
+                      busy: busy,
+                      onPressed: () => _approve(v),
+                    ),
+                  ),
+                ]);
+              } else if (canCancel) {
+                footer = SecondaryButton(
+                  label: 'Cancel request',
+                  icon: Icons.cancel_outlined,
+                  destructive: true,
+                  busy: busy,
+                  onPressed: () => _cancel(v),
+                );
+              }
+              return _VisitorRow(
+                visitor: v,
+                extra: v.purpose,
+                footer: footer,
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          LiveResidentVisitorDetailPage(visitorId: v.id),
+                    ),
+                  );
+                  reload();
+                },
               );
             },
           ),
@@ -1549,20 +1799,28 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
   Widget build(BuildContext context) {
     return Column(
       children: [
-        TabBar(
-          controller: _tabs,
-          labelColor: C.navy,
-          tabs: const [
-            Tab(text: 'Pending'),
-            Tab(text: 'History'),
-          ],
+        Container(
+          color: C.surface,
+          child: TabBar(
+            controller: _tabs,
+            tabs: const [
+              Tab(text: 'Pending'),
+              Tab(text: 'History'),
+            ],
+          ),
         ),
         Expanded(
           child: TabBarView(
             controller: _tabs,
             children: [
-              _list(_pending, showActions: true),
-              _list(_history, showActions: true),
+              _list(_pending,
+                  showActions: true,
+                  emptyMessage: 'No visitor requests waiting for your approval',
+                  emptyIcon: Icons.how_to_reg_outlined),
+              _list(_history,
+                  showActions: true,
+                  emptyMessage: 'No visitors yet for this flat',
+                  emptyIcon: Icons.groups_outlined),
             ],
           ),
         ),
@@ -1583,6 +1841,7 @@ class LiveResidentVisitorDetailPage extends StatefulWidget {
 class _LiveResidentVisitorDetailPageState
     extends State<LiveResidentVisitorDetailPage> {
   late Future<Visitor> _future = _load();
+  bool _busy = false;
 
   Future<Visitor> _load({bool force = false}) async {
     final session = authSession;
@@ -1592,26 +1851,121 @@ class _LiveResidentVisitorDetailPageState
         .residentVisitor(widget.visitorId, force: force);
   }
 
+  void _reload() => setState(() => _future = _load(force: true));
+
+  Future<void> _approve(Visitor v) async {
+    if (_busy) return;
+    final ok = await confirmDialog(
+      context,
+      title: 'Approve ${v.visitorName}?',
+      message:
+          '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
+      confirmLabel: 'Approve',
+      icon: Icons.check_circle_outline_rounded,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      await ensureLiveRepositories(session.api).visitors.approve(v.id);
+      if (!mounted) return;
+      showSuccessSnack(
+          context, '${v.visitorName} approved. Entry OTP sent by email.');
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, visitorErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reject(Visitor v) async {
+    if (_busy) return;
+    final reason = await promptTextDialog(
+      context,
+      title: 'Reject ${v.visitorName}?',
+      message: 'The guard will be notified. You can add a short reason.',
+      label: 'Reason (optional)',
+      confirmLabel: 'Reject',
+      destructive: true,
+      maxLines: 2,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      await ensureLiveRepositories(session.api).visitors.reject(
+            v.id,
+            reason: reason.isEmpty ? null : reason,
+          );
+      if (!mounted) return;
+      showAppSnack(context, 'Visitor rejected', tone: SnackTone.warning);
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, visitorErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Visitor detail')),
-      body: FutureBuilder<Visitor>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
-            return const LoadingView(label: 'Loading visitor…');
-          }
-          if (snapshot.hasError) {
-            return LoadFailure(
+    return FutureBuilder<Visitor>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Visitor details')),
+            body: const LoadingView(label: 'Loading visitor…'),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Visitor details')),
+            body: LoadFailure(
               error: snapshot.error!,
-              onRetry: () => setState(() => _future = _load(force: true)),
-            );
-          }
-          return _VisitorDetailBody(visitor: snapshot.data!);
-        },
-      ),
+              onRetry: _reload,
+            ),
+          );
+        }
+        final v = snapshot.data!;
+        final canAct =
+            v.approvalStatus == 'PENDING' && v.entryStatus == 'NOT_ENTERED';
+        return Scaffold(
+          appBar: AppBar(title: const Text('Visitor details')),
+          body: _VisitorDetailBody(
+            visitor: v,
+            onRefresh: () async {
+              _reload();
+              await _future;
+            },
+            footer: canAct
+                ? ActionRail(
+                    busy: _busy,
+                    primary: ToolLink(
+                      icon: Icons.check_rounded,
+                      label: 'Approve visitor',
+                      subtitle: 'Sends entry OTP by email',
+                      onTap: () => _approve(v),
+                    ),
+                    secondary: [
+                      ToolLink(
+                        icon: Icons.close_rounded,
+                        label: 'Reject request',
+                        subtitle: 'Optional reason for the guard',
+                        onTap: () => _reject(v),
+                      ),
+                    ],
+                  )
+                : null,
+          ),
+        );
+      },
     );
   }
 }
@@ -1674,7 +2028,7 @@ class _LiveAdminVisitorsPageState extends State<LiveAdminVisitorsPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const LoadingView(label: 'Loading visitors…');
+          return const SkeletonList(items: 5, showHeader: true);
         }
         if (snapshot.hasError) {
           return LoadFailure(error: snapshot.error!, onRetry: reload);
@@ -1684,119 +2038,78 @@ class _LiveAdminVisitorsPageState extends State<LiveAdminVisitorsPage> {
         final items = bundle.list.items;
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => reload(),
+          onRefresh: () async {
+            reload();
+            await _future;
+          },
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: Sp.pagePadding,
             children: [
-              const Text(
-                'Visitor management',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _miniStat('Total', '${s.total}'),
-                  _miniStat(
-                    'Pending',
-                    '${s.byApprovalStatus['PENDING'] ?? 0}',
-                  ),
-                  _miniStat(
-                    'Inside',
-                    '${s.byEntryStatus['ENTERED'] ?? 0}',
-                  ),
-                  _miniStat(
-                    'Exited',
-                    '${s.byEntryStatus['EXITED'] ?? 0}',
-                  ),
-                ],
-              ),
+              const PageHeader('Visitors',
+                  subtitle: 'Society-wide visitor log'),
+              MiniStatStrip(children: [
+                MiniStat('Total', '${s.total}'),
+                MiniStat('Pending', '${s.byApprovalStatus['PENDING'] ?? 0}',
+                    tone: BadgeTone.warning),
+                MiniStat('Inside', '${s.byEntryStatus['ENTERED'] ?? 0}',
+                    tone: BadgeTone.success),
+                MiniStat('Exited', '${s.byEntryStatus['EXITED'] ?? 0}',
+                    tone: BadgeTone.neutral),
+              ]),
               const SizedBox(height: 14),
-              TextField(
+              SearchField(
                 controller: _search,
-                decoration: InputDecoration(
-                  labelText: 'Search by name',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: reload,
-                  ),
-                ),
+                hint: 'Search by visitor name',
                 onSubmitted: (_) => reload(),
+                onClear: reload,
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: approvalFilter == null && entryFilter == null,
-                    onSelected: (_) {
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'All',
+                  selected: approvalFilter == null && entryFilter == null,
+                  onSelected: () {
+                    setState(() {
+                      approvalFilter = null;
+                      entryFilter = null;
+                      _future = _load(force: true);
+                    });
+                  },
+                ),
+                for (final st in const [
+                  'PENDING',
+                  'APPROVED',
+                  'REJECTED',
+                  'EXPIRED',
+                  'CANCELLED'
+                ])
+                  AppFilterChip(
+                    label: approvalStatusLabel(st),
+                    selected: approvalFilter == st,
+                    onSelected: () {
                       setState(() {
-                        approvalFilter = null;
-                        entryFilter = null;
+                        approvalFilter = st;
                         _future = _load(force: true);
                       });
                     },
                   ),
-                  ...['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED']
-                      .map(
-                    (st) => FilterChip(
-                      label: Text(approvalStatusLabel(st)),
-                      selected: approvalFilter == st,
-                      onSelected: (_) {
-                        setState(() {
-                          approvalFilter = st;
-                          _future = _load(force: true);
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+              ]),
+              const SizedBox(height: 6),
+              ResultCount(items.length, 'visitor'),
               if (items.isEmpty)
-                const EmptyState('No visitors found')
+                const EmptyState('No visitors found',
+                    icon: Icons.groups_outlined)
               else
                 ...items.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              LiveAdminVisitorDetailPage(visitorId: v.id),
-                        ),
-                      ),
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.visitorName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                            ),
-                          ),
-                          Text(
-                            '${v.wingCodeSnapshot}-${v.flatNumberSnapshot} · '
-                            '${visitorTypeLabel(v.visitorType)} · '
-                            'Assigned ${v.assignedResidentRole}',
-                            style: const TextStyle(
-                              color: C.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          visitorStatusChips(v),
-                        ],
+                  (v) => _VisitorRow(
+                    visitor: v,
+                    extra: 'Approver ${humanizeStatus(v.assignedResidentRole)}',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            LiveAdminVisitorDetailPage(visitorId: v.id),
                       ),
                     ),
                   ),
@@ -1805,26 +2118,6 @@ class _LiveAdminVisitorsPageState extends State<LiveAdminVisitorsPage> {
           ),
         );
       },
-    );
-  }
-
-  Widget _miniStat(String label, String value) {
-    return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              color: C.navy,
-              fontSize: 18,
-            ),
-          ),
-          Text(label, style: const TextStyle(color: C.muted, fontSize: 12)),
-        ],
-      ),
     );
   }
 }
@@ -1859,7 +2152,7 @@ class _LiveAdminVisitorDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Visitor detail')),
+      appBar: AppBar(title: const Text('Visitor details')),
       body: FutureBuilder<Visitor>(
         future: _future,
         builder: (context, snapshot) {
@@ -1873,7 +2166,13 @@ class _LiveAdminVisitorDetailPageState
               onRetry: () => setState(() => _future = _load(force: true)),
             );
           }
-          return _VisitorDetailBody(visitor: snapshot.data!);
+          return _VisitorDetailBody(
+            visitor: snapshot.data!,
+            onRefresh: () async {
+              setState(() => _future = _load(force: true));
+              await _future;
+            },
+          );
         },
       ),
     );

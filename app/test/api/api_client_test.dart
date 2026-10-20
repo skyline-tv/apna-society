@@ -48,7 +48,7 @@ void main() {
     });
     final api = _api(adapter);
     expect(
-      () => api.auth.verifyOtp(email: 'owner@example.com', otp: '000000'),
+      () => api.auth.verifyOtp(mobile: '+919876543210', otp: '000000'),
       throwsA(
         isA<ApiException>()
             .having((error) => error.code, 'code', 'INVALID_OTP')
@@ -101,11 +101,11 @@ void main() {
       expect(options.headers.containsKey('authorization'), isFalse);
       return jsonBody(200, {
         'success': true,
-        'data': {'message': 'If an account exists for this email, a one-time code has been sent.'},
+        'data': {'message': 'If an account exists for this mobile number, a one-time code has been sent.'},
       });
     });
     final api = _api(adapter);
-    final result = await api.auth.requestOtp(email: 'owner@example.com');
+    final result = await api.auth.requestOtp(mobile: '+919876543210');
     expect(result.message, contains('one-time code'));
   });
 

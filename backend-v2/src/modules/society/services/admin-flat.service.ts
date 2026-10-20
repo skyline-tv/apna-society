@@ -32,17 +32,31 @@ async function loadResidentSummaries(
     return {};
   }
   const users = await UserModel.find({ _id: { $in: ids } })
-    .select('name email')
+    .select('name email phone mobileE164')
     .lean();
   const byId = new Map(users.map((user) => [String(user._id), user]));
   const owner = ownerId ? byId.get(ownerId) : undefined;
   const tenant = tenantId ? byId.get(tenantId) : undefined;
   return {
     owner: owner
-      ? { id: String(owner._id), name: owner.name, email: owner.email, role: 'OWNER' }
+      ? {
+          id: String(owner._id),
+          name: owner.name,
+          email: owner.email,
+          phone: owner.phone,
+          mobileE164: owner.mobileE164,
+          role: 'OWNER',
+        }
       : undefined,
     tenant: tenant
-      ? { id: String(tenant._id), name: tenant.name, email: tenant.email, role: 'TENANT' }
+      ? {
+          id: String(tenant._id),
+          name: tenant.name,
+          email: tenant.email,
+          phone: tenant.phone,
+          mobileE164: tenant.mobileE164,
+          role: 'TENANT',
+        }
       : undefined,
   };
 }

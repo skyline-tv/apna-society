@@ -139,8 +139,8 @@ class AuthSession {
     }
   }
 
-  Future<void> requestOtp(String email) async {
-    await _api.auth.requestOtp(email: email.trim());
+  Future<OtpRequestResult> requestOtp(String mobile) {
+    return _api.auth.requestOtp(mobile: mobile.trim());
   }
 
   /// Verifies OTP, stores tokens, loads `/me`, and role context.
@@ -148,11 +148,11 @@ class AuthSession {
   /// If context loading fails after tokens were applied, the new local session
   /// is rolled back so the app is not left half-authenticated.
   Future<AuthProfile> verifyOtp({
-    required String email,
+    required String mobile,
     required String otp,
   }) async {
     final tokens = await _api.auth.verifyOtp(
-      email: email.trim(),
+      mobile: mobile.trim(),
       otp: otp.trim(),
     );
     final generation = _generation;

@@ -5,16 +5,19 @@ import { requireRoles } from '../../../middleware/authorize';
 import { validateBody, validateParams, validateQuery } from '../../../middleware/validate';
 import { asyncHandler } from '../../../utils/async-handler';
 import {
+  confirmUserMobileHandler,
   deactivateUserHandler,
   getUserHandler,
   listUsersHandler,
   patchUserHandler,
   provisionUserHandler,
+  setUserMobileHandler,
 } from '../../users/controllers/admin-user.controller';
 import {
   deactivateUserSchema,
   listUsersQuerySchema,
   provisionUserSchema,
+  setUserMobileSchema,
   updateUserSchema,
   userIdParamSchema,
 } from '../../users/validators/admin-user.validators';
@@ -160,6 +163,17 @@ router.post(
   validateParams(userIdParamSchema),
   validateBody(deactivateUserSchema),
   asyncHandler(deactivateUserHandler),
+);
+router.put(
+  '/users/:userId/mobile',
+  validateParams(userIdParamSchema),
+  validateBody(setUserMobileSchema),
+  asyncHandler(setUserMobileHandler),
+);
+router.post(
+  '/users/:userId/mobile/confirm',
+  validateParams(userIdParamSchema),
+  asyncHandler(confirmUserMobileHandler),
 );
 
 router.get('/dashboard', asyncHandler(getDashboardHandler));

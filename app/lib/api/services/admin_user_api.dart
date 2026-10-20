@@ -85,4 +85,27 @@ class AdminUserApi {
       decode: AdminUser.fromJson,
     );
   }
+
+  /// Sets mobile for login. Clears verification until [confirmMobile] is called.
+  Future<AdminUser> setMobile(
+    String userId, {
+    required String mobile,
+    String? societyId,
+  }) {
+    return _client.put(
+      '$_root/$userId/mobile',
+      societyId: societyId,
+      body: {'mobile': mobile.trim()},
+      decode: AdminUser.fromJson,
+    );
+  }
+
+  /// Admin attestation that mobile ownership was verified offline.
+  Future<AdminUser> confirmMobile(String userId, {String? societyId}) {
+    return _client.post(
+      '$_root/$userId/mobile/confirm',
+      societyId: societyId,
+      decode: AdminUser.fromJson,
+    );
+  }
 }

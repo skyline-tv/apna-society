@@ -2,10 +2,10 @@ import 'package:apna_society/api/config/api_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('development uses the Skyline API host when no override is set', () {
+  test('development uses the LAN backend host when no override is set', () {
     final config = ApiConfig.resolve(flavorName: 'development');
     expect(config.flavor, ApiFlavor.development);
-    expect(config.baseUrl, 'https://apiapnesociety.skylinetv.in');
+    expect(config.baseUrl, 'http://192.168.1.130:4000');
     expect(ApiConfig.apiPrefix, '/api/v1');
   });
 
@@ -16,6 +16,14 @@ void main() {
     );
     expect(config.flavor, ApiFlavor.production);
     expect(config.baseUrl, 'https://api.example.test');
+  });
+
+  test('trailing /api/v1 on base URL is stripped to avoid doubled paths', () {
+    final config = ApiConfig.resolve(
+      flavorName: 'production',
+      baseUrlOverride: 'https://apiapnasociety.skylinetv.in/api/v1/',
+    );
+    expect(config.baseUrl, 'https://apiapnasociety.skylinetv.in');
   });
 
   test('staging requires an explicit URL', () {
@@ -31,11 +39,15 @@ void main() {
     );
   });
 
-  test('production requires an explicit URL', () {
-    expect(
-      () => ApiConfig.resolve(flavorName: 'prod', productionBaseUrl: ''),
-      throwsA(isA<ApiConfigurationException>()),
-    );
+  test('production defaults to the VPS origin', () {
+    final config = ApiConfig.resolve(flavorName: 'production');
+    expect(config.flavor, ApiFlavor.production);
+    expect(config.baseUrl, ApiConfig.productionBaseUrl);
+    expect(config.baseUrl, 'https://apiapnasociety.skylinetv.in');
+    expect(config.baseUrl.contains('/api/v1'), isFalse);
+  });
+
+  test('production accepts an explicit PRODUCTION_API_URL override', () {
     final config = ApiConfig.resolve(
       flavorName: 'production',
       productionBaseUrl: 'https://society.example.test',

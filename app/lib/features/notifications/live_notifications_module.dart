@@ -12,6 +12,7 @@ import '../../api/socket/visitor_socket.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import '../announcements/live_announcements_module.dart';
+import '../billing/live_billing_module.dart';
 import '../complaints/live_complaints_module.dart';
 import '../facilities/live_facilities_module.dart';
 import '../visitors/live_visitors_module.dart';
@@ -31,17 +32,123 @@ String notificationErrorMessage(Object error) {
   return '$error';
 }
 
-String _shortIso(String? iso) {
-  if (iso == null || iso.isEmpty) return '—';
-  final d = DateTime.tryParse(iso)?.toLocal();
-  if (d == null) return iso;
-  return '${d.day}/${d.month}/${d.year} '
-      '${d.hour.toString().padLeft(2, '0')}:'
-      '${d.minute.toString().padLeft(2, '0')}';
+IconData _typeIcon(String type) {
+  switch (type) {
+    case 'ANNOUNCEMENT':
+      return Icons.campaign_outlined;
+    case 'BILL_GENERATED':
+      return Icons.receipt_long_outlined;
+    case 'PAYMENT_SUCCESS':
+      return Icons.check_circle_outline_rounded;
+    case 'PAYMENT_FAILED':
+      return Icons.error_outline_rounded;
+    case 'VISITOR_REQUEST':
+    case 'VISITOR_APPROVED':
+    case 'VISITOR_REJECTED':
+      return Icons.badge_outlined;
+    case 'COMPLAINT_ASSIGNED':
+    case 'COMPLAINT_STATUS_CHANGED':
+      return Icons.report_problem_outlined;
+    case 'FACILITY_BOOKING_APPROVED':
+    case 'FACILITY_BOOKING_REJECTED':
+    case 'FACILITY_BOOKING_CANCELLED':
+      return Icons.event_available_outlined;
+    case 'STAFF_SHIFT_ASSIGNED':
+      return Icons.schedule_rounded;
+    default:
+      return Icons.notifications_outlined;
+  }
 }
 
-void _toast(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+Color _typeColor(String type) {
+  switch (type) {
+    case 'PAYMENT_SUCCESS':
+    case 'VISITOR_APPROVED':
+    case 'FACILITY_BOOKING_APPROVED':
+      return C.green;
+    case 'PAYMENT_FAILED':
+    case 'VISITOR_REJECTED':
+    case 'FACILITY_BOOKING_REJECTED':
+      return C.error;
+    case 'FACILITY_BOOKING_CANCELLED':
+    case 'VISITOR_REQUEST':
+      return C.amber;
+    default:
+      return C.blue;
+  }
+}
+
+/// Human-friendly relative time for inbox rows (falls back to a date).
+String _relative(String iso) {
+  final d = DateTime.tryParse(iso)?.toLocal();
+  if (d == null) return iso;
+  final diff = DateTime.now().difference(d);
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+  if (diff.inHours < 24) return '${diff.inHours} h ago';
+  if (diff.inDays == 1) return 'Yesterday';
+  if (diff.inDays < 7) return '${diff.inDays} days ago';
+  return fmtDate(d);
+}
+
+/// Resolves the screen a notification should open, or null when there is no
+/// safe destination for the current role.
+Widget? _linkedPage(AppNotification n) {
+  final role = authSession?.appRole;
+  final entityId = n.relatedEntityId;
+  final isResident = role == AppRole.owner || role == AppRole.tenant;
+  if (!isResident) return null;
+  switch (n.type) {
+    case 'ANNOUNCEMENT':
+      return entityId == null
+          ? null
+          : LiveResidentAnnouncementDetailPage(announcementId: entityId);
+    case 'VISITOR_REQUEST':
+    case 'VISITOR_APPROVED':
+    case 'VISITOR_REJECTED':
+      return const LiveResidentVisitorsPage();
+    case 'COMPLAINT_ASSIGNED':
+    case 'COMPLAINT_STATUS_CHANGED':
+      return entityId == null
+          ? null
+          : LiveResidentComplaintDetailPage(complaintId: entityId);
+    case 'FACILITY_BOOKING_APPROVED':
+    case 'FACILITY_BOOKING_REJECTED':
+    case 'FACILITY_BOOKING_CANCELLED':
+      return entityId == null
+          ? null
+          : LiveResidentBookingDetailPage(bookingId: entityId);
+    case 'BILL_GENERATED':
+      // Financial detail is owner-only in the UI; the backend remains
+      // authoritative for access.
+      if (role != AppRole.owner || entityId == null) return null;
+      return LiveOwnerBillDetailPage(billId: entityId);
+    default:
+      // PAYMENT_*, STAFF_SHIFT_ASSIGNED, SYSTEM, unknown → detail only.
+      return null;
+  }
+}
+
+String _linkLabel(String type) {
+  switch (type) {
+    case 'ANNOUNCEMENT':
+      return 'Open announcement';
+    case 'VISITOR_REQUEST':
+    case 'VISITOR_APPROVED':
+    case 'VISITOR_REJECTED':
+      return 'Open visitors';
+    case 'COMPLAINT_ASSIGNED':
+    case 'COMPLAINT_STATUS_CHANGED':
+      return 'Open complaint';
+    case 'FACILITY_BOOKING_APPROVED':
+    case 'FACILITY_BOOKING_REJECTED':
+    case 'FACILITY_BOOKING_CANCELLED':
+      return 'Open booking';
+    case 'BILL_GENERATED':
+      return 'Open bill';
+    default:
+      return 'Open';
+  }
 }
 
 /// App-bar bell for OWNER/TENANT (and optionally ADMIN) using live API.
@@ -94,7 +201,7 @@ class _LiveNotificationBellButtonState
       builder: (context, snap) {
         final count = snap.data ?? 0;
         return IconButton(
-          tooltip: 'Notifications',
+          tooltip: count > 0 ? '$count unread notifications' : 'Notifications',
           onPressed: () async {
             await Navigator.push<void>(
               context,
@@ -106,8 +213,10 @@ class _LiveNotificationBellButtonState
           },
           icon: Badge(
             isLabelVisible: count > 0,
-            label: Text('$count'),
-            child: const Icon(Icons.notifications_outlined),
+            label: Text(count > 99 ? '99+' : '$count'),
+            child: Icon(count > 0
+                ? Icons.notifications_active_outlined
+                : Icons.notifications_outlined),
           ),
         );
       },
@@ -155,6 +264,11 @@ class _LiveNotificationsInboxPageState
 
   void reload() => setState(() => _future = _load(force: true));
 
+  Future<void> _refresh() async {
+    reload();
+    await _future;
+  }
+
   Future<void> _markAll() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -163,11 +277,15 @@ class _LiveNotificationsInboxPageState
       final result =
           await ensureLiveRepositories(session.api).notifications.markAllRead();
       if (mounted) {
-        _toast(context, 'Marked ${result.updated} read');
+        showSuccessSnack(
+            context,
+            result.updated == 0
+                ? 'Everything is already read.'
+                : 'Marked ${result.updated} notification${result.updated == 1 ? '' : 's'} as read.');
         reload();
       }
     } catch (e) {
-      if (mounted) _toast(context, notificationErrorMessage(e));
+      if (mounted) showErrorSnack(context, notificationErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -187,7 +305,7 @@ class _LiveNotificationsInboxPageState
         builder: (_) => LiveNotificationDetailPage(notificationId: n.id),
       ),
     );
-    reload();
+    if (mounted) reload();
   }
 
   @override
@@ -196,10 +314,12 @@ class _LiveNotificationsInboxPageState
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          TextButton(
+          TextButton.icon(
             onPressed: _busy ? null : _markAll,
-            child: const Text('Mark all read'),
+            icon: const Icon(Icons.done_all_rounded, size: 18),
+            label: const Text('Mark all read'),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: FutureBuilder<Paged<AppNotification>>(
@@ -207,109 +327,78 @@ class _LiveNotificationsInboxPageState
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const LoadingView(label: 'Loading notifications…');
+            return const SkeletonList(items: 6);
           }
           if (snapshot.hasError) {
-            return LoadFailure(error: snapshot.error!, onRetry: reload);
+            return LoadFailure(
+                error: snapshot.error!,
+                title: 'Could not load notifications',
+                onRetry: reload);
           }
           final items = snapshot.data!.items;
           return RefreshIndicator(
             color: C.blue,
-            onRefresh: () async => reload(),
+            onRefresh: _refresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: Sp.pagePadding,
               children: [
-                Wrap(
-                  spacing: 8,
+                FilterBar(
+                  padding: EdgeInsets.zero,
                   children: [
-                    FilterChip(
-                      label: const Text('All'),
-                      selected: isReadFilter == null,
-                      onSelected: (_) {
-                        setState(() {
-                          isReadFilter = null;
+                    for (final f in const [
+                      (null, 'All'),
+                      (false, 'Unread'),
+                      (true, 'Read'),
+                    ])
+                      AppFilterChip(
+                        label: f.$2,
+                        selected: isReadFilter == f.$1,
+                        onSelected: () => setState(() {
+                          isReadFilter = f.$1;
                           _future = _load(force: true);
-                        });
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('Unread'),
-                      selected: isReadFilter == false,
-                      onSelected: (_) {
-                        setState(() {
-                          isReadFilter = false;
-                          _future = _load(force: true);
-                        });
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('Read'),
-                      selected: isReadFilter == true,
-                      onSelected: (_) {
-                        setState(() {
-                          isReadFilter = true;
-                          _future = _load(force: true);
-                        });
-                      },
-                    ),
+                        }),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                if (_busy) const LinearProgressIndicator(minHeight: 3),
                 if (items.isEmpty)
-                  const EmptyState('No notifications yet')
+                  EmptyState(
+                    isReadFilter == false
+                        ? 'You are all caught up'
+                        : isReadFilter == true
+                            ? 'No read notifications'
+                            : 'No notifications yet',
+                    icon: isReadFilter == false
+                        ? Icons.task_alt_rounded
+                        : Icons.notifications_none_rounded,
+                    actionLabel: isReadFilter == null ? null : 'Show all',
+                    onAction: () => setState(() {
+                      isReadFilter = null;
+                      _future = _load(force: true);
+                    }),
+                  )
                 else
-                  ...items.map(
-                    (n) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: AppCard(
-                        onTap: () => _open(n),
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    n.title,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: C.navy,
-                                      fontSize: n.isRead ? 14 : 15,
-                                    ),
-                                  ),
-                                ),
-                                if (!n.isRead) const StatusBadge('new'),
-                              ],
-                            ),
-                            Text(
-                              n.body,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: C.muted,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              children: [
-                                StatusBadge(notificationTypeLabel(n.type)),
-                                Text(
-                                  _shortIso(n.createdAt),
-                                  style: const TextStyle(
-                                    color: C.muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                  for (final n in items)
+                    ListRow(
+                      onTap: () => _open(n),
+                      leading: AppAvatar(
+                        icon: _typeIcon(n.type),
+                        square: true,
+                        color: n.isRead ? C.muted : _typeColor(n.type),
                       ),
+                      title: n.title,
+                      subtitle: n.body,
+                      badges: [
+                        if (!n.isRead)
+                          const StatusBadge('New', tone: BadgeTone.info),
+                        StatusBadge(notificationTypeLabel(n.type),
+                            tone: BadgeTone.neutral),
+                      ],
+                      trailing: Text(_relative(n.createdAt), style: T.caption),
+                      showChevron: false,
                     ),
-                  ),
               ],
             ),
           );
@@ -340,47 +429,6 @@ class _LiveNotificationDetailPageState
         .get(widget.notificationId, force: force);
   }
 
-  Future<void> _navigate(AppNotification n) async {
-    final session = authSession;
-    final role = session?.appRole;
-    final entityId = n.relatedEntityId;
-    final type = n.type;
-
-    Widget? page;
-    final isResident = role == AppRole.owner || role == AppRole.tenant;
-    if (type == 'ANNOUNCEMENT' && entityId != null && isResident) {
-      page = LiveResidentAnnouncementDetailPage(announcementId: entityId);
-    } else if (type == 'VISITOR_REQUEST' ||
-        type == 'VISITOR_APPROVED' ||
-        type == 'VISITOR_REJECTED') {
-      if (isResident) page = const LiveResidentVisitorsPage();
-    } else if (type == 'COMPLAINT_ASSIGNED' ||
-        type == 'COMPLAINT_STATUS_CHANGED') {
-      if (entityId != null && isResident) {
-        page = LiveResidentComplaintDetailPage(complaintId: entityId);
-      }
-    } else if (type == 'FACILITY_BOOKING_APPROVED' ||
-        type == 'FACILITY_BOOKING_REJECTED' ||
-        type == 'FACILITY_BOOKING_CANCELLED') {
-      if (entityId != null && isResident) {
-        page = LiveResidentBookingDetailPage(bookingId: entityId);
-      }
-    }
-    // BILL_*, STAFF_SHIFT_ASSIGNED, SYSTEM, unknown → generic detail only.
-
-    if (page == null) {
-      if (mounted) {
-        _toast(
-          context,
-          'No linked screen for this notification type.',
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => page!));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -390,60 +438,83 @@ class _LiveNotificationDetailPageState
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const LoadingView(label: 'Loading…');
+            return const LoadingView(label: 'Loading notification…');
           }
           if (snapshot.hasError) {
             return LoadFailure(
               error: snapshot.error!,
+              title: 'Could not load notification',
               onRetry: () => setState(() => _future = _load(force: true)),
             );
           }
           final n = snapshot.data!;
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                n.title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
+          final linked = _linkedPage(n);
+          return Column(children: [
+            Expanded(
+              child: ListView(
+                padding: Sp.pagePadding,
                 children: [
-                  StatusBadge(notificationTypeLabel(n.type)),
-                  StatusBadge(n.isRead ? 'Read' : 'Unread'),
-                  if (!n.isKnownType) const StatusBadge('Unknown type'),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    AppAvatar(
+                      icon: _typeIcon(n.type),
+                      square: true,
+                      size: Sz.avatarLg,
+                      color: _typeColor(n.type),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(n.title, style: T.h1),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${notificationTypeLabel(n.type)} · ${fmtIsoDateTime(n.createdAt)}',
+                              style: T.secondary,
+                            ),
+                          ]),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    StatusBadge(n.isRead ? 'Read' : 'Unread',
+                        tone: n.isRead ? BadgeTone.neutral : BadgeTone.info),
+                    if (!n.isKnownType)
+                      const StatusBadge('Unrecognised type',
+                          tone: BadgeTone.warning),
+                  ]),
+                  const SizedBox(height: 18),
+                  AppCard(
+                    child: SelectableText(n.body,
+                        style: T.body.copyWith(height: 1.55)),
+                  ),
+                  DetailCard(title: 'Details', children: [
+                    DetailRow('Received', fmtIsoDateTime(n.createdAt)),
+                    if (n.readAt != null)
+                      DetailRow('Read', fmtIsoDateTime(n.readAt)),
+                    if (n.relatedEntityType != null)
+                      DetailRow('About', humanizeStatus(n.relatedEntityType!)),
+                  ]),
+                  if (!n.isKnownType)
+                    const InfoNote(
+                      'This notification type is not recognised by this version of the app, so only its text is shown.',
+                      tone: NoteTone.warning,
+                    ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(n.body, style: const TextStyle(height: 1.4)),
-              const SizedBox(height: 12),
-              Text(
-                'Received ${_shortIso(n.createdAt)}',
-                style: const TextStyle(color: C.muted, fontSize: 13),
-              ),
-              if (n.relatedEntityType != null)
-                Text(
-                  'Related: ${n.relatedEntityType}'
-                  '${n.relatedEntityId != null ? ' · ${n.relatedEntityId}' : ''}',
-                  style: const TextStyle(color: C.muted, fontSize: 13),
+            ),
+            if (linked != null)
+              BottomActionBar(children: [
+                PrimaryButton(
+                  label: _linkLabel(n.type),
+                  icon: Icons.arrow_forward_rounded,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => linked),
+                  ),
                 ),
-              const SizedBox(height: 20),
-              if (n.isKnownType)
-                FilledButton(
-                  onPressed: () => _navigate(n),
-                  child: const Text('Open related'),
-                )
-              else
-                const InfoNote(
-                  'This notification type is not mapped. Showing safe detail only.',
-                ),
-            ],
-          );
+              ]),
+          ]);
         },
       ),
     );

@@ -2,12 +2,18 @@ import '../http/json_read.dart';
 
 /// `POST /api/v1/auth/request-otp` data.
 class OtpRequestResult {
-  const OtpRequestResult({required this.message});
+  const OtpRequestResult({required this.message, this.debugOtp});
   final String message;
+
+  /// Present only when backend uses the memory SMS provider in development.
+  final String? debugOtp;
 
   factory OtpRequestResult.fromJson(Object? data) {
     final json = requireMap(data, 'otp request');
-    return OtpRequestResult(message: requireString(json, 'message'));
+    return OtpRequestResult(
+      message: requireString(json, 'message'),
+      debugOtp: optionalString(json, 'debugOtp'),
+    );
   }
 }
 
@@ -45,6 +51,8 @@ class AuthProfile {
     required this.roles,
     required this.societyIds,
     this.phone,
+    this.mobileE164,
+    this.mobileVerified = false,
     this.primarySocietyId,
     this.lastLoginAt,
   });
@@ -53,10 +61,23 @@ class AuthProfile {
   final String email;
   final String name;
   final String? phone;
+  final String? mobileE164;
+  final bool mobileVerified;
   final List<String> roles;
   final List<String> societyIds;
   final String? primarySocietyId;
   final String? lastLoginAt;
+
+  /// Preferred display phone for UI (login mobile, then legacy phone).
+  String get displayPhone {
+    final mobile = mobileE164?.trim();
+    if (mobile != null && mobile.isNotEmpty) {
+      return mobile.startsWith('+') ? mobile : '+$mobile';
+    }
+    final legacy = phone?.trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return '—';
+  }
 
   factory AuthProfile.fromJson(Object? data) {
     final json = requireMap(data, 'profile');
@@ -65,6 +86,8 @@ class AuthProfile {
       email: requireString(json, 'email'),
       name: requireString(json, 'name'),
       phone: optionalString(json, 'phone'),
+      mobileE164: optionalString(json, 'mobileE164'),
+      mobileVerified: json['mobileVerified'] == true,
       roles: requireStringList(json, 'roles'),
       societyIds: requireStringList(json, 'societyIds'),
       primarySocietyId: optionalString(json, 'primarySocietyId'),

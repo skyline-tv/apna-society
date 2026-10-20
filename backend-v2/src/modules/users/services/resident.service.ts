@@ -28,6 +28,7 @@ export async function getResidentProfile(userId: string) {
     email: user.email,
     name: user.name,
     phone: user.phone,
+    mobileE164: user.mobileE164,
     roles: user.roles.filter((role) => role === 'OWNER' || role === 'TENANT'),
     societyIds: [...new Set(memberships.map((m) => String(m.societyId)))],
     activeFlatIds: [

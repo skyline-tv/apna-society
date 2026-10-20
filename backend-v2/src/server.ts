@@ -34,9 +34,10 @@ async function bootstrap(): Promise<void> {
   startAnnouncementWorker();
   startFacilityBookingWorker();
 
-  server.listen(env.PORT, () => {
+  server.listen(env.PORT, env.HOST, () => {
     logger.info(
       {
+        host: env.HOST,
         port: env.PORT,
         env: env.NODE_ENV,
         redis: isRedisConfigured() ? 'enabled' : 'disabled',

@@ -1,9 +1,12 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
 export interface OtpChallengeDocument extends Document {
-  email: string;
+  /** E.164 mobile digits (no '+') — login SMS OTP challenges. */
+  mobileE164: string;
   userId: Types.ObjectId;
-  otpHash: string;
+  /** Only used by memory SMS provider; MSG91-managed flows leave this unset. */
+  otpHash?: string;
+  providerRequestId?: string;
   expiresAt: Date;
   attemptCount: number;
   maxAttempts: number;
@@ -19,9 +22,10 @@ export interface OtpChallengeDocument extends Document {
 
 const otpChallengeSchema = new Schema<OtpChallengeDocument>(
   {
-    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    mobileE164: { type: String, required: true, trim: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    otpHash: { type: String, required: true, select: false },
+    otpHash: { type: String, select: false },
+    providerRequestId: { type: String },
     expiresAt: { type: Date, required: true },
     attemptCount: { type: Number, default: 0 },
     maxAttempts: { type: Number, default: 5 },
@@ -35,7 +39,7 @@ const otpChallengeSchema = new Schema<OtpChallengeDocument>(
   { timestamps: true },
 );
 
-otpChallengeSchema.index({ email: 1, consumedAt: 1, expiresAt: -1 });
+otpChallengeSchema.index({ mobileE164: 1, consumedAt: 1, expiresAt: -1 });
 otpChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const OtpChallengeModel = model<OtpChallengeDocument>('OtpChallenge', otpChallengeSchema);

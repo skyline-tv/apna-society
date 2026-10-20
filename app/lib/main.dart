@@ -8,6 +8,7 @@ import 'api/auth/auth_messages.dart';
 import 'api/auth/auth_session.dart';
 import 'api/auth/home_resolver.dart';
 import 'api/socket/visitor_socket.dart';
+import 'api/models/billing_models.dart' show Bill, ListBillsQuery, billAmountDuePaise;
 import 'api/models/common.dart' show Paged;
 import 'api/models/resident_home_context.dart';
 import 'api/models/resident_models.dart';
@@ -135,53 +136,72 @@ class _AppBootstrapState extends State<AppBootstrap> {
         future: _init,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Scaffold(
-              backgroundColor: Colors.white,
-              body: LoadingView(label: 'Starting Monarch Solitaire A to E…'),
-            );
+            return const _SplashScreen(label: 'Starting…');
           }
           if (snapshot.hasError) {
-            return Scaffold(
-              backgroundColor: Colors.white,
-              body: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const BrandLogo(size: 72, radius: 18),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'Could not open local data',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: C.navy),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: C.muted,
-                            fontWeight: FontWeight.w600,
-                            height: 1.35),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: () =>
-                            setState(() => _init = _initializeLocalDatabase()),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            return _SplashScreen(
+              label: 'Could not start the app',
+              error: '${snapshot.error}',
+              onRetry: () =>
+                  setState(() => _init = _initializeLocalDatabase()),
             );
           }
           return const AuthGate();
         },
+      );
+}
+
+/// Branded splash used while the app boots or restores a session.
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen({required this.label, this.error, this.onRetry});
+  final String label;
+  final String? error;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: C.bg,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(28),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const BrandLogo(size: 84, radius: 22),
+                  const SizedBox(height: 18),
+                  const Text(kSocietyName,
+                      textAlign: TextAlign.center, style: T.h2),
+                  const SizedBox(height: 4),
+                  Text(kAppTagline,
+                      textAlign: TextAlign.center,
+                      style: T.secondary.copyWith(
+                          color: C.blue, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 32),
+                  if (error == null) ...[
+                    const SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(strokeWidth: 2.6)),
+                    const SizedBox(height: 14),
+                    Text(label, style: T.caption),
+                  ] else ...[
+                    Text(label, textAlign: TextAlign.center, style: T.h3),
+                    const SizedBox(height: 8),
+                    Text(error!,
+                        textAlign: TextAlign.center, style: T.secondary),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ],
+                ]),
+              ),
+            ),
+          ),
+        ),
       );
 }
 
@@ -241,39 +261,15 @@ class _AuthGateState extends State<AuthGate> {
         future: _boot,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Scaffold(
-              backgroundColor: Colors.white,
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text(
-                      authErrorMessage(snapshot.error!),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: C.error, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Your session was kept. Check your connection and try again.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: C.muted, fontSize: 13),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () => setState(() => _boot = _resolveHome()),
-                      child: const Text('Retry'),
-                    ),
-                  ]),
-                ),
-              ),
+            return _SplashScreen(
+              label: 'Could not restore your session',
+              error:
+                  '${authErrorMessage(snapshot.error!)}\n\nYour sign-in was kept. Check your connection and try again.',
+              onRetry: () => setState(() => _boot = _resolveHome()),
             );
           }
           if (!snapshot.hasData) {
-            return const Scaffold(
-              backgroundColor: Colors.white,
-              body: LoadingView(label: 'Opening Monarch Solitaire A to E…'),
-            );
+            return const _SplashScreen(label: 'Opening your society…');
           }
           return snapshot.data!;
         },
@@ -288,7 +284,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   String role = 'owner';
-  final email = TextEditingController();
+  String countryDialCode = '+91';
+  final mobile = TextEditingController();
   final otp = TextEditingController();
   bool otpStep = false;
   bool busy = false;
@@ -299,10 +296,17 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Backend OTP resend cooldown (`OTP_RESEND_COOLDOWN_MS` = 60s).
   static const _resendCooldown = 60;
 
+  static const _countryCodes = <String>['+91', '+1', '+44', '+971', '+65'];
+
+  String get _mobileForApi => composeMobileForApi(
+        countryDialCode: countryDialCode,
+        localNumber: mobile.text,
+      );
+
   @override
   void dispose() {
     _resendTimer?.cancel();
-    email.dispose();
+    mobile.dispose();
     otp.dispose();
     super.dispose();
   }
@@ -325,22 +329,31 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> sendOtp({bool resend = false}) async {
+    if (busy) return;
     setState(() {
       error = null;
       busy = true;
     });
     try {
-      final address = email.text.trim();
-      if (!isValidEmail(address)) {
-        setState(() => error = 'Enter a valid email address.');
+      if (countryDialCode == '+91' && !isValidIndianMobile(mobile.text)) {
+        setState(() => error = 'Enter a valid 10-digit mobile number.');
+        return;
+      }
+      if (mobile.text.replaceAll(RegExp(r'\D'), '').length < 8) {
+        setState(() => error = 'Enter a valid mobile number.');
         return;
       }
       final session = ensureAuthSession();
-      await session.requestOtp(address);
+      final otpResult = await session.requestOtp(_mobileForApi);
       if (!mounted) return;
       setState(() {
         otpStep = true;
         if (!resend) otp.clear();
+        // Local/dev memory SMS: backend returns debugOtp (no real SMS).
+        final debug = otpResult.debugOtp;
+        if (debug != null && debug.isNotEmpty) {
+          otp.text = debug;
+        }
       });
       _startResendCountdown();
     } catch (e) {
@@ -357,27 +370,22 @@ class _LoginScreenState extends State<LoginScreen> {
       busy = true;
     });
     try {
-      final address = email.text.trim();
       final code = otp.text.trim();
       if (!RegExp(r'^\d{6}$').hasMatch(code)) {
-        setState(() => error = 'Enter the 6-digit code from your email.');
+        setState(() => error = 'Enter the 6-digit code from your SMS.');
         return;
       }
       final session = ensureAuthSession();
-      await session.verifyOtp(email: address, otp: code);
+      await session.verifyOtp(mobile: _mobileForApi, otp: code);
       if (!mounted) return;
       final destination = await HomeResolver(session).resolve();
       if (!mounted) return;
       final selected = tryParseDropdownRole(role);
       final actual = session.appRole;
       if (selected != null && actual != null && selected != actual) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Signed in as ${actual.label}. Your account role is used for access.',
-            ),
-            backgroundColor: C.blue,
-          ),
+        showInfoSnack(
+          context,
+          'Signed in as ${actual.label}. Your account role is used for access.',
         );
       }
       Navigator.pushAndRemoveUntil(
@@ -435,242 +443,331 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  IconData get _roleIcon {
+    switch (role) {
+      case 'admin':
+        return Icons.admin_panel_settings_outlined;
+      case 'guard':
+        return Icons.shield_outlined;
+      case 'tenant':
+        return Icons.person_pin_circle_outlined;
+      default:
+        return Icons.home_outlined;
+    }
+  }
+
+  static const _roleOptions = <(String, String, IconData)>[
+    ('owner', 'Flat Owner', Icons.home_outlined),
+    ('tenant', 'Flat Tenant', Icons.person_pin_circle_outlined),
+    ('admin', 'Admin', Icons.admin_panel_settings_outlined),
+    ('guard', 'Security Guard', Icons.shield_outlined),
+  ];
+
+  void _backToMobile() {
+    setState(() {
+      otpStep = false;
+      error = null;
+      otp.clear();
+      _resendTimer?.cancel();
+      resendSeconds = 0;
+    });
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: C.bg,
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 12),
-                    const Center(child: BrandLogo(size: 96, radius: 24)),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Welcome to Monarch Solitaire\nA to E',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: C.navy,
-                          height: 1.25),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      kAppTagline,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: C.blue,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      otpStep
-                          ? 'Verify OTP for $_roleLabel'
-                          : 'Select your account type to continue',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: C.muted,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14),
-                    ),
-                    const SizedBox(height: 28),
-                    if (!otpStep) ...[
-                      const Text('Login As',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: C.navy,
-                              fontSize: 13)),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: role,
-                        isExpanded: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                            color: C.blue),
-                        dropdownColor: C.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.account_circle_outlined,
-                              color: C.blue),
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'owner',
-                            child: Row(children: [
-                              Icon(Icons.home_outlined,
-                                  color: C.blue, size: 22),
-                              SizedBox(width: 12),
-                              Text('Flat Owner',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: C.navy)),
-                            ]),
-                          ),
-                          DropdownMenuItem(
-                            value: 'tenant',
-                            child: Row(children: [
-                              Icon(Icons.person_pin_circle_outlined,
-                                  color: C.blue, size: 22),
-                              SizedBox(width: 12),
-                              Text('Flat Tenant',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: C.navy)),
-                            ]),
-                          ),
-                          DropdownMenuItem(
-                            value: 'admin',
-                            child: Row(children: [
-                              Icon(Icons.admin_panel_settings_outlined,
-                                  color: C.blue, size: 22),
-                              SizedBox(width: 12),
-                              Text('Admin',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: C.navy)),
-                            ]),
-                          ),
-                          DropdownMenuItem(
-                            value: 'guard',
-                            child: Row(children: [
-                              Icon(Icons.security, color: C.blue, size: 22),
-                              SizedBox(width: 12),
-                              Text('Security Guard',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: C.navy)),
-                            ]),
-                          ),
-                        ],
-                        onChanged: busy ? null : _onRoleChanged,
-                      ),
-                      const SizedBox(height: 18),
-                    ] else ...[
-                      AppCard(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        child: Row(children: [
-                          Icon(
-                            role == 'admin'
-                                ? Icons.admin_panel_settings_outlined
-                                : role == 'guard'
-                                    ? Icons.security
-                                    : Icons.home_outlined,
-                            color: C.blue,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text('Logging in as $_roleLabel',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    color: C.navy)),
-                          ),
-                        ]),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    TextField(
-                      controller: email,
-                      enabled: !otpStep && !busy,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      textCapitalization: TextCapitalization.none,
-                      decoration: const InputDecoration(
-                        labelText: 'Email address',
-                        prefixIcon: Icon(Icons.email_outlined, color: C.blue),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                    ),
-                    if (otpStep) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: otp,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Email OTP',
-                          prefixIcon: Icon(Icons.lock_outline, color: C.blue),
-                          counterText: '',
-                          helperText: 'Enter the 6-digit code sent to your email',
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Align(
+        body: KeyboardDismissOnTap(
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Align(
                         alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: (busy || resendSeconds > 0)
-                              ? null
-                              : () => sendOtp(resend: true),
-                          child: Text(
-                            resendSeconds > 0
-                                ? 'Resend OTP in ${resendSeconds}s'
-                                : 'Resend OTP',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
+                        child: BrandLogo(size: 52, radius: 12),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Monarch Solitaire A to E',
+                        style: T.h1,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(kAppTagline, style: T.secondary),
+                      const SizedBox(height: 8),
+                      Text(
+                        otpStep
+                            ? 'Enter the code sent to your mobile.'
+                            : 'Sign in with the mobile number on your society account.',
+                        style: T.body,
+                      ),
+                      const SizedBox(height: 24),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: otpStep ? _otpStep() : _mobileStep(),
                         ),
                       ),
-                      TextButton(
-                        onPressed: busy
-                            ? null
-                            : () => setState(() {
-                                  otpStep = false;
-                                  error = null;
-                                  otp.clear();
-                                  _resendTimer?.cancel();
-                                  resendSeconds = 0;
-                                }),
-                        child: const Text('Change email address'),
-                      ),
+                      const SizedBox(height: 28),
+                      Text('SMS OTP · SkyLine Tech Ventures',
+                          style: T.caption.copyWith(color: C.faint)),
                     ],
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(error!,
-                            style: const TextStyle(
-                                color: C.error,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                    const SizedBox(height: 18),
-                    FilledButton(
-                      onPressed: busy ? null : continueLogin,
-                      child: busy
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2.4, color: Colors.white))
-                          : Text(otpStep ? 'Verify & Login' : 'Send OTP'),
-                    ),
-                    const SizedBox(height: 18),
-                    const InfoNote(
-                      'Sign in with the email registered for your society account. '
-                      'Access is determined by your account role, not the selection above.',
-                    ),
-                    const SizedBox(height: 24),
-                    const Text('Email OTP · Powered by SkyLine Tech Ventures',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: C.muted, fontSize: 11)),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       );
+
+  List<Widget> _mobileStep() => [
+        const Text('Login As', style: T.title),
+        const SizedBox(height: 4),
+        const Text(
+          'Your account role is confirmed after the code. This only sets the sign-in context.',
+          style: T.caption,
+        ),
+        const SizedBox(height: 12),
+        _roleChooser(),
+        const SizedBox(height: 20),
+        const Text('Mobile number', style: T.title),
+        const SizedBox(height: 12),
+        _mobileRow(enabled: !busy),
+        InlineError(error),
+        const SizedBox(height: 20),
+        PrimaryButton(
+          label: 'Send OTP',
+          icon: Icons.sms_outlined,
+          busy: busy,
+          onPressed: continueLogin,
+        ),
+      ];
+
+  Widget _roleChooser() => LayoutBuilder(builder: (context, c) {
+        final wide = c.maxWidth >= 360;
+        final tiles = [
+          for (final (value, label, icon) in _roleOptions)
+            _RoleChoice(
+              key: ValueKey('login-role-$value'),
+              label: label,
+              icon: icon,
+              selected: role == value,
+              onTap: busy ? null : () => _onRoleChanged(value),
+            ),
+        ];
+        if (!wide) {
+          return Column(children: [
+            for (var i = 0; i < tiles.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              tiles[i],
+            ],
+          ]);
+        }
+        return Column(children: [
+          Row(children: [
+            Expanded(child: tiles[0]),
+            const SizedBox(width: 8),
+            Expanded(child: tiles[1]),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: tiles[2]),
+            const SizedBox(width: 8),
+            Expanded(child: tiles[3]),
+          ]),
+        ]);
+      });
+
+  List<Widget> _otpStep() => [
+        Row(children: [
+          AppAvatar(icon: _roleIcon, size: 40, square: true),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Verify OTP', style: T.title),
+                const SizedBox(height: 2),
+                Text('Logging in as $_roleLabel', style: T.caption),
+              ],
+            ),
+          ),
+        ]),
+        const SizedBox(height: 18),
+        _mobileRow(enabled: false),
+        const SizedBox(height: 12),
+        TextField(
+          controller: otp,
+          autofocus: true,
+          enabled: !busy,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => busy ? null : continueLogin(),
+          maxLength: 6,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 6,
+              color: C.navy),
+          decoration: InputDecoration(
+            labelText: 'SMS OTP',
+            prefixIcon: const Icon(Icons.lock_outline_rounded),
+            counterText: '',
+            helperText:
+                'Enter the 6-digit code sent to $countryDialCode ${mobile.text.trim()}',
+          ),
+        ),
+        InlineError(error),
+        const SizedBox(height: 16),
+        PrimaryButton(
+          label: 'Verify & Login',
+          icon: Icons.login_rounded,
+          busy: busy,
+          onPressed: continueLogin,
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextButton.icon(
+              onPressed: (busy || resendSeconds > 0)
+                  ? null
+                  : () => sendOtp(resend: true),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text(
+                resendSeconds > 0
+                    ? 'Resend in ${resendSeconds}s'
+                    : 'Resend OTP',
+              ),
+            ),
+          ),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: busy ? null : _backToMobile,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Change number'),
+            ),
+          ),
+        ]),
+      ];
+
+  Widget _mobileRow({required bool enabled}) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 104,
+            child: DropdownButtonFormField<String>(
+              initialValue: countryDialCode,
+              isExpanded: true,
+              icon: const Icon(Icons.expand_more_rounded, color: C.muted),
+              borderRadius: BorderRadius.circular(Rd.md),
+              decoration: const InputDecoration(
+                labelText: 'Code',
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+              ),
+              items: [
+                for (final code in _countryCodes)
+                  DropdownMenuItem(
+                    value: code,
+                    child: Text(code, style: T.bodyStrong),
+                  ),
+              ],
+              onChanged: !enabled
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() {
+                        countryDialCode = value;
+                        error = null;
+                      });
+                    },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: mobile,
+              enabled: enabled,
+              autofocus: enabled && !otpStep,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => busy ? null : continueLogin(),
+              onChanged: (_) {
+                if (error != null) setState(() => error = null);
+              },
+              autocorrect: false,
+              autofillHints: const [AutofillHints.telephoneNumberNational],
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Mobile number',
+                hintText: '10-digit number',
+                prefixIcon: Icon(Icons.phone_android_outlined),
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+class _RoleChoice extends StatelessWidget {
+  const _RoleChoice({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? C.chip : C.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Rd.md),
+        side: BorderSide(color: selected ? C.blue : C.line, width: selected ? 1.4 : 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Rd.md),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              Icon(icon, size: 18, color: selected ? C.blue : C.muted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: T.bodyStrong.copyWith(color: selected ? C.blue : C.navy),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class OwnerHome extends StatefulWidget {
@@ -680,10 +777,43 @@ class OwnerHome extends StatefulWidget {
   State<OwnerHome> createState() => _OwnerHomeState();
 }
 
+/// Resident shell destinations. Keys double as the "More" hub page ids.
+class _ResidentDest {
+  const _ResidentDest(this.key, this.label, this.icon, this.selectedIcon);
+  final String key;
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+}
+
+const _kResidentDests = <String, _ResidentDest>{
+  'home': _ResidentDest('home', 'Home', Icons.home_outlined, Icons.home_rounded),
+  'bills': _ResidentDest('bills', 'Bills', Icons.receipt_long_outlined,
+      Icons.receipt_long_rounded),
+  'payments': _ResidentDest(
+      'payments', 'Payments', Icons.payments_outlined, Icons.payments_rounded),
+  'visitors': _ResidentDest(
+      'visitors', 'Visitors', Icons.groups_outlined, Icons.groups_rounded),
+  'complaints': _ResidentDest('complaints', 'Complaints',
+      Icons.report_problem_outlined, Icons.report_problem_rounded),
+  'facilities': _ResidentDest('facilities', 'Facilities',
+      Icons.meeting_room_outlined, Icons.meeting_room_rounded),
+  'vehicles': _ResidentDest('vehicles', 'Vehicles',
+      Icons.directions_car_outlined, Icons.directions_car_rounded),
+  'news': _ResidentDest(
+      'news', 'Announcements', Icons.campaign_outlined, Icons.campaign_rounded),
+  'profile': _ResidentDest(
+      'profile', 'Profile', Icons.person_outline_rounded, Icons.person_rounded),
+  'more': _ResidentDest(
+      'more', 'More', Icons.grid_view_outlined, Icons.grid_view_rounded),
+};
+
 class _OwnerHomeState extends State<OwnerHome> {
   int tab = 0;
+  String? _morePage;
   late ResidentHomeContext home;
   late Future<ResidentProfileBundle> _profileFuture;
+  Future<List<Bill>>? _duesFuture;
 
   OccupancyAccess get access => home.access;
 
@@ -694,6 +824,7 @@ class _OwnerHomeState extends State<OwnerHome> {
     // Keep create flows (complaints / facilities / vehicles) in sync.
     authSession?.selectResidentFlat(home.selectedFlat.flat.id);
     _profileFuture = _loadProfileBundle();
+    _duesFuture = access.canFinance ? _loadDues() : null;
   }
 
   void _selectFlat(ResidentFlat next) {
@@ -704,7 +835,10 @@ class _OwnerHomeState extends State<OwnerHome> {
     }
     setState(() {
       home = home.copyWithSelected(next);
+      _morePage = null;
+      tab = 0;
       _profileFuture = _loadProfileBundle(force: true);
+      _duesFuture = home.access.canFinance ? _loadDues(force: true) : null;
     });
   }
 
@@ -739,105 +873,228 @@ class _OwnerHomeState extends State<OwnerHome> {
     return ResidentProfileBundle(context: resolved);
   }
 
+  /// Open (unpaid) bills for the selected flat, from the live billing API.
+  Future<List<Bill>> _loadDues({bool force = false}) async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final page = await ensureLiveRepositories(session.api)
+        .billing
+        .listResidentBills(
+            force: force, query: const ListBillsQuery(limit: 50));
+    final flatId = home.selectedFlat.flat.id;
+    return page.items
+        .where((b) => b.flatId == flatId)
+        .where((b) => billAmountDuePaise(b) > 0)
+        .where((b) {
+      final s = b.status.toUpperCase();
+      return s != 'PAID' && s != 'CANCELLED';
+    }).toList();
+  }
+
   void refresh() {
     if (!mounted) return;
     setState(() {
       _profileFuture = _loadProfileBundle(force: true);
+      _duesFuture = access.canFinance ? _loadDues(force: true) : null;
     });
   }
 
-  List<({Widget page, NavigationDestination dest})> get _tabs {
-    final tabs = <({Widget page, NavigationDestination dest})>[
-      (
-        page: ownerDashboard(),
-        dest: const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home'),
-      ),
-    ];
+  /// Bottom destinations (max 5) and the hub contents.
+  ({List<String> primary, List<String> more}) get _layout {
+    final finance = access.canFinance;
+    final residential = access.canResidential;
+    if (finance && residential) {
+      // Bills and visitors stay one tap away. Payments, complaints and
+      // bookings live in More so the bar is not a second copy of every tool.
+      return (
+        primary: const ['home', 'bills', 'visitors', 'more'],
+        more: const [
+          'payments',
+          'complaints',
+          'facilities',
+          'vehicles',
+          'news',
+          'profile',
+        ],
+      );
+    }
+    if (finance) {
+      return (
+        primary: const ['home', 'bills', 'payments', 'profile'],
+        more: const [],
+      );
+    }
+    if (residential) {
+      return (
+        primary: const ['home', 'visitors', 'complaints', 'facilities', 'more'],
+        more: const ['vehicles', 'news', 'profile'],
+      );
+    }
+    return (primary: const ['home', 'profile'], more: const []);
+  }
+
+  Widget _pageFor(String key) {
     final flatKey = home.selectedFlat.flat.id;
-    if (access.canFinance) {
-      tabs.addAll([
-        (
-          page: LiveOwnerBillsPage(
-            key: ValueKey('bills-$flatKey'),
-            canFinance: access.canFinance,
-          ),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined), label: 'My Bills'),
-        ),
-        (
-          page: LiveOwnerPaymentsPage(
-            key: ValueKey('payments-$flatKey'),
-            canFinance: access.canFinance,
-          ),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.payments_outlined), label: 'Payments'),
-        ),
-      ]);
+    switch (key) {
+      case 'home':
+        return ownerDashboard();
+      case 'bills':
+        return LiveOwnerBillsPage(
+            key: ValueKey('bills-$flatKey'), canFinance: access.canFinance);
+      case 'payments':
+        return LiveOwnerPaymentsPage(
+            key: ValueKey('payments-$flatKey'), canFinance: access.canFinance);
+      case 'visitors':
+        return LiveResidentVisitorsPage(key: ValueKey('visitors-$flatKey'));
+      case 'complaints':
+        return LiveResidentComplaintsPage(key: ValueKey('complaints-$flatKey'));
+      case 'facilities':
+        return LiveResidentFacilitiesPage(key: ValueKey('facilities-$flatKey'));
+      case 'vehicles':
+        return LiveResidentVehiclesPage(key: ValueKey('vehicles-$flatKey'));
+      case 'news':
+        return LiveResidentAnnouncementsPage(key: ValueKey('news-$flatKey'));
+      case 'profile':
+        return ResidentProfilePage(
+          home: home,
+          onLogout: logout,
+          onRefresh: refresh,
+          onSelectFlat: home.hasMultipleFlats ? _selectFlat : null,
+        );
+      case 'more':
+        return _moreHub();
+      default:
+        return const SizedBox.shrink();
     }
-    if (access.canResidential) {
-      tabs.addAll([
-        (
-          page: LiveResidentVehiclesPage(key: ValueKey('vehicles-$flatKey')),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.directions_car_outlined), label: 'Vehicles'),
-        ),
-        (
-          page: LiveResidentVisitorsPage(key: ValueKey('visitors-$flatKey')),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.groups_outlined), label: 'Visitors'),
-        ),
-        (
-          page: LiveResidentComplaintsPage(
-              key: ValueKey('complaints-$flatKey')),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.report_problem_outlined), label: 'Complaints'),
-        ),
-        (
-          page: LiveResidentFacilitiesPage(
-              key: ValueKey('facilities-$flatKey')),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.meeting_room_outlined), label: 'Facilities'),
-        ),
-        (
-          page: LiveResidentAnnouncementsPage(key: ValueKey('news-$flatKey')),
-          dest: const NavigationDestination(
-              icon: Icon(Icons.campaign_outlined), label: 'News'),
-        ),
-      ]);
+  }
+
+  Widget _moreHub() {
+    final layout = _layout;
+    if (_morePage != null && layout.more.contains(_morePage)) {
+      return _pageFor(_morePage!);
     }
-    tabs.add((
-      page: ResidentProfilePage(home: home, onLogout: logout, onRefresh: refresh),
-      dest: const NavigationDestination(
-          icon: Icon(Icons.person_outline), label: 'Profile'),
-    ));
-    return tabs;
+    return ListView(
+      padding: Sp.pagePadding,
+      children: [
+        const PageHeader('More', subtitle: 'Everything else for this flat'),
+        ToolDirectory(
+          links: [
+            for (final key in layout.more)
+              ToolLink(
+                icon: _kResidentDests[key]!.icon,
+                label: _kResidentDests[key]!.label,
+                subtitle: _residentToolHint(key),
+                onTap: () => setState(() => _morePage = key),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Opens any destination: switches to a primary tab or a hub sub-page.
+  void _open(String key) {
+    final layout = _layout;
+    final primaryIndex = layout.primary.indexOf(key);
+    setState(() {
+      if (primaryIndex >= 0) {
+        tab = primaryIndex;
+        _morePage = null;
+      } else if (layout.more.contains(key)) {
+        tab = layout.primary.indexOf('more');
+        _morePage = key;
+      }
+    });
+  }
+
+  bool get _canPopInternally {
+    if (_morePage != null) return true;
+    return tab != 0;
+  }
+
+  void _popInternally() {
+    setState(() {
+      if (_morePage != null) {
+        _morePage = null;
+      } else {
+        tab = 0;
+      }
+    });
+  }
+
+  String get _titleForBar {
+    final layout = _layout;
+    final safeTab = tab.clamp(0, layout.primary.length - 1);
+    final key = layout.primary[safeTab];
+    if (key == 'more' && _morePage != null) {
+      return _kResidentDests[_morePage]?.label ?? 'More';
+    }
+    if (key == 'home') return kAppName;
+    return _kResidentDests[key]?.label ?? kAppName;
   }
 
   @override
   Widget build(BuildContext context) {
-    final tabs = _tabs;
-    final safeTab = tab.clamp(0, tabs.length - 1);
+    final layout = _layout;
+    final safeTab = tab.clamp(0, layout.primary.length - 1);
     if (safeTab != tab) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => tab = safeTab);
       });
     }
-    return Scaffold(
-      appBar: AppBar(
-        title: brandAppBarTitle(title: kAppName, subtitle: kSocietyName),
-        actions: [
-          if (access.canResidential) const LiveNotificationBellButton(),
-          IconButton(onPressed: logout, icon: const Icon(Icons.logout_rounded)),
-        ],
-      ),
-      body: tabs[safeTab].page,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: safeTab,
-        onDestinationSelected: (v) => setState(() => tab = v),
-        destinations: [for (final t in tabs) t.dest],
+    final inSubPage = layout.primary[safeTab] == 'more' && _morePage != null;
+    return PopScope(
+      canPop: !_canPopInternally,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _popInternally();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: inSubPage
+              ? IconButton(
+                  tooltip: 'Back',
+                  onPressed: _popInternally,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                )
+              : null,
+          title: inSubPage
+              ? Text(_titleForBar)
+              : brandAppBarTitle(title: _titleForBar, subtitle: kSocietyName),
+          actions: [
+            if (access.canResidential) const LiveNotificationBellButton(),
+            if (layout.more.contains('profile'))
+              IconButton(
+                tooltip: 'Profile',
+                onPressed: () => _open('profile'),
+                icon: const Icon(Icons.account_circle_outlined),
+              ),
+            IconButton(
+              tooltip: 'Logout',
+              onPressed: _confirmLogout,
+              icon: const Icon(Icons.logout_rounded),
+            ),
+          ],
+        ),
+        body: IndexedStack(
+          index: safeTab,
+          children: [for (final key in layout.primary) _pageFor(key)],
+        ),
+        bottomNavigationBar: AppBottomNav(
+          selectedIndex: safeTab,
+          onDestinationSelected: (v) => setState(() {
+            if (v == tab && layout.primary[v] == 'more') _morePage = null;
+            tab = v;
+            if (layout.primary[v] != 'more') _morePage = null;
+          }),
+          destinations: [
+            for (final key in layout.primary)
+              NavigationDestination(
+                icon: Icon(_kResidentDests[key]!.icon),
+                selectedIcon: Icon(_kResidentDests[key]!.selectedIcon),
+                label: _kResidentDests[key]!.label,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -847,7 +1104,7 @@ class _OwnerHomeState extends State<OwnerHome> {
       future: _profileFuture,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const LoadingView(label: 'Loading your account…');
+          return const SkeletonList(items: 4, showHeader: true);
         }
         if (snap.hasError) {
           return LoadFailure(
@@ -859,57 +1116,54 @@ class _OwnerHomeState extends State<OwnerHome> {
         final ctx = snap.data?.context ?? home;
         final name = ctx.access.displayName;
         final flat = ctx.flat;
-        final accessLabel = [
-          if (ctx.access.canFinance) 'financial',
-          if (ctx.access.canResidential) 'residential',
-        ].join(' · ');
         final roleLabel = ctx.access.isTenantSession ? 'Tenant' : 'Owner';
+        final layout = _layout;
+        final services = <String>[
+          for (final k in [...layout.primary, ...layout.more])
+            if (k != 'home' && k != 'more' && k != 'profile') k,
+        ];
 
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => refresh(),
+          onRefresh: () async {
+            refresh();
+            await _profileFuture;
+          },
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: Sp.pagePadding,
             children: [
-              Text('Hello, ${name.split(' ').first}',
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w900, color: C.navy)),
-              const SizedBox(height: 5),
-              Text('${ctx.flatNumber}  •  ${ctx.wingLabel}',
-                  style: const TextStyle(color: C.muted)),
-              const SizedBox(height: 2),
-              Text('$roleLabel · ${ctx.occupancyLabel}'
-                  '${accessLabel.isEmpty ? '' : ' · $accessLabel access'}',
-                  style: const TextStyle(
-                      color: C.blue, fontWeight: FontWeight.w700, fontSize: 13)),
-              const SizedBox(height: 2),
-              Text(ctx.profile.email,
-                  style: const TextStyle(
-                      color: C.muted, fontWeight: FontWeight.w600, fontSize: 12)),
+              // Greeting
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                AppAvatar(text: initialsOf(name), size: Sz.avatarLg),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Hello, ${name.split(' ').first}',
+                            style: T.h1,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text('${ctx.wingLabel} · Flat ${ctx.flatNumber}',
+                            style: T.secondary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ]),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                StatusBadge(roleLabel, tone: BadgeTone.info),
+                StatusBadge(ctx.occupancyLabel, tone: BadgeTone.neutral),
+              ]),
               if (ctx.hasMultipleFlats) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: ctx.selectedFlat.flat.id,
-                  decoration: const InputDecoration(
-                    labelText: 'Active flat',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final f in ctx.accessibleFlats)
-                      DropdownMenuItem(
-                        value: f.flat.id,
-                        child: Text(
-                          '${f.flat.wingCode ?? '?'}-${f.flat.number}'
-                          '${f.access.role == 'TENANT' ? ' (tenant)' : ''}',
-                        ),
-                      ),
-                  ],
-                  onChanged: (id) {
-                    if (id == null) return;
-                    final next = ctx.accessibleFlats
-                        .firstWhere((f) => f.flat.id == id);
-                    _selectFlat(next);
-                  },
+                const SizedBox(height: 16),
+                PickerField(
+                  label: 'Active flat',
+                  icon: Icons.apartment_outlined,
+                  value: _flatOptionLabel(ctx.selectedFlat),
+                  onTap: () => _showFlatPicker(ctx),
                 ),
               ],
               const SizedBox(height: 20),
@@ -926,60 +1180,52 @@ class _OwnerHomeState extends State<OwnerHome> {
                     'You manage day-to-day residential features for this flat. Maintenance bills and payments stay with the owner.',
                   ),
                 ),
-              if (ctx.access.canFinance) ...[
-                HeroMoneyCard(
-                  label: 'MONTHLY MAINTENANCE',
-                  amount: money(flat.maintenanceRate),
-                  subtitle: '${flatTypeLabel(flat.flatType)} · Floor ${flat.floor}',
+              if (ctx.access.canFinance) _duesHero(flat) else _flatCard(ctx),
+              if (!ctx.access.canFinance) ...[
+                const SizedBox(height: 16),
+                PrimaryButton(
+                  label: 'Visitor requests',
+                  icon: Icons.groups_outlined,
+                  onPressed: () => _open('visitors'),
                 ),
-                const SizedBox(height: 14),
-                const InfoNote(
-                  'Outstanding bills and payments will load from the live billing API in a later phase. Amounts below are the server maintenance rate only.',
-                ),
-              ] else ...[
-                AppCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Your flat',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900, color: C.navy)),
-                      const SizedBox(height: 8),
-                      billDetailLine('Flat', ctx.flatNumber),
-                      billDetailLine('Wing', ctx.wingLabel),
-                      billDetailLine('Floor', '${flat.floor}'),
-                      billDetailLine('Type', flatTypeLabel(flat.flatType)),
-                      billDetailLine('Occupancy', ctx.occupancyLabel),
-                    ],
-                  ),
+                const SizedBox(height: 8),
+                SecondaryButton(
+                  label: 'Raise a complaint',
+                  icon: Icons.report_problem_outlined,
+                  onPressed: () => _open('complaints'),
                 ),
               ],
-              const SizedBox(height: 20),
-              Row(children: [
-                Expanded(
-                    child: StatCard(
-                        title: 'Flat status',
-                        value: flat.isActive ? 'Active' : 'Inactive',
-                        icon: Icons.verified_outlined)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: StatCard(
-                        title: 'Access flats',
-                        value: '${ctx.accessibleFlats.length}',
-                        icon: Icons.apartment_outlined,
-                        accent: C.blue)),
+              const SizedBox(height: 22),
+              ToolDirectory(
+                title: 'Also for this flat',
+                links: [
+                  for (final key in services)
+                    if (_showOnHome(key))
+                      ToolLink(
+                        icon: _kResidentDests[key]!.icon,
+                        label: _kResidentDests[key]!.label,
+                        subtitle: _residentToolHint(key),
+                        onTap: () => _open(key),
+                      ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              const SectionTitle('Your flat'),
+              DetailCard(children: [
+                DetailRow('Flat', ctx.flatNumber),
+                DetailRow('Wing', ctx.wingLabel),
+                DetailRow('Floor', '${flat.floor}'),
+                DetailRow('Type', flatTypeLabel(flat.flatType)),
+                DetailRow('Occupancy', ctx.occupancyLabel),
+                DetailRow('Status', '',
+                    valueWidget: Align(
+                      alignment: Alignment.centerLeft,
+                      child: StatusBadge(flat.isActive ? 'Active' : 'Inactive'),
+                    )),
+                if (ctx.access.canFinance)
+                  DetailRow('Monthly maintenance', money(flat.maintenanceRate),
+                      emphasize: true),
               ]),
-              if (ctx.access.canResidential) ...[
-                const SizedBox(height: 24),
-                const SectionTitle('Residential'),
-                const SizedBox(height: 10),
-                QuickActionTile(
-                  icon: Icons.person_add_alt_1_outlined,
-                  label: 'Invite Visitor (coming with live API)',
-                  onTap: () => _goToTabLabel('Visitors'),
-                ),
-              ],
             ],
           ),
         );
@@ -987,10 +1233,187 @@ class _OwnerHomeState extends State<OwnerHome> {
     );
   }
 
-  void _goToTabLabel(String label) {
-    final tabs = _tabs;
-    final i = tabs.indexWhere((t) => t.dest.label == label);
-    if (i >= 0) setState(() => tab = i);
+  /// Home already leads with dues (owner) or visitor/complaint actions (tenant).
+  bool _showOnHome(String key) {
+    if (access.canFinance && (key == 'bills' || key == 'payments')) {
+      return false;
+    }
+    if (!access.canFinance && (key == 'visitors' || key == 'complaints')) {
+      return false;
+    }
+    return true;
+  }
+
+  String _residentToolHint(String key) {
+    switch (key) {
+      case 'bills':
+        return 'Current and previous maintenance';
+      case 'payments':
+        return 'History and receipts';
+      case 'visitors':
+        return 'Approve or deny entry';
+      case 'complaints':
+        return 'Raise an issue and follow it';
+      case 'facilities':
+        return 'Book a shared amenity';
+      case 'vehicles':
+        return 'Registered vehicles';
+      case 'news':
+        return 'Notices from the society';
+      case 'profile':
+        return 'Account and this flat';
+      default:
+        return '';
+    }
+  }
+
+  /// Outstanding dues from the live billing API for the selected flat.
+  Widget _duesHero(FlatSummary flat) {
+    return FutureBuilder<List<Bill>>(
+      future: _duesFuture,
+      builder: (context, snap) {
+        final loading =
+            snap.connectionState == ConnectionState.waiting && !snap.hasData;
+        if (snap.hasError) {
+          return HeroMoneyCard(
+            label: 'Monthly maintenance',
+            amount: money(flat.maintenanceRate),
+            subtitle: 'Outstanding dues could not be loaded.',
+            child: Row(children: [
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.transparent,
+                  side: const BorderSide(color: Color(0x66FFFFFF)),
+                ),
+                onPressed: () =>
+                    setState(() => _duesFuture = _loadDues(force: true)),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            ]),
+          );
+        }
+        final bills = snap.data ?? const <Bill>[];
+        final duePaise =
+            bills.fold<int>(0, (sum, b) => sum + billAmountDuePaise(b));
+        final overdue = bills.where((b) {
+          final due = DateTime.tryParse(b.dueDate);
+          return due != null && due.isBefore(DateTime.now());
+        }).length;
+        return HeroMoneyCard(
+          label: 'Outstanding dues',
+          amount: loading ? '—' : moneyPaise(duePaise),
+          subtitle: loading
+              ? 'Checking your bills…'
+              : bills.isEmpty
+                  ? 'No pending bills. Monthly maintenance ${money(flat.maintenanceRate)}.'
+                  : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
+                      '${overdue > 0 ? ' · $overdue overdue' : ''}'
+                      ' · Maintenance ${money(flat.maintenanceRate)}/mo',
+          trailing: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white70))
+              : null,
+          child: Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white, foregroundColor: C.navy),
+                onPressed: () => _open('bills'),
+                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                label: Text(bills.isEmpty ? 'View bills' : 'View & pay'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.transparent,
+                  side: const BorderSide(color: Color(0x66FFFFFF)),
+                ),
+                onPressed: () => _open('payments'),
+                icon: const Icon(Icons.history_rounded, size: 18),
+                label: const Text('Payments'),
+              ),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _flatCard(ResidentHomeContext ctx) => AppCard(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          const AppAvatar(icon: Icons.apartment_outlined, size: 48, square: true),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Flat ${ctx.flatNumber}', style: T.h3),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${ctx.wingLabel} · Floor ${ctx.flat.floor} · ${flatTypeLabel(ctx.flat.flatType)}',
+                    style: T.secondary,
+                  ),
+                ]),
+          ),
+          StatusBadge(ctx.flat.isActive ? 'Active' : 'Inactive'),
+        ]),
+      );
+
+  String _flatOptionLabel(ResidentFlat f) =>
+      '${f.flat.wingCode ?? '?'}-${f.flat.number}'
+      '${f.access.role == 'TENANT' ? ' (tenant)' : ''}';
+
+  Future<void> _showFlatPicker(ResidentHomeContext ctx) async {
+    final picked = await showAppSheet<ResidentFlat>(
+      context,
+      title: 'Switch flat',
+      builder: (sheet) => Column(children: [
+        for (final f in ctx.accessibleFlats)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: AppAvatar(
+              text: f.flat.wingCode ?? '?',
+              size: 40,
+              square: true,
+              color: f.flat.id == ctx.selectedFlat.flat.id ? C.blue : C.muted,
+            ),
+            title: Text(_flatOptionLabel(f), style: T.bodyStrong),
+            subtitle: Text(
+              '${f.flat.wingName ?? 'Wing'} · ${f.access.role == 'TENANT' ? 'Tenant' : 'Owner'}'
+              '${f.access.financial ? ' · financial' : ''}'
+              '${f.access.residential ? ' · residential' : ''}',
+            ),
+            trailing: f.flat.id == ctx.selectedFlat.flat.id
+                ? const Icon(Icons.check_circle_rounded, color: C.blue)
+                : null,
+            onTap: () => Navigator.pop(sheet, f),
+          ),
+      ]),
+    );
+    if (picked != null && picked.flat.id != ctx.selectedFlat.flat.id) {
+      _selectFlat(picked);
+    }
+  }
+
+  Future<void> _confirmLogout() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Log out?',
+      message: 'You will need an SMS OTP to sign in again.',
+      confirmLabel: 'Log out',
+      icon: Icons.logout_rounded,
+    );
+    if (ok) await logout();
   }
 
   Future<void> logout() async {
@@ -1018,130 +1441,131 @@ class ResidentProfilePage extends StatelessWidget {
     required this.home,
     required this.onLogout,
     this.onRefresh,
+    this.onSelectFlat,
   });
 
   final ResidentHomeContext home;
   final VoidCallback onLogout;
   final VoidCallback? onRefresh;
+  final ValueChanged<ResidentFlat>? onSelectFlat;
 
   @override
   Widget build(BuildContext context) {
     final access = home.access;
     final flat = home.flat;
     final isTenant = access.isTenantSession;
-    final phone = home.profile.phone?.trim() ?? '';
+    final phone = home.profile.displayPhone;
+    final permissions = <String>[
+      if (access.canFinance) 'Financial',
+      if (access.canResidential) 'Residential',
+    ];
     return RefreshIndicator(
       color: C.blue,
       onRefresh: () async => onRefresh?.call(),
-      child: ListView(padding: const EdgeInsets.all(20), children: [
-        const Center(child: BrandLogo(size: 72, radius: 18)),
-        const SizedBox(height: 14),
-        Text(access.displayName,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 20, fontWeight: FontWeight.w900, color: C.navy)),
-        const SizedBox(height: 4),
-        Text('${home.wingLabel} · Flat ${home.flatNumber}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: C.muted, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        Text(
-          isTenant
-              ? 'Tenant account · ${home.occupancyLabel}'
-              : 'Owner account · ${home.occupancyLabel}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-              color: C.blue, fontWeight: FontWeight.w700, fontSize: 13),
-        ),
-        const SizedBox(height: 4),
-        Text(home.profile.email,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: C.muted, fontWeight: FontWeight.w600, fontSize: 12)),
-        const SizedBox(height: 22),
-        CardTile(
-            child: ListTile(
-                leading: const Icon(Icons.phone_android, color: C.blue),
-                title: Text(isTenant ? 'Tenant phone' : 'Owner phone'),
-                subtitle: Text(phone.isEmpty ? '—' : phone))),
-        CardTile(
-          child: ListTile(
-            leading: const Icon(Icons.email_outlined, color: C.blue),
-            title: const Text('Email'),
-            subtitle: Text(home.profile.email),
+      child: ListView(padding: Sp.pagePadding, children: [
+        DetailHero(
+          title: access.displayName,
+          subtitle: '${home.wingLabel} · Flat ${home.flatNumber}',
+          leading: AppAvatar(
+            text: initialsOf(access.displayName),
+            size: Sz.avatarLg,
           ),
+          badges: [
+            StatusBadge(isTenant ? 'Tenant account' : 'Owner account',
+                tone: BadgeTone.info),
+            StatusBadge(home.occupancyLabel, tone: BadgeTone.neutral),
+            if (permissions.isNotEmpty)
+              StatusBadge(permissions.join(' · '), tone: BadgeTone.success),
+          ],
         ),
-        CardTile(
-            child: ListTile(
-                leading: const Icon(Icons.home_work_outlined, color: C.blue),
-                title: const Text('Occupancy'),
-                subtitle: Text(home.occupancyLabel))),
-        CardTile(
-            child: ListTile(
-                leading: const Icon(Icons.layers_outlined, color: C.blue),
-                title: const Text('Floor'),
-                subtitle: Text('${flat.floor}'))),
-        CardTile(
-            child: ListTile(
-                leading: const Icon(Icons.apartment_outlined, color: C.blue),
-                title: const Text('Flat type'),
-                subtitle: Text(flatTypeLabel(flat.flatType)))),
-        if (access.canFinance)
-          CardTile(
-              child: ListTile(
-                  leading: const Icon(Icons.currency_rupee, color: C.blue),
-                  title: const Text('Monthly maintenance'),
-                  subtitle: Text(money(flat.maintenanceRate)))),
-        CardTile(
-          child: ListTile(
-            leading: const Icon(Icons.verified_user_outlined, color: C.blue),
-            title: const Text('Flat status'),
-            trailing: StatusBadge(flat.isActive ? 'active' : 'inactive'),
+        const SizedBox(height: 20),
+        SettingsGroup(title: 'Contact', children: [
+          SettingsRow(
+            icon: Icons.phone_android_outlined,
+            title: isTenant ? 'Tenant phone' : 'Owner phone',
+            value: phone,
           ),
-        ),
-        if (home.hasMultipleFlats) ...[
-          const SizedBox(height: 8),
-          const SectionTitle('Accessible flats'),
-          const SizedBox(height: 8),
-          for (final item in home.accessibleFlats)
-            CardTile(
-              child: ListTile(
-                leading: Icon(
-                  item.flat.id == flat.id
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                  color: C.blue,
-                ),
-                title: Text(item.flat.number,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text(
-                  '${item.flat.wingName ?? item.flat.wingCode ?? 'Wing'} · '
-                  '${item.access.role}'
-                  '${item.access.financial ? ' · financial' : ''}'
-                  '${item.access.residential ? ' · residential' : ''}',
-                ),
-              ),
+          if (home.profile.email.isNotEmpty)
+            SettingsRow(
+              icon: Icons.email_outlined,
+              title: 'Email (notifications)',
+              value: home.profile.email,
             ),
-        ],
-        const SizedBox(height: 18),
-        CardTile(
-          child: ListTile(
-            leading: const Icon(Icons.shield_outlined, color: C.blue),
-            title: const Text('Permissions'),
-            subtitle: Text(() {
-              final parts = <String>[
-                if (access.canFinance) 'Financial',
-                if (access.canResidential) 'Residential',
-              ];
-              return parts.isEmpty ? '—' : parts.join(' · ');
-            }()),
+        ]),
+        SettingsGroup(title: 'This flat', children: [
+          SettingsRow(
+            icon: Icons.home_work_outlined,
+            title: 'Occupancy',
+            value: home.occupancyLabel,
           ),
-        ),
-        const SizedBox(height: 18),
-        OutlinedButton.icon(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout),
-            label: const Text('Logout')),
+          SettingsRow(
+            icon: Icons.layers_outlined,
+            title: 'Floor',
+            value: '${flat.floor}',
+          ),
+          SettingsRow(
+            icon: Icons.apartment_outlined,
+            title: 'Flat type',
+            value: flatTypeLabel(flat.flatType),
+          ),
+          if (access.canFinance)
+            SettingsRow(
+              icon: Icons.currency_rupee_rounded,
+              title: 'Monthly maintenance',
+              value: money(flat.maintenanceRate),
+            ),
+          SettingsRow(
+            icon: Icons.verified_user_outlined,
+            title: 'Flat status',
+            trailing: StatusBadge(flat.isActive ? 'Active' : 'Inactive'),
+          ),
+        ]),
+        if (home.hasMultipleFlats) ...[
+          const SectionTitle('Switch flat',
+              subtitle: 'Tap another flat to make it active'),
+          SettingsGroup(title: 'Accessible flats', children: [
+            for (final item in home.accessibleFlats)
+              SettingsRow(
+                icon: item.flat.id == flat.id
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                title: '${item.flat.wingCode ?? '?'}-${item.flat.number}',
+                value:
+                    '${item.flat.wingName ?? item.flat.wingCode ?? 'Wing'} · '
+                    '${item.access.role == 'TENANT' ? 'Tenant' : 'Owner'}'
+                    '${item.access.financial ? ' · financial' : ''}'
+                    '${item.access.residential ? ' · residential' : ''}',
+                trailing: item.flat.id == flat.id
+                    ? const StatusBadge('Active', tone: BadgeTone.info)
+                    : null,
+                onTap: onSelectFlat == null || item.flat.id == flat.id
+                    ? null
+                    : () => onSelectFlat!(item),
+              ),
+          ]),
+        ],
+        const SizedBox(height: 8),
+        SettingsGroup(title: 'Account', children: [
+          SettingsRow(
+            icon: Icons.logout_rounded,
+            title: 'Log out',
+            value: 'Requires SMS OTP to sign in again',
+            onTap: () async {
+              final ok = await confirmDialog(
+                context,
+                title: 'Log out?',
+                message: 'You will need an SMS OTP to sign in again.',
+                confirmLabel: 'Log out',
+                icon: Icons.logout_rounded,
+              );
+              if (ok) onLogout();
+            },
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Text('$kAppName · $kSocietyName',
+            textAlign: TextAlign.center,
+            style: T.caption.copyWith(color: C.faint)),
       ]),
     );
   }
@@ -1267,6 +1691,51 @@ class _AdminHomeState extends State<AdminHome> {
   String? _morePage;
   late Future<_AdminDashboardBundle> _dashboardFuture = _loadDashboard();
 
+  static const _moreGroups = <(String, List<(String, String, IconData)>)>[
+    (
+      'People',
+      [
+        ('residents', 'Residents', Icons.people_outline_rounded),
+        ('visitors', 'Visitors', Icons.groups_outlined),
+        ('vehicles', 'Vehicles & parking', Icons.directions_car_outlined),
+      ]
+    ),
+    (
+      'Operations',
+      [
+        ('complaints', 'Complaints', Icons.report_problem_outlined),
+        ('facilities', 'Facilities', Icons.meeting_room_outlined),
+        ('facility-bookings', 'Facility bookings',
+            Icons.event_available_outlined),
+        ('announcements', 'Announcements', Icons.campaign_outlined),
+      ]
+    ),
+    (
+      'Staff',
+      [
+        ('staff', 'Staff directory', Icons.badge_outlined),
+        ('attendance', 'Attendance', Icons.fact_check_outlined),
+        ('shifts', 'Shifts', Icons.schedule_outlined),
+      ]
+    ),
+    (
+      'Insights & setup',
+      [
+        ('reports', 'Reports & analytics', Icons.assessment_outlined),
+        ('settings', 'Society settings', Icons.settings_outlined),
+      ]
+    ),
+  ];
+
+  static String _moreLabel(String key) {
+    for (final (_, items) in _moreGroups) {
+      for (final (k, label, _) in items) {
+        if (k == key) return label;
+      }
+    }
+    return 'More';
+  }
+
   Future<_AdminDashboardBundle> _loadDashboard({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
@@ -1293,6 +1762,17 @@ class _AdminHomeState extends State<AdminHome> {
     });
   }
 
+  Future<void> _confirmLogout() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Log out?',
+      message: 'You will need an SMS OTP to sign in again.',
+      confirmLabel: 'Log out',
+      icon: Icons.logout_rounded,
+    );
+    if (ok) await logout();
+  }
+
   Future<void> logout() async {
     final session = authSession;
     if (session != null) {
@@ -1305,6 +1785,11 @@ class _AdminHomeState extends State<AdminHome> {
     Navigator.pushAndRemoveUntil(context,
         MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
   }
+
+  void _openMore(String key) => setState(() {
+        tab = 4;
+        _morePage = key;
+      });
 
   Widget _adminMoreBody() {
     switch (_morePage) {
@@ -1333,54 +1818,147 @@ class _AdminHomeState extends State<AdminHome> {
       case 'settings':
         return const AdminSettingsPage();
       default:
-        return AdminMorePage(onOpen: (key) => setState(() => _morePage = key));
+        return _moreHub();
     }
   }
 
+  Widget _moreHub() => ListView(
+        padding: Sp.pagePadding,
+        children: [
+          const PageHeader('Directory',
+              subtitle: 'People, operations, staff and reports'),
+          for (var g = 0; g < _moreGroups.length; g++) ...[
+            if (g > 0) const SizedBox(height: 18),
+            ToolDirectory(
+              title: _moreGroups[g].$1,
+              links: [
+                for (final (key, label, icon) in _moreGroups[g].$2)
+                  ToolLink(
+                    icon: icon,
+                    label: label,
+                    subtitle: _adminToolHint(key),
+                    onTap: () => _openMore(key),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      );
+
+  String _adminToolHint(String key) {
+    switch (key) {
+      case 'residents':
+        return 'Provision owners and tenants';
+      case 'visitors':
+        return 'Society-wide visitor records';
+      case 'vehicles':
+        return 'Vehicles and parking slots';
+      case 'complaints':
+        return 'Assign and resolve issues';
+      case 'facilities':
+        return 'Amenities and booking rules';
+      case 'facility-bookings':
+        return 'Confirm or reject requests';
+      case 'announcements':
+        return 'Publish a notice';
+      case 'staff':
+        return 'Directory and roles';
+      case 'attendance':
+        return 'Mark and correct attendance';
+      case 'shifts':
+        return 'Duty schedules';
+      case 'reports':
+        return 'Collections, dues and complaints';
+      case 'settings':
+        return 'Society profile and wings';
+      default:
+        return '';
+    }
+  }
+
+  bool get _canPopInternally => _morePage != null || tab != 0;
+
+  void _popInternally() => setState(() {
+        if (_morePage != null) {
+          _morePage = null;
+        } else {
+          tab = 0;
+        }
+      });
+
+  static const _tabTitles = ['Overview', 'Flats', 'Bills', 'Payments', 'More'];
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title:
-            brandAppBarTitle(title: '$kAppName Admin', subtitle: kSocietyName),
-        actions: [
-          if (tab == 4 && _morePage != null)
+    final inSubPage = tab == 4 && _morePage != null;
+    return PopScope(
+      canPop: !_canPopInternally,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _popInternally();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: inSubPage
+              ? IconButton(
+                  tooltip: 'Back',
+                  onPressed: _popInternally,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                )
+              : null,
+          title: inSubPage
+              ? Text(_moreLabel(_morePage!))
+              : brandAppBarTitle(
+                  title: tab == 0 ? '$kAppName Admin' : _tabTitles[tab],
+                  subtitle: kSocietyName),
+          actions: [
             IconButton(
-              tooltip: 'Back to More',
-              onPressed: () => setState(() => _morePage = null),
-              icon: const Icon(Icons.arrow_back_rounded),
+              tooltip: 'Logout',
+              onPressed: _confirmLogout,
+              icon: const Icon(Icons.logout_rounded),
             ),
-          IconButton(onPressed: logout, icon: const Icon(Icons.logout_rounded)),
-        ],
-      ),
-      body: IndexedStack(
-        index: tab,
-        children: [
-          adminDashboard(),
-          AdminFlatsPage(onChanged: refresh),
-          const LiveAdminBillsPage(),
-          const LiveAdminPaymentsPage(),
-          _adminMoreBody(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (v) => setState(() {
-          tab = v;
-          if (v != 4) _morePage = null;
-          if (v == 0) reloadDashboard();
-        }),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
-          NavigationDestination(
-              icon: Icon(Icons.apartment_outlined), label: 'Flats'),
-          NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined), label: 'Bills'),
-          NavigationDestination(
-              icon: Icon(Icons.payments_outlined), label: 'Payments'),
-          NavigationDestination(icon: Icon(Icons.more_horiz), label: 'More'),
-        ],
+          ],
+        ),
+        body: IndexedStack(
+          index: tab,
+          children: [
+            adminDashboard(),
+            AdminFlatsPage(onChanged: refresh),
+            const LiveAdminBillsPage(),
+            const LiveAdminPaymentsPage(),
+            _adminMoreBody(),
+          ],
+        ),
+        bottomNavigationBar: AppBottomNav(
+          selectedIndex: tab,
+          onDestinationSelected: (v) => setState(() {
+            if (v == 4 && tab == 4) _morePage = null;
+            tab = v;
+            if (v != 4) _morePage = null;
+            if (v == 0) reloadDashboard();
+          }),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.space_dashboard_outlined),
+                selectedIcon: Icon(Icons.space_dashboard_rounded),
+                label: 'Overview'),
+            NavigationDestination(
+                icon: Icon(Icons.apartment_outlined),
+                selectedIcon: Icon(Icons.apartment_rounded),
+                label: 'Flats'),
+            NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long_rounded),
+                label: 'Bills'),
+            NavigationDestination(
+                icon: Icon(Icons.payments_outlined),
+                selectedIcon: Icon(Icons.payments_rounded),
+                label: 'Payments'),
+            NavigationDestination(
+                icon: Icon(Icons.grid_view_outlined),
+                selectedIcon: Icon(Icons.grid_view_rounded),
+                label: 'More'),
+          ],
+        ),
       ),
     );
   }
@@ -1390,7 +1968,7 @@ class _AdminHomeState extends State<AdminHome> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const LoadingView(label: 'Loading society overview…');
+            return const SkeletonList(items: 4, showHeader: true);
           }
           if (snapshot.hasError) {
             return LoadFailure(
@@ -1409,251 +1987,164 @@ class _AdminHomeState extends State<AdminHome> {
               totals.flats == 0 ? 0 : (occupied * 100 / totals.flats).round();
           return RefreshIndicator(
             color: C.blue,
-            onRefresh: () async => reloadDashboard(),
+            onRefresh: () async {
+              reloadDashboard();
+              await _dashboardFuture;
+            },
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              padding: Sp.pagePadding,
               children: [
-                Row(children: [
-                  const BrandLogo(size: 42, radius: 12),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(society.name,
-                              style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: C.navy)),
-                          Text(
-                              'Admin overview · ${society.code} · ${monthName(DateTime.now())}',
-                              style: const TextStyle(
-                                  color: C.muted,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12)),
-                        ]),
+                Text(society.name,
+                    style: T.h2,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 4),
+                Text(
+                    '${society.code} · ${monthName(DateTime.now())} · ${totals.wings} wings',
+                    style: T.secondary),
+                const SizedBox(height: 16),
+                MetricBand(items: [
+                  MetricItem('Active flats', '${totals.activeFlats}',
+                      onTap: () => setState(() => tab = 1)),
+                  MetricItem('Vacant', '${totals.vacantFlats}',
+                      valueColor: totals.vacantFlats > 0 ? C.amber : C.navy,
+                      onTap: () => setState(() => tab = 1)),
+                  MetricItem('Occupied', '$occRate%',
+                      valueColor: C.green),
+                  MetricItem(
+                    'Monthly maintenance',
+                    money(totals.monthlyMaintenanceTotal),
+                    onTap: () => setState(() => tab = 2),
                   ),
                 ]),
-                const SizedBox(height: 18),
-                HeroMoneyCard(
-                  label: 'MONTHLY MAINTENANCE TOTAL',
-                  amount: money(totals.monthlyMaintenanceTotal),
-                  subtitle:
-                      '${totals.activeFlats} active flats · ${totals.wings} wings',
-                ),
                 const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Active flats',
-                          value: '${totals.activeFlats}',
-                          icon: Icons.apartment_outlined)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Vacant',
-                          value: '${totals.vacantFlats}',
-                          icon: Icons.meeting_room_outlined,
-                          accent: C.amber)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Owner occupied',
-                          value: '${totals.ownerOccupiedFlats}',
-                          icon: Icons.home_outlined)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Tenant occupied',
-                          value: '${totals.tenantOccupiedFlats}',
-                          icon: Icons.groups_outlined,
-                          accent: C.blue)),
-                ]),
-                const SizedBox(height: 14),
                 AppCard(
-                  padding: const EdgeInsets.all(16),
+                  margin: EdgeInsets.zero,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Occupancy',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: C.navy)),
-                              Text('$occRate%',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      color: C.green)),
-                            ]),
-                        const SizedBox(height: 12),
+                        const Text('Occupancy', style: T.title),
+                        const SizedBox(height: 10),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(Rd.sm),
                           child: LinearProgressIndicator(
                             value: totals.flats == 0
                                 ? 0
                                 : occupied / totals.flats,
-                            minHeight: 10,
-                            backgroundColor: C.bg,
+                            minHeight: 6,
                             color: C.green,
+                            backgroundColor: C.neutralSoft,
                           ),
                         ),
                         const SizedBox(height: 10),
+                        Wrap(spacing: 14, runSpacing: 6, children: [
+                          DotLabel('${totals.ownerOccupiedFlats} owner',
+                              color: C.green),
+                          DotLabel('${totals.tenantOccupiedFlats} tenant',
+                              color: C.softBlue),
+                          DotLabel('${totals.vacantFlats} vacant',
+                              color: C.amber),
+                          DotLabel('${totals.inactiveFlats} inactive',
+                              color: C.faint),
+                        ]),
+                        const SizedBox(height: 6),
                         Text(
-                            '${totals.ownerOccupiedFlats} owner · ${totals.tenantOccupiedFlats} tenant · ${totals.vacantFlats} vacant',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: C.muted,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        Text(
-                            '${totals.twoBhkCount} × 2 BHK · ${totals.threeBhkCount} × 3 BHK · ${totals.inactiveFlats} inactive',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: C.muted,
-                                fontWeight: FontWeight.w600)),
+                            '${totals.twoBhkCount} × 2 BHK · ${totals.threeBhkCount} × 3 BHK',
+                            style: T.caption),
                       ]),
                 ),
                 const SizedBox(height: 22),
-                const SectionTitle('Wings'),
-                const SizedBox(height: 10),
+                ToolDirectory(
+                  title: 'Operate',
+                  links: [
+                    ToolLink(
+                      icon: Icons.apartment_outlined,
+                      label: 'Find a flat',
+                      subtitle: 'Occupancy, residents and rates',
+                      onTap: () => setState(() => tab = 1),
+                    ),
+                    ToolLink(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Maintenance bills',
+                      subtitle: 'Generate, adjust and collect',
+                      onTap: () => setState(() => tab = 2),
+                    ),
+                    ToolLink(
+                      icon: Icons.payments_outlined,
+                      label: 'Payments',
+                      subtitle: 'Recent collections and receipts',
+                      onTap: () => setState(() => tab = 3),
+                    ),
+                    ToolLink(
+                      icon: Icons.report_problem_outlined,
+                      label: 'Complaints',
+                      subtitle: 'Open issues and assignments',
+                      onTap: () => _openMore('complaints'),
+                    ),
+                    ToolLink(
+                      icon: Icons.campaign_outlined,
+                      label: 'Announcements',
+                      subtitle: 'Publish a notice',
+                      onTap: () => _openMore('announcements'),
+                    ),
+                    ToolLink(
+                      icon: Icons.assessment_outlined,
+                      label: 'Reports',
+                      subtitle: 'Collections and outstanding dues',
+                      onTap: () => _openMore('reports'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                SectionTitle('Wings',
+                    action: TextButton(
+                        onPressed: () => _openMore('settings'),
+                        child: const Text('Society'))),
                 if (wings.isEmpty)
-                  const EmptyState('No wings configured yet')
+                  const EmptyState('No wings configured yet',
+                      icon: Icons.domain_outlined, compact: true)
                 else
-                  ...wings.map((w) => AppCard(
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: C.chip,
-                            child: Text(w.code,
-                                style: const TextStyle(
-                                    color: C.blue, fontWeight: FontWeight.w800)),
-                          ),
-                          title: Text(w.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800, color: C.navy)),
-                          subtitle: Text(
-                            '${w.activeFlats} active · ${w.vacantFlats} vacant · ${money(w.monthlyMaintenanceTotal)}/mo',
-                            style: const TextStyle(color: C.muted, fontSize: 12),
-                          ),
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (var i = 0; i < wings.length; i++) ...[
+                        if (i > 0)
+                          const Divider(height: 1, indent: 56, endIndent: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          child: Row(children: [
+                            AppAvatar(
+                                text: wings[i].code, square: true, size: 36),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(wings[i].name, style: T.bodyStrong),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${wings[i].activeFlats} active · ${wings[i].vacantFlats} vacant',
+                                    style: T.caption,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(money(wings[i].monthlyMaintenanceTotal),
+                                    style: T.money.copyWith(fontSize: 13)),
+                                Text('per month', style: T.caption),
+                              ],
+                            ),
+                          ]),
                         ),
-                      )),
-                const SizedBox(height: 16),
-                const SectionTitle('Quick actions'),
-                const SizedBox(height: 10),
-                QuickActionTile(
-                    icon: Icons.auto_awesome,
-                    label: 'Generate Bills',
-                    onTap: () => setState(() => tab = 2)),
-                QuickActionTile(
-                    icon: Icons.apartment_outlined,
-                    label: 'View All Flats',
-                    onTap: () => setState(() => tab = 1)),
-                QuickActionTile(
-                  icon: Icons.people_outline,
-                  label: 'Residents',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'residents';
-                  }),
-                ),
-                QuickActionTile(
-                    icon: Icons.payments_outlined,
-                    label: 'View Payments',
-                    onTap: () => setState(() => tab = 3)),
-                QuickActionTile(
-                  icon: Icons.groups_outlined,
-                  label: 'Visitors',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'visitors';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Vehicles',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'vehicles';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.report_problem_outlined,
-                  label: 'Complaints',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'complaints';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.badge_outlined,
-                  label: 'Staff HR',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'staff';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.fact_check_outlined,
-                  label: 'Attendance',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'attendance';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.schedule_outlined,
-                  label: 'Shifts',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'shifts';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.meeting_room_outlined,
-                  label: 'Facilities',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'facilities';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.event_available_outlined,
-                  label: 'Facility bookings',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'facility-bookings';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.campaign_outlined,
-                  label: 'Announcements',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'announcements';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.assessment_outlined,
-                  label: 'Reports & Analytics',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'reports';
-                  }),
-                ),
-                QuickActionTile(
-                  icon: Icons.settings_outlined,
-                  label: 'Society settings',
-                  onTap: () => setState(() {
-                    tab = 4;
-                    _morePage = 'settings';
-                  }),
-                ),
-                const SizedBox(height: 10),
-                const InfoNote(
-                    'Society stats and flats load from the live API. Bills and payments tabs still use on-device demo data until the billing phase.'),
+                      ],
+                    ]),
+                  ),
               ],
             ),
           );
@@ -1676,6 +2167,7 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
   static const _limit = 30;
   late Future<_AdminFlatsBundle> _future;
   final _searchDebounce = Debouncer();
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -1686,6 +2178,7 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
   @override
   void dispose() {
     _searchDebounce.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -1734,7 +2227,7 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const LoadingView(label: 'Loading flats…');
+            return const SkeletonList(items: 6);
           }
           if (snapshot.hasError) {
             return LoadFailure(
@@ -1748,143 +2241,144 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
           final pageData = bundle.flats;
           final rows = pageData.items;
           final pagination = pageData.pagination;
+          final refreshing =
+              snapshot.connectionState == ConnectionState.waiting;
           return Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              child: Row(children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (v) {
-                      query = v;
-                      _searchDebounce.run(() => reload(resetPage: true));
-                    },
-                    decoration: const InputDecoration(
-                        hintText: 'Search flat number',
-                        prefixIcon: Icon(Icons.search)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                FilledButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text(
-                          'Flat creation will be available in a later phase.'),
-                      backgroundColor: C.blue,
-                    ));
-                  },
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('Add'),
-                ),
-              ]),
+              child: SearchField(
+                controller: _searchCtrl,
+                hint: 'Search flat number',
+                onChanged: (v) {
+                  query = v;
+                  _searchDebounce.run(() => reload(resetPage: true));
+                },
+              ),
             ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            FilterBar(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: const Text('All wings'),
-                    selected: wingId == null,
-                    onSelected: (_) {
-                      wingId = null;
+              children: [
+                AppFilterChip(
+                  label: 'All wings',
+                  selected: wingId == null,
+                  onSelected: () {
+                    wingId = null;
+                    reload(resetPage: true);
+                  },
+                ),
+                for (final w in wings)
+                  AppFilterChip(
+                    label: 'Wing ${w.code}',
+                    selected: wingId == w.id,
+                    onSelected: () {
+                      wingId = w.id;
                       reload(resetPage: true);
                     },
                   ),
-                ),
-                for (final w in wings)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(w.code),
-                      selected: wingId == w.id,
-                      onSelected: (_) {
-                        wingId = w.id;
-                        reload(resetPage: true);
-                      },
-                    ),
-                  ),
-              ]),
+              ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: [
-                for (final f in const [
-                  ('all', 'All'),
-                  ('active', 'Active'),
-                  ('inactive', 'Inactive'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(f.$2),
-                      selected: statusFilter == f.$1,
-                      onSelected: (_) {
-                        statusFilter = f.$1;
-                        reload(resetPage: true);
-                      },
-                    ),
-                  ),
-                const Spacer(),
-                Text('${pagination.total} flats',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: C.navy,
-                        fontSize: 12)),
+                Expanded(
+                  child: FilterBar(children: [
+                    for (final f in const [
+                      ('all', 'All'),
+                      ('active', 'Active'),
+                      ('inactive', 'Inactive'),
+                    ])
+                      AppFilterChip(
+                        label: f.$2,
+                        selected: statusFilter == f.$1,
+                        onSelected: () {
+                          statusFilter = f.$1;
+                          reload(resetPage: true);
+                        },
+                      ),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                if (refreshing)
+                  const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  ResultCount(pagination.total, 'flat'),
               ]),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Expanded(
               child: rows.isEmpty
-                  ? const EmptyState('No flats match your filters')
+                  ? EmptyState(
+                      'No flats match your filters',
+                      icon: Icons.apartment_outlined,
+                      actionLabel: 'Clear filters',
+                      onAction: () {
+                        _searchCtrl.clear();
+                        query = '';
+                        wingId = null;
+                        statusFilter = 'all';
+                        reload(resetPage: true);
+                      },
+                    )
                   : RefreshIndicator(
                       color: C.blue,
-                      onRefresh: () async => reload(resetPage: true),
+                      onRefresh: () async {
+                        reload(resetPage: true);
+                        await _future;
+                      },
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                         itemCount: rows.length + 1,
                         itemBuilder: (context, i) {
                           if (i == rows.length) {
-                            return _paginationBar(
+                            return PaginationBar(
                               page: pagination.page,
-                              totalPages: pagination.totalPages);
+                              totalPages: pagination.totalPages,
+                              onPrevious: () {
+                                page -= 1;
+                                reload();
+                              },
+                              onNext: () {
+                                page += 1;
+                                reload();
+                              },
+                            );
                           }
                           final r = rows[i];
                           final label = r.number.contains('-')
                               ? r.number.split('-').last
                               : r.number;
                           final owner = r.activeOwner?.name.trim() ?? '';
-                          return AppCard(
+                          return ListRow(
                             onTap: () => openDetail(r),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor:
-                                    r.isActive ? C.chip : const Color(0xFFF0F0F0),
-                                child: Text(label,
-                                    style: TextStyle(
-                                        color: r.isActive ? C.blue : C.muted,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                              title: Text(
-                                '${r.number} · ${flatTypeLabel(r.flatType)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    color: C.navy,
-                                    fontSize: 14),
-                              ),
-                              subtitle: Text(
-                                '${r.wingName ?? r.wingCode ?? 'Wing'} · Floor ${r.floor}\n'
-                                '${owner.isEmpty ? 'Unallotted' : owner}'
-                                ' · ${money(r.maintenanceRate)}/mo'
-                                ' · ${occupancyStatusLabel(r.occupancyStatus)}',
-                                style: const TextStyle(
-                                    color: C.muted, fontSize: 12, height: 1.35),
-                              ),
-                              isThreeLine: true,
-                              trailing: StatusBadge(
-                                  r.isActive ? 'active' : 'inactive'),
+                            leading: AppAvatar(
+                              text: label,
+                              square: true,
+                              color: r.isActive ? C.blue : C.muted,
                             ),
+                            title: r.number,
+                            subtitle:
+                                '${r.wingName ?? r.wingCode ?? 'Wing'} · Floor ${r.floor} · ${flatTypeLabel(r.flatType)}\n'
+                                '${owner.isEmpty ? 'No owner allotted' : owner}',
+                            badges: [
+                              StatusBadge(
+                                  occupancyStatusLabel(r.occupancyStatus),
+                                  tone: _occupancyTone(r.occupancyStatus)),
+                              if (!r.isActive) const StatusBadge('Inactive'),
+                            ],
+                            trailing: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(money(r.maintenanceRate),
+                                    style: T.money.copyWith(fontSize: 14)),
+                                Text('per month', style: T.caption),
+                              ],
+                            ),
+                            showChevron: true,
                           );
                         },
                       ),
@@ -1893,38 +2387,18 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
           ]);
         },
       );
+}
 
-  Widget _paginationBar({required int page, required int totalPages}) {
-    if (totalPages <= 1) return const SizedBox(height: 8);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton(
-            onPressed: page <= 1
-                ? null
-                : () {
-                    this.page -= 1;
-                    reload();
-                  },
-            child: const Text('Previous'),
-          ),
-          Text('Page $page of $totalPages',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: C.navy, fontSize: 12)),
-          TextButton(
-            onPressed: page >= totalPages
-                ? null
-                : () {
-                    this.page += 1;
-                    reload();
-                  },
-            child: const Text('Next'),
-          ),
-        ],
-      ),
-    );
+BadgeTone _occupancyTone(String status) {
+  switch (status.toUpperCase()) {
+    case 'OWNER_OCCUPIED':
+      return BadgeTone.success;
+    case 'TENANT_OCCUPIED':
+      return BadgeTone.info;
+    case 'VACANT':
+      return BadgeTone.warning;
+    default:
+      return BadgeTone.neutral;
   }
 }
 
@@ -1969,54 +2443,65 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
       ),
     );
     if (user == null || !mounted) return;
-    final notes = await _promptOptional('Notes (optional)');
-    if (!mounted) return;
+    final notes = await promptTextDialog(
+      context,
+      title: 'Assign ${role == 'OWNER' ? 'owner' : 'tenant'}',
+      message: '${user.name} will be assigned from today.',
+      label: 'Notes (optional)',
+      confirmLabel: 'Assign',
+      maxLines: 2,
+    );
+    if (notes == null || !mounted) return;
     setState(() => busy = true);
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       final repos = ensureLiveRepositories(session.api);
+      final trimmed = notes.isEmpty ? null : notes;
       if (role == 'OWNER') {
         await repos.society.assignOwner(
           widget.flatId,
           userId: user.id,
           effectiveFrom: DateTime.now(),
-          notes: notes,
+          notes: trimmed,
         );
       } else {
         await repos.society.assignTenant(
           widget.flatId,
           userId: user.id,
           effectiveFrom: DateTime.now(),
-          notes: notes,
+          notes: trimmed,
         );
       }
       repos.invalidateAfterResidentMutation(flatId: widget.flatId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${role == 'OWNER' ? 'Owner' : 'Tenant'} assigned.'),
-        backgroundColor: C.green,
-      ));
+      showSuccessSnack(
+          context, '${role == 'OWNER' ? 'Owner' : 'Tenant'} assigned.');
       _reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(adminApiErrorMessage(e)),
-        backgroundColor: C.error,
-      ));
+      showErrorSnack(context, adminApiErrorMessage(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
   Future<void> _end({required bool owner}) async {
-    final reason = await _promptRequired(
-      owner ? 'End owner occupancy' : 'End tenant occupancy',
-      'Reason (required)',
+    final reason = await promptTextDialog(
+      context,
+      title: owner ? 'End owner occupancy' : 'End tenant occupancy',
+      message: owner
+          ? 'The flat becomes vacant from today. This is recorded in occupancy history.'
+          : 'The flat returns to owner occupied from today. This is recorded in occupancy history.',
+      label: 'Reason',
+      hint: 'e.g. Flat sold, lease ended',
+      confirmLabel: 'End occupancy',
+      required: true,
+      minLength: 3,
+      maxLines: 3,
+      destructive: true,
     );
     if (reason == null || !mounted) return;
-    final notes = await _promptOptional('Notes (optional)');
-    if (!mounted) return;
     setState(() => busy = true);
     try {
       final session = authSession;
@@ -2027,83 +2512,25 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
           widget.flatId,
           effectiveTo: DateTime.now(),
           reason: reason,
-          notes: notes,
         );
       } else {
         await repos.society.endTenantOccupancy(
           widget.flatId,
           effectiveTo: DateTime.now(),
           reason: reason,
-          notes: notes,
         );
       }
       repos.invalidateAfterResidentMutation(flatId: widget.flatId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(owner ? 'Owner occupancy ended.' : 'Tenant occupancy ended.'),
-        backgroundColor: C.green,
-      ));
+      showSuccessSnack(context,
+          owner ? 'Owner occupancy ended.' : 'Tenant occupancy ended.');
       _reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(adminApiErrorMessage(e)),
-        backgroundColor: C.error,
-      ));
+      showErrorSnack(context, adminApiErrorMessage(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
-  }
-
-  Future<String?> _promptRequired(String title, String label) async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(labelText: label),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final t = ctrl.text.trim();
-              if (t.length < 3) return;
-              Navigator.pop(ctx, t);
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    return result;
-  }
-
-  Future<String?> _promptOptional(String label) async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(label),
-        content: TextField(controller: ctrl, decoration: InputDecoration(labelText: label)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ''), child: const Text('Skip')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text),
-              child: const Text('Save')),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (result == null) return null;
-    final trimmed = result.trim();
-    return trimmed.isEmpty ? null : trimmed;
   }
 
   @override
@@ -2131,6 +2558,8 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
           final canEndTenant = status == 'TENANT_OCCUPIED';
           final canEndOwner =
               status == 'OWNER_OCCUPIED' && flat.activeTenant == null;
+          final hasActions =
+              canAssignOwner || canAssignTenant || canEndTenant || canEndOwner;
           return RefreshIndicator(
             color: C.blue,
             onRefresh: () async {
@@ -2138,123 +2567,218 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
               await _future;
             },
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: Sp.pagePadding,
               children: [
-                Text(flat.number,
-                    style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: C.navy)),
-                const SizedBox(height: 4),
-                Text(
-                    '${flat.wingName ?? flat.wingCode ?? 'Wing'} · Floor ${flat.floor}',
-                    style: const TextStyle(color: C.muted)),
-                const SizedBox(height: 16),
-                CardTile(
-                    child: ListTile(
-                        title: const Text('Type'),
-                        subtitle: Text(flatTypeLabel(flat.flatType)))),
-                CardTile(
-                    child: ListTile(
-                        title: const Text('Occupancy'),
-                        subtitle:
-                            Text(occupancyStatusLabel(flat.occupancyStatus)))),
-                CardTile(
-                    child: ListTile(
-                        title: const Text('Monthly maintenance'),
-                        subtitle: Text(money(flat.maintenanceRate)))),
-                CardTile(
-                  child: ListTile(
-                    title: const Text('Status'),
-                    trailing:
-                        StatusBadge(flat.isActive ? 'active' : 'inactive'),
+                DetailHero(
+                  title: flat.number,
+                  subtitle:
+                      '${flat.wingName ?? flat.wingCode ?? 'Wing'} · Floor ${flat.floor} · ${flatTypeLabel(flat.flatType)}',
+                  leading: AppAvatar(
+                    text: flat.number.contains('-')
+                        ? flat.number.split('-').last
+                        : flat.number,
+                    size: Sz.avatarLg,
+                    square: true,
+                    color: flat.isActive ? C.blue : C.muted,
                   ),
+                  badges: [
+                    StatusBadge(occupancyStatusLabel(flat.occupancyStatus),
+                        tone: _occupancyTone(flat.occupancyStatus)),
+                    StatusBadge(flat.isActive ? 'Active' : 'Inactive'),
+                  ],
                 ),
-                CardTile(
-                    child: ListTile(
-                        title: const Text('Owner'),
-                        subtitle: Text(flat.activeOwner == null
-                            ? '—'
-                            : '${flat.activeOwner!.name}\n${flat.activeOwner!.email}'),
-                        isThreeLine: flat.activeOwner != null)),
-                CardTile(
-                    child: ListTile(
-                        title: const Text('Tenant'),
-                        subtitle: Text(flat.activeTenant == null
-                            ? '—'
-                            : '${flat.activeTenant!.name}\n${flat.activeTenant!.email}'),
-                        isThreeLine: flat.activeTenant != null)),
-                if (flat.notes != null && flat.notes!.trim().isNotEmpty)
-                  CardTile(
-                      child: ListTile(
-                          title: const Text('Notes'),
-                          subtitle: Text(flat.notes!))),
                 const SizedBox(height: 16),
-                const SectionTitle('Occupancy actions'),
-                const SizedBox(height: 8),
-                const InfoNote(
-                  'Lifecycle: Vacant → Owner occupied → Tenant occupied → Owner occupied → Vacant. All changes go through backend lifecycle APIs.',
+                DetailCard(title: 'Flat', children: [
+                  DetailRow('Monthly maintenance', money(flat.maintenanceRate),
+                      emphasize: true),
+                  DetailRow('Type', flatTypeLabel(flat.flatType)),
+                  DetailRow('Floor', '${flat.floor}'),
+                  if (flat.parking != null)
+                    DetailRow('Parking', _parkingLabel(flat.parking!)),
+                  if (flat.notes != null && flat.notes!.trim().isNotEmpty)
+                    DetailRow('Notes', flat.notes!.trim()),
+                ]),
+                const SectionTitle('Who lives here'),
+                _ResidentCard(
+                  title: 'Owner',
+                  icon: Icons.home_outlined,
+                  resident: flat.activeOwner,
+                  emptyText: 'No owner allotted',
                 ),
-                const SizedBox(height: 10),
-                if (canAssignOwner)
-                  QuickActionTile(
-                    icon: Icons.person_add_alt_1_outlined,
-                    label: 'Assign owner',
-                    onTap: busy ? () {} : () => _assign('OWNER'),
-                  ),
-                if (canAssignTenant)
-                  QuickActionTile(
-                    icon: Icons.group_add_outlined,
-                    label: 'Assign tenant',
-                    onTap: busy ? () {} : () => _assign('TENANT'),
-                  ),
-                if (canEndTenant)
-                  QuickActionTile(
-                    icon: Icons.person_remove_outlined,
-                    label: 'End tenant occupancy',
-                    onTap: busy ? () {} : () => _end(owner: false),
-                  ),
-                if (canEndOwner)
-                  QuickActionTile(
-                    icon: Icons.home_work_outlined,
-                    label: 'End owner occupancy',
-                    onTap: busy ? () {} : () => _end(owner: true),
-                  ),
-                if (!canAssignOwner &&
-                    !canAssignTenant &&
-                    !canEndTenant &&
-                    !canEndOwner)
-                  const EmptyState('No occupancy actions available for this state'),
-                const SizedBox(height: 18),
-                const SectionTitle('Occupancy history'),
-                const SizedBox(height: 8),
-                if (history.items.isEmpty)
-                  const EmptyState('No occupancy history yet')
+                _ResidentCard(
+                  title: 'Tenant',
+                  icon: Icons.person_pin_circle_outlined,
+                  resident: flat.activeTenant,
+                  emptyText: status == 'OWNER_OCCUPIED'
+                      ? 'Owner occupied · no tenant'
+                      : 'No active tenant',
+                ),
+                const SizedBox(height: 12),
+                const SectionTitle('Next occupancy step',
+                    subtitle:
+                        'Vacant → owner → tenant → owner → vacant'),
+                if (!hasActions)
+                  const EmptyState(
+                      'No occupancy change is available in this state',
+                      icon: Icons.lock_clock_outlined,
+                      compact: true)
                 else
-                  ...history.items.map((item) => AppCard(
-                        child: ListTile(
-                          title: Text(
-                            '${item.role} · ${item.status}',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, color: C.navy),
-                          ),
-                          subtitle: Text(
-                            '${item.userName ?? item.userId}'
-                            '${item.userEmail == null ? '' : ' · ${item.userEmail}'}\n'
-                            '${occupancyDateLabel(item.startsAt)}'
-                            '${item.endsAt == null ? '' : ' → ${occupancyDateLabel(item.endsAt!)}'}'
-                            '${item.endReason == null ? '' : '\n${item.endReason}'}',
-                            style: const TextStyle(
-                                color: C.muted, fontSize: 12, height: 1.35),
-                          ),
-                          isThreeLine: true,
-                        ),
-                      )),
+                  ActionRail(
+                    busy: busy,
+                    primary: canAssignOwner
+                        ? ToolLink(
+                            icon: Icons.person_add_alt_1_outlined,
+                            label: 'Assign owner',
+                            subtitle: 'Pick an owner account for this flat',
+                            onTap: () => _assign('OWNER'),
+                          )
+                        : canAssignTenant
+                            ? ToolLink(
+                                icon: Icons.group_add_outlined,
+                                label: 'Assign tenant',
+                                subtitle:
+                                    'Residential access moves to the tenant',
+                                onTap: () => _assign('TENANT'),
+                              )
+                            : canEndTenant
+                                ? ToolLink(
+                                    icon: Icons.person_remove_outlined,
+                                    label: 'End tenant occupancy',
+                                    subtitle:
+                                        'Flat returns to owner occupied',
+                                    onTap: () => _end(owner: false),
+                                  )
+                                : canEndOwner
+                                    ? ToolLink(
+                                        icon: Icons.home_work_outlined,
+                                        label: 'End owner occupancy',
+                                        subtitle: 'Flat becomes vacant',
+                                        onTap: () => _end(owner: true),
+                                      )
+                                    : null,
+                  ),
+                const SizedBox(height: 20),
+                const SectionTitle('Occupancy history'),
+                if (history.items.isEmpty)
+                  const EmptyState('No occupancy history yet',
+                      icon: Icons.history_rounded, compact: true)
+                else
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (var i = 0; i < history.items.length; i++) ...[
+                        if (i > 0)
+                          const Divider(height: 1, indent: 56, endIndent: 12),
+                        Builder(builder: (_) {
+                          final item = history.items[i];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AppAvatar(
+                                  icon: item.role == 'OWNER'
+                                      ? Icons.home_outlined
+                                      : Icons.person_pin_circle_outlined,
+                                  color: item.status.toUpperCase() == 'ACTIVE'
+                                      ? C.green
+                                      : C.muted,
+                                  size: 36,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(item.userName ?? item.userId,
+                                          style: T.bodyStrong),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        [
+                                          if (item.userEmail != null)
+                                            item.userEmail!,
+                                          '${occupancyDateLabel(item.startsAt)}${item.endsAt == null ? ' → present' : ' → ${occupancyDateLabel(item.endsAt!)}'}',
+                                          if (item.endReason != null)
+                                            'Reason: ${item.endReason}',
+                                        ].join('\n'),
+                                        style: T.caption,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Wrap(spacing: 6, runSpacing: 4, children: [
+                                        StatusBadge(
+                                            item.role == 'OWNER'
+                                                ? 'Owner'
+                                                : 'Tenant',
+                                            tone: BadgeTone.info),
+                                        StatusBadge(item.status),
+                                      ]),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ]),
+                  ),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  String _parkingLabel(FlatParking p) {
+    if (!p.hasParking) return 'No parking';
+    final slot = p.slotLabel?.trim();
+    return slot == null || slot.isEmpty ? 'Allocated' : 'Slot $slot';
+  }
+}
+
+class _ResidentCard extends StatelessWidget {
+  const _ResidentCard({
+    required this.title,
+    required this.icon,
+    required this.resident,
+    required this.emptyText,
+  });
+  final String title;
+  final IconData icon;
+  final ResidentSummary? resident;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = resident;
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(children: [
+        AppAvatar(
+          icon: r == null ? icon : null,
+          text: r == null ? null : initialsOf(r.name),
+          color: r == null ? C.muted : C.blue,
+          size: 44,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title.toUpperCase(), style: T.label),
+            const SizedBox(height: 3),
+            Text(r == null ? emptyText : r.name,
+                style: r == null
+                    ? T.secondary
+                    : T.bodyStrong.copyWith(fontSize: 15)),
+            if (r != null && r.displayContact.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(r.displayContact, style: T.secondary),
+            ],
+          ]),
+        ),
+      ]),
     );
   }
 }
@@ -4201,7 +4725,7 @@ class ProfilePage extends StatelessWidget {
         CardTile(
           child: ListTile(
             leading: const Icon(Icons.email_outlined, color: C.blue),
-            title: const Text('Email'),
+            title: const Text('Email (notifications)'),
             subtitle: Text(() {
               final email = flat.data['email'] as String?;
               return (email != null && email.isNotEmpty)
@@ -4281,112 +4805,126 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      ListView(padding: const EdgeInsets.all(20), children: [
-        const SectionTitle('Society (live)'),
-        const SizedBox(height: 8),
-        const InfoNote(
-          'Late interest for live bills is calculated by the server. '
-          'On-device demo interest settings are not part of the live admin experience.',
-        ),
-        const SizedBox(height: 12),
-        FutureBuilder<SocietyConfiguration>(
-          future: _configFuture,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting &&
-                !snap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: LoadingView(label: 'Loading society…'),
-              );
-            }
-            if (snap.hasError) {
-              return LoadFailure(
-                error: snap.error!,
-                title: 'Could not load society',
-                onRetry: () => setState(
-                    () => _configFuture = _loadConfig(force: true)),
-              );
-            }
-            final config = snap.data!;
-            final society = config.society;
-            final totals = config.totals;
-            final address = [
-              if ((society.address ?? '').trim().isNotEmpty) society.address,
-              if ((society.city ?? '').trim().isNotEmpty) society.city,
-              if ((society.state ?? '').trim().isNotEmpty) society.state,
-              if ((society.pincode ?? '').trim().isNotEmpty) society.pincode,
-            ].whereType<String>().join(', ');
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                CardTile(
-                    child: ListTile(
-                        leading: const Padding(
-                            padding: EdgeInsets.all(2),
-                            child: BrandLogo(size: 28, radius: 8)),
-                        title: const Text('Society name'),
-                        subtitle: Text(society.name))),
-                CardTile(
-                    child: ListTile(
-                        leading: const Icon(Icons.tag, color: C.blue),
-                        title: const Text('Society code'),
-                        subtitle: Text(society.code))),
-                CardTile(
-                    child: ListTile(
-                        leading:
-                            const Icon(Icons.location_on_outlined, color: C.blue),
-                        title: const Text('Address'),
-                        subtitle: Text(address.isEmpty ? '—' : address))),
-                CardTile(
-                    child: ListTile(
-                        leading: const Icon(Icons.email_outlined, color: C.blue),
-                        title: const Text('Contact email'),
-                        subtitle: Text(society.contactEmail ?? '—'))),
-                CardTile(
-                    child: ListTile(
-                        leading: const Icon(Icons.phone_outlined, color: C.blue),
-                        title: const Text('Contact phone'),
-                        subtitle: Text(society.contactPhone ?? '—'))),
-                CardTile(
-                    child: ListTile(
-                        leading: const Icon(Icons.schedule, color: C.blue),
-                        title: const Text('Timezone / currency'),
-                        subtitle: Text(
-                            '${society.timezone} · ${society.currency}'))),
-                CardTile(
-                    child: ListTile(
-                        leading: const Icon(Icons.event, color: C.blue),
-                        title: const Text('Maintenance day of month'),
-                        subtitle: Text('${society.maintenanceDayOfMonth}'))),
-                CardTile(
-                    child: ListTile(
-                        leading:
-                            const Icon(Icons.apartment_outlined, color: C.blue),
-                        title: const Text('Inventory'),
-                        subtitle: Text(
-                            '${totals.wings} wings · ${totals.flats} flats · ${money(totals.monthlyMaintenanceTotal)}/mo'))),
-                const SizedBox(height: 8),
-                const SectionTitle('Wings'),
-                const SizedBox(height: 8),
-                if (config.wings.isEmpty)
-                  const EmptyState('No wings yet')
-                else
-                  for (final wing in config.wings)
-                    CardTile(
-                      child: ListTile(
-                        title: Text('${wing.code} · ${wing.name}',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Text(
-                            '${wing.flatCount} flats · ${wing.floors} floors · ${wing.flatsPerFloor}/floor'),
-                      ),
-                    ),
-              ],
+  Widget build(BuildContext context) => FutureBuilder<SocietyConfiguration>(
+        future: _configFuture,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
+            return const SkeletonList(items: 5, showHeader: true);
+          }
+          if (snap.hasError) {
+            return LoadFailure(
+              error: snap.error!,
+              title: 'Could not load society',
+              onRetry: () =>
+                  setState(() => _configFuture = _loadConfig(force: true)),
             );
-          },
-        ),
-      ]);
+          }
+          final config = snap.data!;
+          final society = config.society;
+          final totals = config.totals;
+          final address = [
+            if ((society.address ?? '').trim().isNotEmpty) society.address,
+            if ((society.city ?? '').trim().isNotEmpty) society.city,
+            if ((society.state ?? '').trim().isNotEmpty) society.state,
+            if ((society.pincode ?? '').trim().isNotEmpty) society.pincode,
+          ].whereType<String>().join(', ');
+          return RefreshIndicator(
+            color: C.blue,
+            onRefresh: () async {
+              setState(() => _configFuture = _loadConfig(force: true));
+              await _configFuture;
+            },
+            child: ListView(padding: Sp.pagePadding, children: [
+              DetailHero(
+                title: society.name,
+                subtitle: 'Code ${society.code}',
+                leading: const BrandLogo(size: 52, radius: 12),
+                badges: [
+                  StatusBadge('${totals.wings} wings', tone: BadgeTone.info),
+                  StatusBadge('${totals.flats} flats', tone: BadgeTone.neutral),
+                ],
+              ),
+              const SizedBox(height: 16),
+              MetricBand(items: [
+                MetricItem('Flats', '${totals.flats}'),
+                MetricItem('Wings', '${totals.wings}'),
+                MetricItem(
+                    'Monthly maintenance', money(totals.monthlyMaintenanceTotal)),
+              ]),
+              const SizedBox(height: 16),
+              SettingsGroup(title: 'Society', children: [
+                SettingsRow(
+                    icon: Icons.location_on_outlined,
+                    title: 'Address',
+                    value: address.isEmpty ? '—' : address),
+                SettingsRow(
+                    icon: Icons.email_outlined,
+                    title: 'Contact email',
+                    value: society.contactEmail ?? '—'),
+                SettingsRow(
+                    icon: Icons.phone_outlined,
+                    title: 'Contact phone',
+                    value: society.contactPhone ?? '—'),
+              ]),
+              SettingsGroup(title: 'Billing policy', children: [
+                SettingsRow(
+                    icon: Icons.event_outlined,
+                    title: 'Maintenance day of month',
+                    value: '${society.maintenanceDayOfMonth}'),
+                SettingsRow(
+                    icon: Icons.schedule_outlined,
+                    title: 'Timezone · currency',
+                    value: '${society.timezone} · ${society.currency}'),
+              ]),
+              const InfoNote(
+                'Late interest for live bills is calculated by the server. '
+                'This screen does not change the rate.',
+              ),
+              const SizedBox(height: 20),
+              const SectionTitle('Wings',
+                  subtitle: 'Structure is managed on the server'),
+              if (config.wings.isEmpty)
+                const EmptyState('No wings yet',
+                    icon: Icons.domain_outlined, compact: true)
+              else
+                AppCard(
+                  margin: EdgeInsets.zero,
+                  child: Column(children: [
+                    for (var i = 0; i < config.wings.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, indent: 56, endIndent: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                        child: Row(children: [
+                          AppAvatar(
+                              text: config.wings[i].code,
+                              square: true,
+                              size: 36),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(config.wings[i].name, style: T.bodyStrong),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${config.wings[i].flatCount} flats · ${config.wings[i].floors} floors · ${config.wings[i].flatsPerFloor} per floor',
+                                  style: T.caption,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ],
+                  ]),
+                ),
+            ]),
+          );
+        },
+      );
 }
 
 void showBillDetails(BuildContext context, dynamic row,

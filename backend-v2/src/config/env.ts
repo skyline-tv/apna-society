@@ -11,6 +11,8 @@ const boolFromEnv = z
 const envSchema = z
   .object({
     PORT: z.coerce.number().int().positive().default(4000),
+    /** Bind address. Default `0.0.0.0` so LAN devices can reach the API. */
+    HOST: z.string().min(1).default('0.0.0.0'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
@@ -19,6 +21,20 @@ const envSchema = z
     REFRESH_TOKEN_EXPIRY: z.string().default('30d'),
     RESEND_API_KEY: z.string().optional().default(''),
     EMAIL_FROM: z.string().default('Apna Society <noreply@example.com>'),
+    // Mobile SMS OTP (MSG91). Keep SMS_OTP_ENABLED=false until DLT/template/sender are approved.
+    SMS_PROVIDER: z.enum(['msg91', 'memory']).default('msg91'),
+    SMS_OTP_ENABLED: boolFromEnv,
+    /**
+     * Dev-only: skip MSG91 and accept fixed OTP `123456`.
+     * Forbidden in production.
+     */
+    SMS_OTP_DEV_BYPASS: boolFromEnv,
+    MSG91_AUTH_KEY: z.string().optional().default(''),
+    MSG91_TEMPLATE_ID: z.string().optional().default(''),
+    MSG91_SENDER_ID: z.string().optional().default(''),
+    MSG91_BASE_URL: z.string().optional().default('https://control.msg91.com/api/v5'),
+    SMS_OTP_EXPIRY_MINUTES: z.coerce.number().int().min(1).max(60).default(5),
+    SMS_OTP_LENGTH: z.coerce.number().int().min(4).max(9).default(6),
     CORS_ORIGINS: z.string().default('http://localhost:3000'),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
@@ -120,9 +136,41 @@ const envSchema = z
       if (!data.RESEND_API_KEY || data.RESEND_API_KEY.length < 10) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'RESEND_API_KEY is required in production (email-only OTP delivery)',
+          message: 'RESEND_API_KEY is required in production (notification email delivery)',
           path: ['RESEND_API_KEY'],
         });
+      }
+      if (data.SMS_OTP_DEV_BYPASS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'SMS_OTP_DEV_BYPASS is not allowed in production',
+          path: ['SMS_OTP_DEV_BYPASS'],
+        });
+      }
+      if (data.SMS_OTP_ENABLED && !data.SMS_OTP_DEV_BYPASS) {
+        if (data.SMS_PROVIDER === 'msg91') {
+          if (!data.MSG91_AUTH_KEY || data.MSG91_AUTH_KEY.length < 8) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'MSG91_AUTH_KEY is required when SMS_OTP_ENABLED=true',
+              path: ['MSG91_AUTH_KEY'],
+            });
+          }
+          if (!data.MSG91_TEMPLATE_ID) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'MSG91_TEMPLATE_ID is required when SMS_OTP_ENABLED=true',
+              path: ['MSG91_TEMPLATE_ID'],
+            });
+          }
+        }
+        if (data.SMS_PROVIDER === 'memory') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'memory SMS provider is not allowed in production',
+            path: ['SMS_PROVIDER'],
+          });
+        }
       }
       if (!data.MONGODB_URI.includes('replicaSet=') && !data.MONGODB_URI.includes('mongodb+srv://')) {
         ctx.addIssue({

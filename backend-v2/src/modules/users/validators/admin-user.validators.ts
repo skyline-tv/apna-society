@@ -54,6 +54,13 @@ export const deactivateUserSchema = z
   })
   .strict();
 
+export const setUserMobileSchema = z
+  .object({
+    mobile: z.string().trim().min(8).max(20),
+  })
+  .strict();
+
 export type ProvisionUserInput = z.infer<typeof provisionUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+export type SetUserMobileInput = z.infer<typeof setUserMobileSchema>;

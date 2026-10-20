@@ -1,31 +1,31 @@
 import { randomUUID } from 'crypto';
 import {
-  OTP_LENGTH,
   OTP_MAX_ATTEMPTS,
   OTP_MAX_REQUESTS_PER_WINDOW,
   OTP_REQUEST_WINDOW_MS,
   OTP_RESEND_COOLDOWN_MS,
-  OTP_TTL_MS,
 } from '../../../config/constants';
 import { getEnv } from '../../../config/env';
 import {
+  badRequest,
   forbidden,
   tooManyRequests,
   unauthorized,
 } from '../../../shared/errors/app-error';
-import { generateOtp, generateSecureToken, hashToken, normalizeEmail, safeEqualHex } from '../../../utils/crypto';
+import { generateSecureToken, hashToken } from '../../../utils/crypto';
+import { normalizeMobileE164 } from '../../../utils/phone';
 import { getLogger } from '../../../utils/logger';
 import { MembershipModel } from '../../users/models/membership.model';
 import { UserModel } from '../../users/models/user.model';
 import { OtpChallengeModel } from '../models/otp-challenge.model';
 import { RefreshSessionModel } from '../models/refresh-session.model';
+import { getSmsProvider } from '../providers/sms-provider.factory';
 import type { AuthProfile, RequestMeta, TokenPair } from '../types/auth.types';
 import { writeAuditLog } from './audit.service';
-import { getEmailService } from './email.service';
 import { buildTokenPair, parseDurationToMs } from './token.service';
 
 const GENERIC_OTP_MESSAGE =
-  'If an account exists for this email, a one-time code has been sent.';
+  'If an account exists for this mobile number, a one-time code has been sent.';
 
 async function getSocietyIdsForUser(userId: string): Promise<string[]> {
   const memberships = await MembershipModel.find({
@@ -42,26 +42,43 @@ async function getSocietyIdsForUser(userId: string): Promise<string[]> {
   return [...new Set(fromMemberships)];
 }
 
-export async function requestOtp(emailRaw: string, meta: RequestMeta = {}): Promise<{ message: string }> {
-  const email = normalizeEmail(emailRaw);
+export async function requestOtp(
+  mobileRaw: string,
+  meta: RequestMeta = {},
+): Promise<{ message: string; debugOtp?: string }> {
   const logger = getLogger();
+  const env = getEnv();
   const now = new Date();
 
-  const user = await UserModel.findOne({ email }).lean();
+  let mobileE164: string;
+  try {
+    mobileE164 = normalizeMobileE164(mobileRaw);
+  } catch {
+    // Same generic message — do not reveal validation details to enumerators.
+    return { message: GENERIC_OTP_MESSAGE };
+  }
 
-  // Prevent email enumeration: always return the same message.
-  if (!user || !user.isActive || !user.canLogin) {
-    logger.info({ emailPresent: Boolean(user) }, 'OTP request for non-loginable account');
+  const user = await UserModel.findOne({ mobileE164 }).lean();
+
+  // Prevent mobile enumeration: always return the same message.
+  if (!user || !user.isActive || !user.canLogin || !user.mobileVerifiedAt) {
+    logger.info(
+      {
+        mobilePresent: Boolean(user),
+        verified: Boolean(user?.mobileVerifiedAt),
+      },
+      'OTP request for non-loginable mobile',
+    );
     return { message: GENERIC_OTP_MESSAGE };
   }
 
   const existing = await OtpChallengeModel.findOne({
-    email,
+    mobileE164,
     consumedAt: { $exists: false },
     expiresAt: { $gt: now },
   })
     .sort({ createdAt: -1 })
-    .select('+otpHash');
+    .select('lastSentAt requestCount requestWindowStartedAt');
 
   if (existing) {
     const sinceLastSend = now.getTime() - existing.lastSentAt.getTime();
@@ -75,40 +92,56 @@ export async function requestOtp(emailRaw: string, meta: RequestMeta = {}): Prom
     }
   }
 
-  const otp = generateOtp(OTP_LENGTH);
-  const otpHash = hashToken(otp);
-  const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
+  const expiryMinutes = env.SMS_OTP_EXPIRY_MINUTES;
+  const otpLength = env.SMS_OTP_LENGTH;
+  const expiresAt = new Date(now.getTime() + expiryMinutes * 60_000);
 
+  let requestCount = 1;
+  let requestWindowStartedAt = now;
   if (existing) {
     const windowAge = now.getTime() - existing.requestWindowStartedAt.getTime();
     const resetWindow = windowAge > OTP_REQUEST_WINDOW_MS;
-    existing.otpHash = otpHash;
-    existing.expiresAt = expiresAt;
-    existing.attemptCount = 0;
-    existing.maxAttempts = OTP_MAX_ATTEMPTS;
-    existing.lastSentAt = now;
-    existing.requestCount = resetWindow ? 1 : existing.requestCount + 1;
-    existing.requestWindowStartedAt = resetWindow ? now : existing.requestWindowStartedAt;
-    existing.ipAddress = meta.ipAddress;
-    existing.userAgent = meta.userAgent;
-    await existing.save();
-  } else {
-    await OtpChallengeModel.create({
-      email,
-      userId: user._id,
-      otpHash,
-      expiresAt,
-      attemptCount: 0,
-      maxAttempts: OTP_MAX_ATTEMPTS,
-      lastSentAt: now,
-      requestCount: 1,
-      requestWindowStartedAt: now,
-      ipAddress: meta.ipAddress,
-      userAgent: meta.userAgent,
-    });
+    requestCount = resetWindow ? 1 : existing.requestCount + 1;
+    requestWindowStartedAt = resetWindow ? now : existing.requestWindowStartedAt;
   }
 
-  await getEmailService().sendOtpEmail(email, otp);
+  await OtpChallengeModel.deleteMany({ mobileE164, consumedAt: { $exists: false } });
+
+  const sms = getSmsProvider();
+  let providerRequestId: string | undefined;
+  let debugOtp: string | undefined;
+  try {
+    const sent = await sms.sendOtp({
+      mobileE164,
+      otpLength,
+      expiryMinutes,
+      userIp: meta.ipAddress,
+    });
+    providerRequestId = sent.requestId;
+    // Dev helpers only — never returned for MSG91 / production.
+    if (env.SMS_OTP_DEV_BYPASS && env.NODE_ENV !== 'production' && sent.debugOtp) {
+      debugOtp = sent.debugOtp;
+    } else if (env.NODE_ENV === 'development' && sms.name === 'memory' && sent.debugOtp) {
+      debugOtp = sent.debugOtp;
+    }
+  } catch (error) {
+    logger.error({ err: error, provider: sms.name }, 'SMS OTP send failed');
+    throw error;
+  }
+
+  await OtpChallengeModel.create({
+    mobileE164,
+    userId: user._id,
+    providerRequestId,
+    expiresAt,
+    attemptCount: 0,
+    maxAttempts: OTP_MAX_ATTEMPTS,
+    lastSentAt: now,
+    requestCount,
+    requestWindowStartedAt,
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+  });
 
   await writeAuditLog({
     action: 'AUTH_OTP_REQUESTED',
@@ -116,33 +149,36 @@ export async function requestOtp(emailRaw: string, meta: RequestMeta = {}): Prom
     societyId: user.primarySocietyId,
     targetType: 'User',
     targetId: String(user._id),
-    metadata: { email },
+    metadata: { mobileSuffix: mobileE164.slice(-4), provider: sms.name },
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
   });
 
-  return { message: GENERIC_OTP_MESSAGE };
+  return { message: GENERIC_OTP_MESSAGE, ...(debugOtp ? { debugOtp } : {}) };
 }
 
 export async function verifyOtp(
-  emailRaw: string,
+  mobileRaw: string,
   otp: string,
   meta: RequestMeta = {},
 ): Promise<TokenPair> {
-  const email = normalizeEmail(emailRaw);
   const now = new Date();
+  const mobileE164 = normalizeMobileE164(mobileRaw);
+  const normalizedOtp = otp.normalize('NFKC').replace(/\D/g, '');
+  const env = getEnv();
+  if (!new RegExp(`^\\d{${env.SMS_OTP_LENGTH}}$`).test(normalizedOtp)) {
+    throw unauthorized('Invalid or expired code', 'INVALID_OTP');
+  }
 
   const challenge = await OtpChallengeModel.findOne({
-    email,
+    mobileE164,
     consumedAt: { $exists: false },
-  })
-    .sort({ createdAt: -1 })
-    .select('+otpHash');
+  }).sort({ createdAt: -1 });
 
   if (!challenge || challenge.expiresAt.getTime() <= now.getTime()) {
     await writeAuditLog({
       action: 'AUTH_OTP_FAILED',
-      metadata: { email, reason: 'expired_or_missing' },
+      metadata: { mobileSuffix: mobileE164.slice(-4), reason: 'expired_or_missing' },
       ipAddress: meta.ipAddress,
       userAgent: meta.userAgent,
     });
@@ -153,21 +189,28 @@ export async function verifyOtp(
     throw tooManyRequests('Too many invalid attempts. Request a new code.', 'OTP_ATTEMPTS_EXCEEDED');
   }
 
-  const candidateHash = hashToken(otp.trim());
-  const matches = safeEqualHex(candidateHash, challenge.otpHash);
+  const sms = getSmsProvider();
+  const verified = await sms.verifyOtp({ mobileE164, otp: normalizedOtp });
 
-  if (!matches) {
+  if (!verified.verified) {
     challenge.attemptCount += 1;
     await challenge.save();
     await writeAuditLog({
       action: 'AUTH_OTP_FAILED',
       actorUserId: challenge.userId,
-      metadata: { email, attempts: challenge.attemptCount },
+      metadata: {
+        mobileSuffix: mobileE164.slice(-4),
+        attempts: challenge.attemptCount,
+        reason: verified.reason ?? 'INVALID',
+      },
       ipAddress: meta.ipAddress,
       userAgent: meta.userAgent,
     });
     if (challenge.attemptCount >= challenge.maxAttempts) {
       throw tooManyRequests('Too many invalid attempts. Request a new code.', 'OTP_ATTEMPTS_EXCEEDED');
+    }
+    if (verified.reason === 'PROVIDER_ERROR') {
+      throw badRequest('Unable to verify OTP right now. Try again later.', 'SMS_VERIFY_FAILED');
     }
     throw unauthorized('Invalid or expired code', 'INVALID_OTP');
   }
@@ -176,7 +219,13 @@ export async function verifyOtp(
   await challenge.save();
 
   const user = await UserModel.findById(challenge.userId);
-  if (!user || !user.isActive || !user.canLogin) {
+  if (
+    !user ||
+    !user.isActive ||
+    !user.canLogin ||
+    !user.mobileVerifiedAt ||
+    user.mobileE164 !== mobileE164
+  ) {
     throw unauthorized('Account is not allowed to log in', 'LOGIN_DISABLED');
   }
 
@@ -191,6 +240,7 @@ export async function verifyOtp(
     societyId: user.primarySocietyId,
     targetType: 'User',
     targetId: String(user._id),
+    metadata: { mobileSuffix: mobileE164.slice(-4), provider: sms.name },
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
   });
@@ -346,6 +396,8 @@ export async function getProfile(userId: string): Promise<AuthProfile> {
     email: user.email,
     name: user.name,
     phone: user.phone,
+    mobileE164: user.mobileE164,
+    mobileVerified: Boolean(user.mobileVerifiedAt),
     roles: user.roles,
     societyIds,
     primarySocietyId: user.primarySocietyId ? String(user.primarySocietyId) : undefined,

@@ -9,6 +9,66 @@ import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 
+String _userPhone(AdminUser user) {
+  if (user.mobileE164 != null) return '+${user.mobileE164}';
+  final p = (user.phone ?? '').trim();
+  return p.isEmpty ? 'No phone' : p;
+}
+
+String _roleLabel(String role) {
+  switch (role.toUpperCase()) {
+    case 'OWNER':
+      return 'Owner';
+    case 'TENANT':
+      return 'Tenant';
+    case 'ADMIN':
+      return 'Admin';
+    case 'GUARD':
+      return 'Guard';
+    default:
+      return humanizeStatus(role);
+  }
+}
+
+/// Shared resident row for lists and pickers.
+class _ResidentRow extends StatelessWidget {
+  const _ResidentRow({required this.user, required this.onTap});
+  final AdminUser user;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final roles = user.societyRoles.isEmpty ? user.roles : user.societyRoles;
+    return ListRow(
+      onTap: onTap,
+      leading: AppAvatar(
+        text: initialsOf(user.name),
+        color: user.isActive ? C.blue : C.muted,
+        size: 42,
+      ),
+      title: user.name.isEmpty ? user.email : user.name,
+      subtitle: '${_userPhone(user)}\n${user.email}',
+      badges: [
+        for (final r in roles) StatusBadge(_roleLabel(r), tone: BadgeTone.info),
+        if (!user.isActive) const StatusBadge('Inactive'),
+        if (user.mobileE164 != null && !user.mobileVerified)
+          const StatusBadge('Mobile unverified', tone: BadgeTone.warning),
+      ],
+      showChevron: true,
+    );
+  }
+}
+
+Widget _emptyScrollable(Widget child, Future<void> Function() onRefresh) =>
+    RefreshIndicator(
+      color: C.blue,
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [const SizedBox(height: 60), child],
+      ),
+    );
+
 /// Admin resident list with Owner / Tenant filters.
 class AdminResidentsPage extends StatefulWidget {
   const AdminResidentsPage({super.key});
@@ -29,11 +89,13 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
   late Future<_ResidentsBundle> _ownersFuture = _load(role: 'OWNER', page: 1);
   late Future<_ResidentsBundle> _tenantsFuture = _load(role: 'TENANT', page: 1);
   final _searchDebounce = Debouncer();
+  final _searchCtrl = TextEditingController();
 
   @override
   void dispose() {
     _tabs.dispose();
     _searchDebounce.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -62,11 +124,14 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
 
   void reload() {
     setState(() {
-      _ownersFuture =
-          _load(role: 'OWNER', page: ownersPage, force: true);
-      _tenantsFuture =
-          _load(role: 'TENANT', page: tenantsPage, force: true);
+      _ownersFuture = _load(role: 'OWNER', page: ownersPage, force: true);
+      _tenantsFuture = _load(role: 'TENANT', page: tenantsPage, force: true);
     });
+  }
+
+  Future<void> _refreshAll() async {
+    reload();
+    await Future.wait([_ownersFuture, _tenantsFuture]);
   }
 
   Future<void> _openProvision(String role) async {
@@ -91,108 +156,95 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (v) {
-                    query = v;
-                    _searchDebounce.run(() {
-                      ownersPage = 1;
-                      tenantsPage = 1;
-                      reload();
-                    });
-                  },
-                  decoration: const InputDecoration(
-                    hintText: 'Search name, email or phone',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              PopupMenuButton<String>(
-                tooltip: 'Provision resident',
-                onSelected: _openProvision,
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'OWNER', child: Text('Provision owner')),
-                  PopupMenuItem(value: 'TENANT', child: Text('Provision tenant')),
-                ],
-                icon: const Icon(Icons.person_add_alt_1, color: C.blue),
-              ),
-            ],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'provision-resident',
+        onPressed: () => _openProvision(_tabs.index == 0 ? 'OWNER' : 'TENANT'),
+        icon: const Icon(Icons.person_add_alt_1_outlined),
+        label: Text(_tabs.index == 0 ? 'Add owner' : 'Add tenant'),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            child: SearchField(
+              controller: _searchCtrl,
+              hint: 'Search name, email or phone',
+              onChanged: (v) {
+                query = v;
+                _searchDebounce.run(() {
+                  ownersPage = 1;
+                  tenantsPage = 1;
+                  reload();
+                });
+              },
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
+          FilterBar(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             children: [
               for (final f in const [
                 ('all', 'All'),
                 ('active', 'Active'),
                 ('inactive', 'Inactive'),
               ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(f.$2),
-                    selected: statusFilter == f.$1,
-                    onSelected: (_) {
-                      statusFilter = f.$1;
-                      ownersPage = 1;
-                      tenantsPage = 1;
-                      reload();
-                    },
-                  ),
+                AppFilterChip(
+                  label: f.$2,
+                  selected: statusFilter == f.$1,
+                  onSelected: () {
+                    statusFilter = f.$1;
+                    ownersPage = 1;
+                    tenantsPage = 1;
+                    reload();
+                  },
                 ),
             ],
           ),
-        ),
-        TabBar(
-          controller: _tabs,
-          labelColor: C.blue,
-          unselectedLabelColor: C.muted,
-          indicatorColor: C.blue,
-          tabs: const [
-            Tab(text: 'Owners'),
-            Tab(text: 'Tenants'),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabs,
-            children: [
-              _list(
-                future: _ownersFuture,
-                emptyLabel: 'No owners found',
-                onPage: (p) {
-                  ownersPage = p;
-                  setState(() {
-                    _ownersFuture =
-                        _load(role: 'OWNER', page: p, force: true);
-                  });
-                },
-                currentPage: ownersPage,
-              ),
-              _list(
-                future: _tenantsFuture,
-                emptyLabel: 'No tenants found',
-                onPage: (p) {
-                  tenantsPage = p;
-                  setState(() {
-                    _tenantsFuture =
-                        _load(role: 'TENANT', page: p, force: true);
-                  });
-                },
-                currentPage: tenantsPage,
-              ),
-            ],
+          Material(
+            color: C.surface,
+            child: TabBar(
+              controller: _tabs,
+              onTap: (_) => setState(() {}),
+              tabs: const [
+                Tab(text: 'Owners'),
+                Tab(text: 'Tenants'),
+              ],
+            ),
           ),
-        ),
-      ],
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _list(
+                  future: _ownersFuture,
+                  emptyLabel: 'No owners found',
+                  onPage: (p) {
+                    ownersPage = p;
+                    setState(() {
+                      _ownersFuture =
+                          _load(role: 'OWNER', page: p, force: true);
+                    });
+                  },
+                  currentPage: ownersPage,
+                ),
+                _list(
+                  future: _tenantsFuture,
+                  emptyLabel: 'No tenants found',
+                  onPage: (p) {
+                    tenantsPage = p;
+                    setState(() {
+                      _tenantsFuture =
+                          _load(role: 'TENANT', page: p, force: true);
+                    });
+                  },
+                  currentPage: tenantsPage,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -206,7 +258,7 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
       future: future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const LoadingView(label: 'Loading residents…');
+          return const SkeletonList(items: 6);
         }
         if (snap.hasError) {
           return LoadFailure(
@@ -217,85 +269,50 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
         }
         final page = snap.data!.page;
         final rows = page.items;
-        if (rows.isEmpty) return EmptyState(emptyLabel);
+        if (rows.isEmpty) {
+          return _emptyScrollable(
+            EmptyState(
+              emptyLabel,
+              icon: Icons.people_outline_rounded,
+              actionLabel: query.isNotEmpty || statusFilter != 'all'
+                  ? 'Clear filters'
+                  : null,
+              onAction: () {
+                _searchCtrl.clear();
+                query = '';
+                statusFilter = 'all';
+                ownersPage = 1;
+                tenantsPage = 1;
+                reload();
+              },
+            ),
+            _refreshAll,
+          );
+        }
         return RefreshIndicator(
           color: C.blue,
-          onRefresh: () async => reload(),
+          onRefresh: _refreshAll,
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-            itemCount: rows.length + 1,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+            itemCount: rows.length + 2,
             itemBuilder: (context, i) {
-              if (i == rows.length) {
-                return _pageBar(
+              if (i == 0) {
+                return ResultCount(page.pagination.total, 'resident');
+              }
+              if (i == rows.length + 1) {
+                return PaginationBar(
                   page: page.pagination.page,
                   totalPages: page.pagination.totalPages,
-                  onPage: onPage,
-                  currentPage: currentPage,
+                  onPrevious: () => onPage(currentPage - 1),
+                  onNext: () => onPage(currentPage + 1),
                 );
               }
-              final user = rows[i];
-              return AppCard(
-                onTap: () => _openDetail(user),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: user.isActive ? C.chip : const Color(0xFFF0F0F0),
-                    child: Text(
-                      user.name.isEmpty ? '?' : user.name[0].toUpperCase(),
-                      style: TextStyle(
-                        color: user.isActive ? C.blue : C.muted,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    user.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, color: C.navy),
-                  ),
-                  subtitle: Text(
-                    '${user.email}\n'
-                    '${(user.phone ?? '').isEmpty ? 'No phone' : user.phone}'
-                    ' · ${(user.societyRoles.isEmpty ? user.roles : user.societyRoles).join(', ')}',
-                    style: const TextStyle(
-                        color: C.muted, fontSize: 12, height: 1.35),
-                  ),
-                  isThreeLine: true,
-                  trailing: StatusBadge(user.isActive ? 'active' : 'inactive'),
-                ),
-              );
+              final user = rows[i - 1];
+              return _ResidentRow(user: user, onTap: () => _openDetail(user));
             },
           ),
         );
       },
-    );
-  }
-
-  Widget _pageBar({
-    required int page,
-    required int totalPages,
-    required ValueChanged<int> onPage,
-    required int currentPage,
-  }) {
-    if (totalPages <= 1) return const SizedBox(height: 8);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton(
-            onPressed: currentPage <= 1 ? null : () => onPage(currentPage - 1),
-            child: const Text('Previous'),
-          ),
-          Text('Page $page of $totalPages',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: C.navy, fontSize: 12)),
-          TextButton(
-            onPressed:
-                currentPage >= totalPages ? null : () => onPage(currentPage + 1),
-            child: const Text('Next'),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -315,13 +332,15 @@ class AdminProvisionResidentPage extends StatefulWidget {
       _AdminProvisionResidentPageState();
 }
 
-class _AdminProvisionResidentPageState extends State<AdminProvisionResidentPage> {
+class _AdminProvisionResidentPageState
+    extends State<AdminProvisionResidentPage> {
   final _formKey = GlobalKey<FormState>();
   final name = TextEditingController();
   final email = TextEditingController();
   final phone = TextEditingController();
   late String role = widget.initialRole;
   bool saving = false;
+  bool reviewing = false;
   String? formError;
 
   @override
@@ -332,9 +351,18 @@ class _AdminProvisionResidentPageState extends State<AdminProvisionResidentPage>
     super.dispose();
   }
 
-  Future<void> save() async {
+  String get _roleLabel => role == 'OWNER' ? 'Owner' : 'Tenant';
+
+  Future<void> _continue() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => formError = null);
     if (!_formKey.currentState!.validate()) return;
+    setState(() => reviewing = true);
+  }
+
+  Future<void> save() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => formError = null);
     final session = authSession;
     if (session == null) {
       setState(() => formError = 'Not signed in.');
@@ -351,16 +379,18 @@ class _AdminProvisionResidentPageState extends State<AdminProvisionResidentPage>
       );
       repos.invalidateAfterResidentMutation();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.reusedExisting
-            ? 'Existing account updated and linked to this society.'
-            : 'Resident account created.'),
-        backgroundColor: C.green,
-      ));
+      showSuccessSnack(
+          context,
+          result.reusedExisting
+              ? 'Existing account updated and linked to this society.'
+              : '$_roleLabel account created.');
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => formError = adminApiErrorMessage(e));
+      setState(() {
+        formError = adminApiErrorMessage(e);
+        reviewing = false;
+      });
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -368,87 +398,134 @@ class _AdminProvisionResidentPageState extends State<AdminProvisionResidentPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Provision resident')),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            const InfoNote(
-              'If the email already exists, the backend reuses that user and adds the role/membership. Duplicate User records are not created.',
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              // ignore: deprecated_member_use
-              value: role,
-              decoration: const InputDecoration(labelText: 'Role'),
-              items: const [
-                DropdownMenuItem(value: 'OWNER', child: Text('Owner')),
-                DropdownMenuItem(value: 'TENANT', child: Text('Tenant')),
-              ],
-              onChanged: saving
-                  ? null
-                  : (v) {
-                      if (v != null) setState(() => role = v);
-                    },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: name,
-              enabled: !saving,
-              decoration: const InputDecoration(labelText: 'Full name'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Name is required.' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: email,
-              enabled: !saving,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
-              validator: (v) {
-                final t = v?.trim() ?? '';
-                if (t.isEmpty) return 'Email is required.';
-                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)) {
-                  return 'Enter a valid email.';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: phone,
-              enabled: !saving,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone (optional)',
-                hintText: '+91…',
+    return FormScaffold(
+      title: reviewing ? 'Confirm resident' : 'Add resident',
+      formKey: reviewing ? null : _formKey,
+      actions: reviewing
+          ? [
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () => setState(() {
+                          reviewing = false;
+                          formError = null;
+                        }),
+                child: const Text('Edit'),
               ),
-            ),
-            if (formError != null) ...[
-              const SizedBox(height: 12),
-              Text(formError!,
-                  style: const TextStyle(
-                      color: C.error, fontWeight: FontWeight.w700)),
-            ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: saving ? null : save,
-              child: saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.2, color: Colors.white),
-                    )
-                  : const Text('Provision account'),
-            ),
-          ],
-        ),
+            ]
+          : null,
+      bottom: PrimaryButton(
+        label: reviewing
+            ? 'Create $_roleLabel account'
+            : 'Review & continue',
+        icon: reviewing
+            ? Icons.person_add_alt_1_outlined
+            : Icons.arrow_forward_rounded,
+        busy: saving,
+        onPressed: reviewing ? save : _continue,
       ),
+      children: reviewing ? _reviewBody() : _formBody(),
     );
   }
+
+  List<Widget> _formBody() => [
+        const FormSectionLabel('Role in this society'),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+                value: 'OWNER',
+                label: Text('Owner'),
+                icon: Icon(Icons.home_outlined, size: 18)),
+            ButtonSegment(
+                value: 'TENANT',
+                label: Text('Tenant'),
+                icon: Icon(Icons.person_pin_circle_outlined, size: 18)),
+          ],
+          selected: {role},
+          onSelectionChanged:
+              saving ? null : (s) => setState(() => role = s.first),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          role == 'OWNER'
+              ? 'Owners can hold financial access for a flat.'
+              : 'Tenants receive residential access when assigned to a flat.',
+          style: T.caption,
+        ),
+        const SizedBox(height: 20),
+        const FormSectionLabel('Contact'),
+        TextFormField(
+          controller: name,
+          enabled: !saving,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: 'Full name *',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Name is required.' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: email,
+          enabled: !saving,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Email *',
+            helperText: 'Used for notifications and receipts.',
+            prefixIcon: Icon(Icons.alternate_email_rounded),
+          ),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return 'Email is required.';
+            if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)) {
+              return 'Enter a valid email.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: phone,
+          enabled: !saving,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => saving ? null : _continue(),
+          decoration: const InputDecoration(
+            labelText: 'Phone',
+            hintText: '+91 98765 43210',
+            helperText:
+                'Optional now. Confirm a mobile later for SMS OTP login.',
+            prefixIcon: Icon(Icons.phone_outlined),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const InfoNote(
+          'If this email already exists, the server reuses that account and adds the role. Duplicate accounts are not created.',
+        ),
+        InlineError(formError),
+      ];
+
+  List<Widget> _reviewBody() => [
+        ReviewSummary(
+          title: 'About to create',
+          rows: [
+            ('Role', _roleLabel),
+            ('Name', name.text.trim()),
+            ('Email', email.text.trim()),
+            (
+              'Phone',
+              phone.text.trim().isEmpty ? 'Not set yet' : phone.text.trim()
+            ),
+          ],
+          note:
+              'After creation, assign this person to a flat from Flat details. Mobile OTP login requires a confirmed mobile number.',
+        ),
+        InlineError(formError),
+      ];
 }
 
 class AdminResidentDetailPage extends StatefulWidget {
@@ -462,6 +539,7 @@ class AdminResidentDetailPage extends StatefulWidget {
 
 class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
   late Future<AdminUser> _future = _load();
+  bool _busy = false;
 
   Future<AdminUser> _load({bool force = false}) async {
     final session = authSession;
@@ -471,60 +549,109 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
         .getUser(widget.userId, force: force);
   }
 
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _deactivate(AdminUser user) async {
-    final reason = await _promptText(
-      title: 'Deactivate ${user.name}',
+    final reason = await promptTextDialog(
+      context,
+      title: 'Deactivate ${user.name}?',
+      message:
+          'The resident will no longer be able to sign in. Active flat assignments are not changed here.',
       label: 'Reason (optional)',
+      confirmLabel: 'Deactivate',
+      destructive: true,
+      maxLines: 2,
     );
     if (reason == null || !mounted) return;
     final session = authSession;
     if (session == null) return;
-    try {
-      final repos = ensureLiveRepositories(session.api);
-      await repos.users.deactivateUser(
-        user.id,
-        reason: reason.trim().isEmpty ? null : reason.trim(),
-      );
-      repos.invalidateAfterResidentMutation();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Resident deactivated.'),
-        backgroundColor: C.green,
-      ));
-      setState(() => _future = _load(force: true));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(adminApiErrorMessage(e)),
-        backgroundColor: C.error,
-      ));
-    }
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.users.deactivateUser(
+          user.id,
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+        );
+        repos.invalidateAfterResidentMutation();
+        if (!mounted) return;
+        showAppSnack(context, 'Resident deactivated.', tone: SnackTone.warning);
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, adminApiErrorMessage(e));
+      }
+    });
   }
 
-  Future<String?> _promptText({
-    required String title,
-    required String label,
-  }) async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(labelText: label),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text),
-              child: const Text('Confirm')),
-        ],
-      ),
+  Future<void> _setMobile(AdminUser user) async {
+    final entered = await promptTextDialog(
+      context,
+      title: user.mobileE164 == null
+          ? 'Set mobile number'
+          : 'Update mobile number',
+      message:
+          'Indian mobile number used for SMS OTP login. After saving, confirm ownership to enable login.',
+      label: 'Mobile number',
+      hint: '+91 98765 43210 or 10 digits',
+      initialValue: user.mobileE164 == null ? null : '+${user.mobileE164}',
+      confirmLabel: 'Save',
+      required: true,
+      keyboardType: TextInputType.phone,
     );
-    ctrl.dispose();
-    return result;
+    if (entered == null || entered.trim().isEmpty || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.users.setMobile(user.id, mobile: entered.trim());
+        repos.invalidateAfterResidentMutation();
+        if (!mounted) return;
+        showSuccessSnack(context,
+            'Mobile saved. Confirm ownership before the resident can log in.');
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, adminApiErrorMessage(e));
+      }
+    });
+  }
+
+  Future<void> _confirmMobile(AdminUser user) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Confirm mobile ownership',
+      message: 'Confirm that +${user.mobileE164} belongs to ${user.name} '
+          '(verified in person or by another trusted channel). '
+          'This enables SMS OTP login for this account.',
+      confirmLabel: 'Confirm',
+      icon: Icons.verified_outlined,
+    );
+    if (!ok || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.users.confirmMobile(user.id);
+        repos.invalidateAfterResidentMutation();
+        if (!mounted) return;
+        showSuccessSnack(
+            context, 'Mobile verified. SMS OTP login is now allowed.');
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, adminApiErrorMessage(e));
+      }
+    });
   }
 
   @override
@@ -534,7 +661,8 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
       body: FutureBuilder<AdminUser>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
             return const LoadingView(label: 'Loading resident…');
           }
           if (snap.hasError) {
@@ -545,6 +673,14 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
             );
           }
           final user = snap.data!;
+          final roles =
+              user.societyRoles.isEmpty ? user.roles : user.societyRoles;
+          final canDeactivate = user.isActive &&
+              !user.roles.contains('ADMIN') &&
+              !user.roles.contains('GUARD');
+          final needsMobile = user.mobileE164 == null;
+          final needsConfirm =
+              user.mobileE164 != null && !user.mobileVerified;
           return RefreshIndicator(
             color: C.blue,
             onRefresh: () async {
@@ -552,59 +688,170 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
               await _future;
             },
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: Sp.pagePadding,
               children: [
-                Text(user.name,
-                    style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: C.navy)),
-                const SizedBox(height: 4),
-                Text(user.email, style: const TextStyle(color: C.muted)),
-                const SizedBox(height: 16),
-                AppCard(
-                    child: ListTile(
-                        title: const Text('Phone'),
-                        subtitle: Text(user.phone ?? '—'))),
-                AppCard(
-                    child: ListTile(
-                        title: const Text('Roles'),
-                        subtitle: Text(user.roles.join(', ')))),
-                AppCard(
-                  child: ListTile(
-                    title: const Text('Status'),
-                    trailing:
-                        StatusBadge(user.isActive ? 'active' : 'inactive'),
+                DetailHero(
+                  title: user.name.isEmpty ? user.email : user.name,
+                  subtitle: user.email,
+                  leading: AppAvatar(
+                    text: initialsOf(user.name.isEmpty ? user.email : user.name),
+                    size: Sz.avatarLg,
+                    color: user.isActive ? C.blue : C.muted,
                   ),
-                ),
-                AppCard(
-                  child: ListTile(
-                    title: const Text('Can login'),
-                    trailing: StatusBadge(user.canLogin ? 'yes' : 'no'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const SectionTitle('Active flat occupancy'),
-                const SizedBox(height: 8),
-                if (user.activeOccupancies.isEmpty)
-                  const EmptyState('No active flat assignment')
-                else
-                  for (final occ in user.activeOccupancies)
-                    AppCard(
-                      child: ListTile(
-                        title: Text('${occ.role} · flat ${occ.flatId}'),
-                        subtitle: Text('Since ${occupancyDateLabel(occ.startsAt)}'),
-                      ),
+                  badges: [
+                    for (final r in roles)
+                      StatusBadge(_roleLabel(r), tone: BadgeTone.info),
+                    StatusBadge(user.isActive ? 'Active' : 'Inactive'),
+                    StatusBadge(
+                      user.canLogin ? 'Can log in' : 'Cannot log in',
+                      tone: user.canLogin
+                          ? BadgeTone.success
+                          : BadgeTone.warning,
+                      icon: user.canLogin
+                          ? Icons.lock_open_rounded
+                          : Icons.lock_outline_rounded,
                     ),
-                const SizedBox(height: 18),
-                if (user.isActive &&
-                    !user.roles.contains('ADMIN') &&
-                    !user.roles.contains('GUARD'))
-                  OutlinedButton.icon(
-                    onPressed: () => _deactivate(user),
-                    icon: const Icon(Icons.person_off_outlined),
-                    label: const Text('Deactivate resident'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (needsMobile)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: InfoNote(
+                      'No mobile on file. Set and confirm a number so this resident can sign in with SMS OTP.',
+                      tone: NoteTone.warning,
+                    ),
+                  )
+                else if (needsConfirm)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: InfoNote(
+                      'Mobile is saved but not confirmed. Confirm ownership to enable SMS OTP login.',
+                      tone: NoteTone.warning,
+                    ),
                   ),
+                DetailCard(title: 'Contact', children: [
+                  DetailRow(
+                    'Mobile',
+                    user.mobileE164 == null ? '—' : '+${user.mobileE164}',
+                    valueWidget: user.mobileE164 == null
+                        ? Text(
+                            (user.phone ?? '').trim().isEmpty
+                                ? 'Not set'
+                                : user.phone!,
+                            style: T.bodyStrong)
+                        : Row(children: [
+                            Flexible(
+                              child: Text('+${user.mobileE164}',
+                                  style: T.bodyStrong,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                            const SizedBox(width: 8),
+                            StatusBadge(user.mobileVerified
+                                ? 'Verified'
+                                : 'Unverified'),
+                          ]),
+                  ),
+                  if (user.mobileE164 != null &&
+                      (user.phone ?? '').isNotEmpty &&
+                      user.phone != '+${user.mobileE164}')
+                    DetailRow('Phone', user.phone!),
+                  DetailRow('Email', user.email),
+                ]),
+                DetailCard(title: 'Account', children: [
+                  DetailRow('Roles', roles.map(_roleLabel).join(', ')),
+                  DetailRow('Last login', fmtIsoDateTime(user.lastLoginAt)),
+                  DetailRow('Created', fmtIsoDate(user.createdAt)),
+                ]),
+                const SizedBox(height: 8),
+                const SectionTitle('Active flat occupancy',
+                    subtitle: 'Assign flats from Flat details'),
+                if (user.activeOccupancies.isEmpty)
+                  const EmptyState(
+                    'Not assigned to any flat yet',
+                    icon: Icons.apartment_outlined,
+                    compact: true,
+                  )
+                else
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (var i = 0; i < user.activeOccupancies.length; i++) ...[
+                        if (i > 0)
+                          const Divider(height: 1, indent: 56, endIndent: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          child: Row(children: [
+                            AppAvatar(
+                              icon: user.activeOccupancies[i].role == 'OWNER'
+                                  ? Icons.home_outlined
+                                  : Icons.person_pin_circle_outlined,
+                              square: true,
+                              size: 36,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${_roleLabel(user.activeOccupancies[i].role)} occupancy',
+                                    style: T.bodyStrong,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Since ${occupancyDateLabel(user.activeOccupancies[i].startsAt)}',
+                                    style: T.caption,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            StatusBadge(
+                              _roleLabel(user.activeOccupancies[i].role),
+                              tone: BadgeTone.info,
+                            ),
+                          ]),
+                        ),
+                      ],
+                    ]),
+                  ),
+                const SizedBox(height: 20),
+                const SectionTitle('Manage access'),
+                ActionRail(
+                  busy: _busy,
+                  primary: needsMobile
+                      ? ToolLink(
+                          icon: Icons.phone_android_outlined,
+                          label: 'Set mobile number',
+                          subtitle: 'Required for SMS OTP sign-in',
+                          onTap: () => _setMobile(user),
+                        )
+                      : needsConfirm
+                          ? ToolLink(
+                              icon: Icons.verified_outlined,
+                              label: 'Confirm mobile ownership',
+                              subtitle: 'Enables login for +${user.mobileE164}',
+                              onTap: () => _confirmMobile(user),
+                            )
+                          : null,
+                  secondary: [
+                    if (!needsMobile)
+                      ToolLink(
+                        icon: Icons.phone_android_outlined,
+                        label: 'Update mobile number',
+                        subtitle: 'Used for SMS OTP sign-in',
+                        onTap: () => _setMobile(user),
+                      ),
+                    if (canDeactivate)
+                      ToolLink(
+                        icon: Icons.person_off_outlined,
+                        label: 'Deactivate resident',
+                        subtitle: 'Blocks sign-in for this account',
+                        onTap: () => _deactivate(user),
+                      ),
+                  ],
+                ),
               ],
             ),
           );
@@ -628,10 +875,12 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
   int page = 1;
   late Future<_ResidentsBundle> _future = _load();
   final _debounce = Debouncer();
+  final _searchCtrl = TextEditingController();
 
   @override
   void dispose() {
     _debounce.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -651,17 +900,41 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
     return _ResidentsBundle(page: result);
   }
 
+  Future<void> _provisionNew() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminProvisionResidentPage(initialRole: widget.role),
+      ),
+    );
+    if (created == true && mounted) {
+      setState(() => _future = _load(force: true));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final roleLabel = widget.role == 'OWNER' ? 'owner' : 'tenant';
     return Scaffold(
       appBar: AppBar(
-        title: Text('Select ${widget.role == 'OWNER' ? 'owner' : 'tenant'}'),
+        title: Text('Select $roleLabel'),
+        actions: [
+          TextButton.icon(
+            onPressed: _provisionNew,
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+            label: const Text('New'),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: TextField(
+            child: SearchField(
+              controller: _searchCtrl,
+              hint: 'Search active ${roleLabel}s',
+              autofocus: true,
               onChanged: (v) {
                 query = v;
                 _debounce.run(() {
@@ -669,10 +942,6 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
                   setState(() => _future = _load(force: true));
                 });
               },
-              decoration: const InputDecoration(
-                hintText: 'Search residents',
-                prefixIcon: Icon(Icons.search),
-              ),
             ),
           ),
           Expanded(
@@ -681,31 +950,48 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting &&
                     !snap.hasData) {
-                  return const LoadingView(label: 'Loading…');
+                  return const SkeletonList(items: 6);
                 }
                 if (snap.hasError) {
                   return LoadFailure(
                     error: snap.error!,
-                    onRetry: () =>
-                        setState(() => _future = _load(force: true)),
+                    onRetry: () => setState(() => _future = _load(force: true)),
                   );
                 }
-                final rows = snap.data!.page.items;
+                final paged = snap.data!.page;
+                final rows = paged.items;
                 if (rows.isEmpty) {
-                  return const EmptyState('No matching residents');
+                  return EmptyState(
+                    'No matching active ${roleLabel}s',
+                    icon: Icons.person_search_outlined,
+                    actionLabel: 'Add new $roleLabel',
+                    onAction: _provisionNew,
+                  );
                 }
                 return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-                  itemCount: rows.length,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  itemCount: rows.length + 1,
                   itemBuilder: (context, i) {
+                    if (i == rows.length) {
+                      return PaginationBar(
+                        page: paged.pagination.page,
+                        totalPages: paged.pagination.totalPages,
+                        onPrevious: () {
+                          page -= 1;
+                          setState(() => _future = _load(force: true));
+                        },
+                        onNext: () {
+                          page += 1;
+                          setState(() => _future = _load(force: true));
+                        },
+                      );
+                    }
                     final user = rows[i];
-                    return AppCard(
+                    return _ResidentRow(
+                      user: user,
                       onTap: () => Navigator.pop(context, user),
-                      child: ListTile(
-                        title: Text(user.name,
-                            style: const TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Text(user.email),
-                      ),
                     );
                   },
                 );
@@ -721,5 +1007,5 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
 String occupancyDateLabel(String iso) {
   final dt = DateTime.tryParse(iso)?.toLocal();
   if (dt == null) return iso;
-  return '${dt.day}/${dt.month}/${dt.year}';
+  return fmtDate(dt);
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { loginAs as loginAsHelper } from '../helpers/auth-login';
 import { createSociety, createUser } from '../helpers/factories';
-import { testOtpInbox } from '../helpers/setup';
 import {
   createAdminContext,
   createWingWithFlats,
@@ -16,11 +16,8 @@ import { WingModel } from '../../src/modules/society/models/wing.model';
 const app = createApp();
 
 async function ownerToken(email: string, societyId: string) {
-  await createUser({ email, roles: ['OWNER'], societyId });
-  await request(app).post('/api/v1/auth/request-otp').send({ email });
-  const otp = testOtpInbox.find((item) => item.email === email)!.otp;
-  const login = await request(app).post('/api/v1/auth/verify-otp').send({ email, otp });
-  return login.body.data.accessToken as string;
+  const { token } = await loginAsHelper(app, email, ['OWNER'], societyId);
+  return token;
 }
 
 describe('Admin society management', () => {

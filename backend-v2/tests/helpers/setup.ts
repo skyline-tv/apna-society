@@ -20,6 +20,10 @@ process.env.COMPLAINT_STORAGE_PROVIDER = 'memory';
 process.env.FACILITY_PENDING_BOOKING_TTL_MS = '3600000';
 process.env.ANNOUNCEMENT_STORAGE_PROVIDER = 'memory';
 process.env.ANNOUNCEMENT_WORKER_ENABLED = 'false';
+process.env.SMS_PROVIDER = 'memory';
+process.env.SMS_OTP_ENABLED = 'false';
+process.env.SMS_OTP_LENGTH = '6';
+process.env.SMS_OTP_EXPIRY_MINUTES = '5';
 // Placeholder until memory server starts; connectDatabase is called in beforeAll with real URI.
 process.env.MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/apna_society_test';
 
@@ -29,6 +33,7 @@ loadEnv();
 
 let replSet: MongoMemoryReplSet | undefined;
 
+/** Legacy email OTP inbox (visitor email OTP / notifications tests). */
 export const testOtpInbox: { email: string; otp: string }[] = [];
 
 beforeAll(async () => {
@@ -142,6 +147,10 @@ beforeEach(async () => {
     '../../src/modules/announcements/storage/announcement-storage'
   );
   getMemoryAnnouncementStorage().clear();
+  const { getMemorySmsProvider } = await import(
+    '../../src/modules/auth/providers/memory-sms.provider'
+  );
+  getMemorySmsProvider().clear();
   const collections = mongoose.connection.collections;
   await Promise.all(Object.values(collections).map((collection) => collection.deleteMany({})));
 });

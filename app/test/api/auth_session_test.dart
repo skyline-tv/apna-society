@@ -19,20 +19,20 @@ void main() {
 
   tearDown(resetAuthSessionForTests);
 
-  test('request OTP posts email without account enumeration', () async {
+  test('request OTP posts mobile without account enumeration', () async {
     final adapter = ScriptedAdapter((options) async {
       expect(options.path, '/api/v1/auth/request-otp');
-      expect(options.data['email'], 'owner@example.com');
+      expect(options.data['mobile'], '+919876543210');
       return jsonBody(200, {
         'success': true,
         'data': {
           'message':
-              'If an account exists for this email, a one-time code has been sent.',
+              'If an account exists for this mobile number, a one-time code has been sent.',
         },
       });
     });
     final session = _session(adapter);
-    await session.requestOtp('owner@example.com');
+    await session.requestOtp('+919876543210');
     expect(adapter.calls, 1);
   });
 
@@ -74,7 +74,7 @@ void main() {
     });
     final session = _session(adapter, store: store);
     final profile = await session.verifyOtp(
-      email: 'owner@example.com',
+      mobile: '+919876543210',
       otp: '123456',
     );
     expect(profile.email, 'owner@example.com');
@@ -98,7 +98,7 @@ void main() {
     });
     final session = _session(adapter);
     expect(
-      () => session.verifyOtp(email: 'owner@example.com', otp: '000000'),
+      () => session.verifyOtp(mobile: '+919876543210', otp: '000000'),
       throwsA(
         isA<ApiException>().having((e) => e.code, 'code', 'INVALID_OTP'),
       ),

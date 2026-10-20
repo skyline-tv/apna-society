@@ -13,6 +13,9 @@ class AdminUser {
     required this.createdAt,
     required this.updatedAt,
     this.phone,
+    this.mobileE164,
+    this.mobileVerified = false,
+    this.mobileVerifiedAt,
     this.primarySocietyId,
     this.lastLoginAt,
     this.societyRoles = const [],
@@ -23,6 +26,9 @@ class AdminUser {
   final String email;
   final String name;
   final String? phone;
+  final String? mobileE164;
+  final bool mobileVerified;
+  final String? mobileVerifiedAt;
   final List<String> roles;
   final bool isActive;
   final bool canLogin;
@@ -54,6 +60,9 @@ class AdminUser {
       email: requireString(json, 'email'),
       name: requireString(json, 'name'),
       phone: optionalString(json, 'phone'),
+      mobileE164: optionalString(json, 'mobileE164'),
+      mobileVerified: json['mobileVerified'] == true,
+      mobileVerifiedAt: optionalString(json, 'mobileVerifiedAt'),
       roles: roles,
       isActive: requireBool(json, 'isActive'),
       canLogin: requireBool(json, 'canLogin'),

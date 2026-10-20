@@ -7,18 +7,35 @@ class ResidentSummary {
     required this.name,
     required this.email,
     required this.role,
+    this.phone,
+    this.mobileE164,
   });
 
   final String id;
   final String name;
   final String email;
+  final String? phone;
+  final String? mobileE164;
   final String role;
+
+  /// Prefer login mobile, then display phone, then email as last resort.
+  String get displayContact {
+    final mobile = mobileE164?.trim();
+    if (mobile != null && mobile.isNotEmpty) {
+      return mobile.startsWith('+') ? mobile : '+$mobile';
+    }
+    final legacy = phone?.trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return email;
+  }
 
   factory ResidentSummary.fromJson(JsonMap json) {
     return ResidentSummary(
       id: requireString(json, 'id'),
       name: requireString(json, 'name'),
       email: requireString(json, 'email'),
+      phone: optionalString(json, 'phone'),
+      mobileE164: optionalString(json, 'mobileE164'),
       role: requireString(json, 'role'),
     );
   }

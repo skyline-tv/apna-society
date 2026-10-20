@@ -195,7 +195,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(email: 'owner@example.com', otp: '123456');
+      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
       expect(session.residentFlats, hasLength(2));
       expect(session.selectedResidentFlat, isNull);
       expect(session.primaryResidentFlat?.flat.id, flatA);
@@ -247,7 +247,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(email: 'tenant@example.com', otp: '123456');
+      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
       expect(session.residentFlats, hasLength(2));
       expect(session.selectedResidentFlat, isNull);
       expect(session.primaryResidentFlat?.flat.id, flatA);
@@ -297,7 +297,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(email: 'owner@example.com', otp: '123456');
+      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
       expect(session.selectedResidentFlatId, flatA);
     });
 
@@ -338,7 +338,7 @@ void main() {
         return notFound(options.path);
       });
       final session = _session(adapter, store: store);
-      await session.verifyOtp(email: 'tenant@example.com', otp: '123456');
+      await session.verifyOtp(mobile: '+919876543210', otp: '123456');
       expect(session.selectedResidentFlatId, flatA);
       expect(session.selectedResidentFlat?.access.role, 'TENANT');
     });

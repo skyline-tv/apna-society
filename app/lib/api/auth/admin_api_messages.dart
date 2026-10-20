@@ -6,6 +6,10 @@ String adminApiErrorMessage(Object error) {
     switch (error.code) {
       case 'DUPLICATE_EMAIL':
         return 'A user with this email already exists.';
+      case 'DUPLICATE_MOBILE':
+        return 'This mobile number is already assigned to another user.';
+      case 'MOBILE_REQUIRED':
+        return 'Set a mobile number before confirming verification.';
       case 'PROTECTED_ROLE':
         return 'This account cannot be managed through resident APIs.';
       case 'DUPLICATE_ACTIVE_ASSIGNMENT':

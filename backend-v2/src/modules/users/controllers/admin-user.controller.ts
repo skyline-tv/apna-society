@@ -1,15 +1,18 @@
 import type { Request, Response } from 'express';
 import { getRequestSocietyId } from '../../../middleware/admin-society';
 import {
+  confirmUserMobileVerified,
   deactivateAdminUser,
   getAdminUser,
   listAdminUsers,
   provisionResident,
+  setUserMobile,
   updateAdminUser,
 } from '../services/admin-user.service';
 import type {
   ListUsersQuery,
   ProvisionUserInput,
+  SetUserMobileInput,
   UpdateUserInput,
 } from '../validators/admin-user.validators';
 
@@ -59,6 +62,26 @@ export async function deactivateUserHandler(req: Request, res: Response): Promis
     String(req.params.userId),
     actorFrom(req),
     (req.body as { reason?: string }).reason,
+  );
+  res.json({ success: true, data });
+}
+
+export async function setUserMobileHandler(req: Request, res: Response): Promise<void> {
+  const body = req.body as SetUserMobileInput;
+  const data = await setUserMobile(
+    getRequestSocietyId(req),
+    String(req.params.userId),
+    body.mobile,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function confirmUserMobileHandler(req: Request, res: Response): Promise<void> {
+  const data = await confirmUserMobileVerified(
+    getRequestSocietyId(req),
+    String(req.params.userId),
+    actorFrom(req),
   );
   res.json({ success: true, data });
 }

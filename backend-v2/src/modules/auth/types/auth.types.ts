@@ -20,6 +20,8 @@ export interface AuthProfile {
   email: string;
   name: string;
   phone?: string;
+  mobileE164?: string;
+  mobileVerified: boolean;
   roles: Role[];
   societyIds: string[];
   primarySocietyId?: string;

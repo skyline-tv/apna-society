@@ -1,18 +1,16 @@
 import request from 'supertest';
 import type { Express } from 'express';
 import { createSociety, createUser } from './factories';
-import { testOtpInbox } from './setup';
+import { loginExistingUser } from './auth-login';
 import { WingModel } from '../../src/modules/society/models/wing.model';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
 import type { FlatType, OccupancyStatus } from '../../src/config/constants';
 
 export async function loginAsAdmin(app: Express, email: string, societyId: string) {
   const user = await createUser({ email, roles: ['ADMIN'], societyId });
-  await request(app).post('/api/v1/auth/request-otp').send({ email });
-  const otp = testOtpInbox.find((item) => item.email === email)!.otp;
-  const login = await request(app).post('/api/v1/auth/verify-otp').send({ email, otp });
+  const { token } = await loginExistingUser(app, user.mobileE164!);
   return {
-    token: login.body.data.accessToken as string,
+    token,
     societyId,
     userId: String(user._id),
   };

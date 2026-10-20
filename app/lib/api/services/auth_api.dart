@@ -11,19 +11,19 @@ class AuthApi {
   AuthApi(this._client);
   final ApiClient _client;
 
-  Future<OtpRequestResult> requestOtp({required String email}) {
+  Future<OtpRequestResult> requestOtp({required String mobile}) {
     return _client.post(
       '${ApiConfig.apiPrefix}/auth/request-otp',
-      body: {'email': email},
+      body: {'mobile': mobile},
       authenticate: false,
       decode: OtpRequestResult.fromJson,
     );
   }
 
-  Future<TokenPair> verifyOtp({required String email, required String otp}) {
+  Future<TokenPair> verifyOtp({required String mobile, required String otp}) {
     return _client.post(
       '${ApiConfig.apiPrefix}/auth/verify-otp',
-      body: {'email': email, 'otp': otp},
+      body: {'mobile': mobile, 'otp': otp},
       authenticate: false,
       decode: TokenPair.fromJson,
     );

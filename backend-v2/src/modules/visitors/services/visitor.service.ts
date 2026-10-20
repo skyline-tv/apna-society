@@ -9,6 +9,7 @@ import {
 import { generateOtp, hashToken, safeEqualHex } from '../../../utils/crypto';
 import { parseObjectId } from '../../../utils/object-id';
 import { writeAuditLog } from '../../auth/services/audit.service';
+import { DEV_BYPASS_OTP } from '../../auth/providers/otp-dev-bypass';
 import { FlatModel } from '../../society/models/flat.model';
 import { WingModel } from '../../society/models/wing.model';
 import { MembershipModel } from '../../users/models/membership.model';
@@ -318,6 +319,9 @@ export async function approveVisitor(
 
   await assertStillAssignedResident(existing);
 
+  const env = getEnv();
+  const otpDevBypass = env.SMS_OTP_DEV_BYPASS && env.NODE_ENV !== 'production';
+
   const resident = await UserModel.findById(existing.assignedResidentUserId)
     .select('email')
     .lean();
@@ -326,15 +330,14 @@ export async function approveVisitor(
     : resident?.email
       ? normalizeEmail(String(resident.email))
       : '';
-  if (!deliveryEmail) {
+  if (!deliveryEmail && !otpDevBypass) {
     throw badRequest(
       'No usable email address for visitor OTP delivery. Provide visitorEmail on the request or ensure the assigned resident has an email.',
       'VISITOR_EMAIL_REQUIRED',
     );
   }
 
-  const env = getEnv();
-  const otp = generateOtp(6);
+  const otp = otpDevBypass ? DEV_BYPASS_OTP : generateOtp(6);
   const otpHash = hashToken(otp);
   const expiresAt = new Date(Date.now() + env.VISITOR_OTP_TTL_MS);
 
@@ -383,12 +386,16 @@ export async function approveVisitor(
   });
 
   const flatLabel = `${updated.wingCodeSnapshot}-${updated.flatNumberSnapshot}`;
-  await deliverVisitorEntryOtp({
-    toEmail: deliveryEmail,
-    otp,
-    visitorName: updated.visitorName,
-    flatLabel,
-  });
+  if (otpDevBypass) {
+    // Fixed OTP 123456 — skip email/MSG91 while SMS_OTP_DEV_BYPASS is on.
+  } else {
+    await deliverVisitorEntryOtp({
+      toEmail: deliveryEmail,
+      otp,
+      visitorName: updated.visitorName,
+      flatLabel,
+    });
+  }
 
   emitVisitorEvent('visitor:approved', visitorEventPayloadFromDoc(updated));
 

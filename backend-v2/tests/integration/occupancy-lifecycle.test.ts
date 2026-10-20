@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { loginByEmail } from '../helpers/auth-login';
 import { createSociety, createUser } from '../helpers/factories';
 import { createAdminContext, createWingWithFlats } from '../helpers/admin';
-import { testOtpInbox } from '../helpers/setup';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
 import { OccupancyRecordModel } from '../../src/modules/society/models/occupancy-record.model';
 import { MembershipModel } from '../../src/modules/users/models/membership.model';
@@ -13,10 +13,8 @@ import { assignOwner } from '../../src/modules/society/services/occupancy-lifecy
 const app = createApp();
 
 async function login(email: string) {
-  await request(app).post('/api/v1/auth/request-otp').send({ email });
-  const otp = testOtpInbox.find((item) => item.email === email)!.otp;
-  const res = await request(app).post('/api/v1/auth/verify-otp').send({ email, otp });
-  return res.body.data.accessToken as string;
+  const { token } = await loginByEmail(app, email);
+  return token;
 }
 
 async function provision(

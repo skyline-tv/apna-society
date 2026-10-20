@@ -59,6 +59,8 @@ export interface ResidentSummary {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  mobileE164?: string;
   role: 'OWNER' | 'TENANT';
 }
 

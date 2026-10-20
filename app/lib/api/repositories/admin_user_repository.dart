@@ -103,4 +103,18 @@ class AdminUserRepository {
     invalidateLists();
     return user;
   }
+
+  Future<AdminUser> setMobile(String userId, {required String mobile}) async {
+    final user = await _api.setMobile(userId, mobile: mobile);
+    _byId[userId] = user;
+    invalidateLists();
+    return user;
+  }
+
+  Future<AdminUser> confirmMobile(String userId) async {
+    final user = await _api.confirmMobile(userId);
+    _byId[userId] = user;
+    invalidateLists();
+    return user;
+  }
 }

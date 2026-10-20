@@ -22,13 +22,13 @@ function metaFromRequest(req: Request) {
 
 export async function requestOtpHandler(req: Request, res: Response): Promise<void> {
   const body = req.body as RequestOtpInput;
-  const result = await requestOtp(body.email, metaFromRequest(req));
+  const result = await requestOtp(body.mobile, metaFromRequest(req));
   res.status(200).json({ success: true, data: result });
 }
 
 export async function verifyOtpHandler(req: Request, res: Response): Promise<void> {
   const body = req.body as VerifyOtpInput;
-  const tokens = await verifyOtp(body.email, body.otp, metaFromRequest(req));
+  const tokens = await verifyOtp(body.mobile, body.otp, metaFromRequest(req));
   res.status(200).json({ success: true, data: tokens });
 }
 

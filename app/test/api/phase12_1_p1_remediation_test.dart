@@ -225,7 +225,7 @@ void main() {
       });
       final session = _session(adapter, store: store);
       await expectLater(
-        session.verifyOtp(email: 'owner@example.com', otp: '123456'),
+        session.verifyOtp(mobile: '+919876543210', otp: '123456'),
         throwsA(isA<ApiException>()),
       );
       expect(await store.readRefreshToken(), isNull);
@@ -269,7 +269,7 @@ void main() {
       });
       final session = _session(adapter, store: store);
       await expectLater(
-        session.verifyOtp(email: 'owner@example.com', otp: '123456'),
+        session.verifyOtp(mobile: '+919876543210', otp: '123456'),
         throwsA(isA<StateError>()),
       );
       expect(await store.readRefreshToken(), isNull);
@@ -308,7 +308,7 @@ void main() {
       });
       final session = _session(adapter, store: store);
       final profile = await session.verifyOtp(
-        email: 'admin@example.com',
+        mobile: '+919876543210',
         otp: '123456',
       );
       expect(profile.roles, ['ADMIN']);
@@ -447,7 +447,7 @@ void main() {
       await session.logout();
       phase = 'login';
       final profile = await session.verifyOtp(
-        email: 'admin2@example.com',
+        mobile: '+919876543210',
         otp: '123456',
       );
       releaseRefresh.complete();

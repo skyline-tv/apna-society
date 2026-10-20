@@ -27,20 +27,40 @@ String reportErrorMessage(Object error) {
   return '$error';
 }
 
-String _ymd(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
+String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
 
 String _isoDay(DateTime d) => '${_ymd(d)}T00:00:00.000Z';
 
-void _toast(BuildContext context, String msg, {bool error = false}) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(msg),
-      backgroundColor: error ? C.error : null,
-    ),
-  );
+String _periodLabel(String from, String to, {String? wingCode}) {
+  final f = from.length >= 10 ? fmtYmd(from.substring(0, 10)) : from;
+  final t = to.length >= 10 ? fmtYmd(to.substring(0, 10)) : to;
+  return '$f – $t${wingCode != null ? ' · Wing $wingCode' : ''}';
+}
+
+String _pct(num v) => '${v.toStringAsFixed(1)}%';
+
+String _monthLabel(int year, int? month) {
+  if (month == null || month < 1 || month > 12) return '$year';
+  return '${kMonths[month - 1]} $year';
+}
+
+String _exportLabel(String type) {
+  switch (type) {
+    case 'financial':
+      return 'Financial summary';
+    case 'collections':
+      return 'Collections by wing';
+    case 'outstanding':
+      return 'Outstanding dues';
+    case 'payments':
+      return 'Payment ledger';
+    case 'complaints':
+      return 'Complaints';
+    default:
+      return humanizeStatus(type);
+  }
 }
 
 class LiveAdminReportsPage extends StatefulWidget {
@@ -116,12 +136,28 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
 
   void reload() => setState(() => _future = _load(force: true));
 
+  Future<void> _refresh() async {
+    reload();
+    await _future;
+  }
+
+  bool get _filtered => _from != null || _to != null || _wingCode != null;
+
+  void _clearFilters() => setState(() {
+        _from = null;
+        _to = null;
+        _wingCode = null;
+        _outstandingPage = 1;
+        _future = _load(force: true);
+      });
+
   Future<void> _pickFrom() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _from ?? DateTime.now().subtract(const Duration(days: 30)),
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: _to ?? DateTime.now().add(const Duration(days: 1)),
+      helpText: 'Report from',
     );
     if (picked != null) {
       setState(() {
@@ -136,8 +172,9 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
     final picked = await showDatePicker(
       context: context,
       initialDate: _to ?? DateTime.now(),
-      firstDate: DateTime(2020),
+      firstDate: _from ?? DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 1)),
+      helpText: 'Report to',
     );
     if (picked != null) {
       setState(() {
@@ -146,6 +183,44 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
         _future = _load(force: true);
       });
     }
+  }
+
+  Future<void> _pickWing() async {
+    final picked = await showAppSheet<String>(
+      context,
+      title: 'Filter by wing',
+      builder: (ctx) => Column(children: [
+        ListRow(
+          dense: true,
+          title: 'All wings',
+          leading: const AppAvatar(
+              icon: Icons.domain_outlined, square: true, size: 36),
+          trailing: _wingCode == null
+              ? const Icon(Icons.check_rounded, color: C.blue)
+              : null,
+          showChevron: false,
+          onTap: () => Navigator.pop(ctx, ''),
+        ),
+        for (final w in _wings)
+          ListRow(
+            dense: true,
+            title: w.name,
+            subtitle: '${w.flatCount} flats',
+            leading: AppAvatar(text: w.code, square: true, size: 36),
+            trailing: _wingCode == w.code
+                ? const Icon(Icons.check_rounded, color: C.blue)
+                : null,
+            showChevron: false,
+            onTap: () => Navigator.pop(ctx, w.code),
+          ),
+      ]),
+    );
+    if (picked == null) return;
+    setState(() {
+      _wingCode = picked.isEmpty ? null : picked;
+      _outstandingPage = 1;
+      _future = _load(force: true);
+    });
   }
 
   Future<void> _export(String type, {String? from, String? to}) async {
@@ -176,12 +251,20 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
         ),
       );
     } catch (e) {
-      if (mounted) {
-        _toast(context, reportErrorMessage(e), error: true);
-      }
+      if (mounted) showErrorSnack(context, reportErrorMessage(e));
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  Widget _exportButton(String type,
+      {required String from, required String to}) {
+    return SecondaryButton(
+      label: 'Export ${_exportLabel(type).toLowerCase()} (CSV)',
+      icon: Icons.ios_share_rounded,
+      busy: _exporting,
+      onPressed: () => _export(type, from: from, to: to),
+    );
   }
 
   @override
@@ -189,86 +272,53 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: FilterBar(
+            padding: EdgeInsets.zero,
             children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _pickFrom,
-                    icon: const Icon(Icons.calendar_today, size: 16),
-                    label: Text(
-                      _from == null ? 'From' : _ymd(_from!),
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _pickTo,
-                    icon: const Icon(Icons.event, size: 16),
-                    label: Text(_to == null ? 'To' : _ymd(_to!)),
-                  ),
-                  if (_from != null || _to != null || _wingCode != null)
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _from = null;
-                          _to = null;
-                          _wingCode = null;
-                          _outstandingPage = 1;
-                          _future = _load(force: true);
-                        });
-                      },
-                      child: const Text('Clear filters'),
-                    ),
-                ],
+              AppFilterChip(
+                label: _from == null ? 'From' : fmtDate(_from!),
+                icon: Icons.calendar_today_outlined,
+                selected: _from != null,
+                onSelected: _pickFrom,
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilterChip(
-                    label: const Text('All wings'),
-                    selected: _wingCode == null,
-                    onSelected: (_) {
-                      setState(() {
-                        _wingCode = null;
-                        _outstandingPage = 1;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                  for (final w in _wings)
-                    FilterChip(
-                      label: Text(w.code),
-                      selected: _wingCode == w.code,
-                      onSelected: (_) {
-                        setState(() {
-                          _wingCode = w.code;
-                          _outstandingPage = 1;
-                          _future = _load(force: true);
-                        });
-                      },
-                    ),
-                ],
+              AppFilterChip(
+                label: _to == null ? 'To' : fmtDate(_to!),
+                icon: Icons.event_outlined,
+                selected: _to != null,
+                onSelected: _pickTo,
               ),
+              if (_wings.isNotEmpty)
+                AppFilterChip(
+                  label: _wingCode == null ? 'All wings' : 'Wing $_wingCode',
+                  icon: Icons.domain_outlined,
+                  selected: _wingCode != null,
+                  onSelected: _pickWing,
+                ),
+              if (_filtered)
+                AppFilterChip(
+                  label: 'Clear',
+                  icon: Icons.close_rounded,
+                  selected: false,
+                  onSelected: _clearFilters,
+                ),
             ],
           ),
         ),
-        TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          labelColor: C.blue,
-          unselectedLabelColor: C.muted,
-          tabs: const [
-            Tab(text: 'Dashboard'),
-            Tab(text: 'Financial'),
-            Tab(text: 'Collections'),
-            Tab(text: 'Outstanding'),
-            Tab(text: 'Complaints'),
-          ],
+        Container(
+          color: C.surface,
+          child: TabBar(
+            controller: _tabs,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: const [
+              Tab(text: 'Overview'),
+              Tab(text: 'Financial'),
+              Tab(text: 'Collections'),
+              Tab(text: 'Outstanding'),
+              Tab(text: 'Complaints'),
+            ],
+          ),
         ),
         Expanded(
           child: FutureBuilder<_ReportsBundle>(
@@ -276,20 +326,23 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting &&
                   !snap.hasData) {
-                return const LoadingView(label: 'Loading reports…');
+                return const SkeletonList(items: 5, showHeader: true);
               }
               if (snap.hasError) {
-                return LoadFailure(error: snap.error!, onRetry: reload);
+                return LoadFailure(
+                    error: snap.error!,
+                    title: 'Could not load reports',
+                    onRetry: reload);
               }
               final b = snap.data!;
               return TabBarView(
                 controller: _tabs,
                 children: [
-                  _dashboardTab(b),
-                  _financialTab(b.financial),
-                  _collectionsTab(b.collections),
-                  _outstandingTab(b.outstanding),
-                  _complaintsTab(b.complaints),
+                  _wrap(_dashboardTab(b)),
+                  _wrap(_financialTab(b.financial)),
+                  _wrap(_collectionsTab(b.collections)),
+                  _wrap(_outstandingTab(b.outstanding)),
+                  _wrap(_complaintsTab(b.complaints)),
                 ],
               );
             },
@@ -299,413 +352,362 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
     );
   }
 
-  Widget _dashboardTab(_ReportsBundle b) {
+  Widget _wrap(List<Widget> children) => RefreshIndicator(
+        color: C.blue,
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: Sp.pagePadding,
+          children: children,
+        ),
+      );
+
+  List<Widget> _dashboardTab(_ReportsBundle b) {
     final fin = b.dashboard.financial;
     final col = b.dashboard.collections;
     final soc = b.society.totals;
     final cmp = b.dashboard.complaints;
-    return RefreshIndicator(
-      color: C.blue,
-      onRefresh: () async {
-        reload();
-        await _future;
-      },
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            'Period ${b.dashboard.from.substring(0, 10)} → '
-            '${b.dashboard.to.substring(0, 10)}'
-            '${b.dashboard.wingCode != null ? ' · Wing ${b.dashboard.wingCode}' : ''}',
-            style: const TextStyle(color: C.muted, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          const SectionTitle('Society inventory'),
-          const SizedBox(height: 8),
-          StatCard(
-            title: 'Total flats',
-            value: '${soc.flats}',
-            icon: Icons.apartment_outlined,
-          ),
-          const SizedBox(height: 10),
-          StatCard(
-            title: 'Occupied / vacant',
-            value:
-                '${soc.ownerOccupiedFlats + soc.tenantOccupiedFlats} / ${soc.vacantFlats}',
-            icon: Icons.home_work_outlined,
-          ),
-          const SizedBox(height: 10),
-          StatCard(
-            title: 'Monthly maintenance (rate sum)',
-            // Society dashboard totals are whole-rupee integers (maintenanceRate),
-            // not paise — match Admin dashboard formatting.
-            value: money(soc.monthlyMaintenanceTotal),
-            icon: Icons.account_balance_wallet_outlined,
-          ),
-          const SizedBox(height: 16),
-          const SectionTitle('Financial snapshot'),
-          const SizedBox(height: 8),
-          StatCard(
-            title: 'Total billed',
-            value: moneyPaise(fin.totalBilledPaise),
-            icon: Icons.receipt_long_outlined,
-          ),
-          const SizedBox(height: 10),
-          StatCard(
-            title: 'Collected',
-            value: moneyPaise(fin.totalCollectedPaise),
-            icon: Icons.payments_outlined,
-            accent: C.green,
-          ),
-          const SizedBox(height: 10),
-          StatCard(
-            title: 'Outstanding principal',
-            value: moneyPaise(
-              b.dashboard.outstandingTotals.outstandingPrincipalPaise,
-            ),
-            icon: Icons.pending_actions_outlined,
-            accent: C.amber,
-          ),
-          const SizedBox(height: 10),
-          StatCard(
-            title: 'Accrued interest',
-            value: moneyPaise(fin.totalAccruedInterestPaise),
-            icon: Icons.percent_outlined,
-          ),
-          const SizedBox(height: 16),
-          const SectionTitle('Collections snapshot'),
-          const SizedBox(height: 8),
-          billDetailLine('Bills generated', '${col.totalBillsGenerated}'),
-          billDetailLine('Paid / partial / unpaid / overdue',
-              '${col.paidBills} / ${col.partiallyPaidBills} / ${col.unpaidBills} / ${col.overdueBills}'),
-          billDetailLine(
-            'Collection %',
-            '${col.collectionPercentage.toStringAsFixed(1)}%',
-          ),
-          const SizedBox(height: 16),
-          const SectionTitle('Complaints snapshot'),
-          const SizedBox(height: 8),
-          billDetailLine('Total', '${cmp.totalComplaints}'),
-          billDetailLine(
-            'Open / assigned / in progress',
-            '${cmp.open} / ${cmp.assigned} / ${cmp.inProgress}',
-          ),
-          billDetailLine(
-            'Resolved / closed / cancelled',
-            '${cmp.resolved} / ${cmp.closed} / ${cmp.cancelled}',
-          ),
-          if (b.dashboard.topFlats.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const SectionTitle('Top outstanding flats'),
-            const SizedBox(height: 8),
-            ...b.dashboard.topFlats.map(
-              (f) => AppCard(
-                child: ListTile(
-                  title: Text(
-                    '${f.flatNumber} · ${f.wingCode}',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  subtitle: Text(
-                    '${f.ownerNameSnapshot}\n'
-                    'Principal ${moneyPaise(f.outstandingPrincipalPaise)} · '
-                    'Interest ${moneyPaise(f.accruedInterestPaise)}',
-                  ),
-                  isThreeLine: true,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          const SectionTitle('Export CSV'),
-          const SizedBox(height: 8),
-          if (_exporting)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else
-            for (final type in reportExportTypes)
-              QuickActionTile(
-                icon: Icons.download_outlined,
-                label: 'Export $type',
-                onTap: () => _export(
-                  type,
-                  from: b.dashboard.from,
-                  to: b.dashboard.to,
-                ),
-              ),
-        ],
+    final occupied = soc.ownerOccupiedFlats + soc.tenantOccupiedFlats;
+    final openComplaints = cmp.open + cmp.assigned + cmp.inProgress;
+    return [
+      PageHeader(
+        'Society overview',
+        subtitle: _periodLabel(b.dashboard.from, b.dashboard.to,
+            wingCode: b.dashboard.wingCode),
       ),
-    );
-  }
-
-  Widget _financialTab(FinancialReport r) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          '${r.from.substring(0, 10)} → ${r.to.substring(0, 10)}',
-          style: const TextStyle(color: C.muted, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
-        billDetailLine('Billed', moneyPaise(r.totalBilledPaise)),
-        billDetailLine('Collected', moneyPaise(r.totalCollectedPaise)),
-        billDetailLine(
-          'Outstanding principal',
-          moneyPaise(r.totalOutstandingPrincipalPaise),
-        ),
-        billDetailLine(
-          'Accrued interest',
-          moneyPaise(r.totalAccruedInterestPaise),
-        ),
-        billDetailLine('Refunds', moneyPaise(r.totalRefundsPaise)),
-        billDetailLine(
-          'Offline collections',
-          moneyPaise(r.totalOfflineCollectionsPaise),
-        ),
-        billDetailLine(
-          'Online collections',
-          moneyPaise(r.totalOnlineCollectionsPaise),
-        ),
-        billDetailLine(
-          'Payments success / fail / refunded / pending',
-          '${r.paymentSuccessCount} / ${r.paymentFailureCount} / '
-          '${r.paymentRefundedCount} / ${r.paymentPendingCount}',
-        ),
-        billDetailLine('Bills', '${r.billCount}'),
-        billDetailLine(
-          'Collection %',
-          '${r.collectionPercentage.toStringAsFixed(1)}%',
-        ),
-        const SizedBox(height: 8),
-        InfoNote(r.note),
-        if (r.monthly.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          const SectionTitle('Monthly'),
-          const SizedBox(height: 8),
-          ...r.monthly.map(
-            (m) => AppCard(
-              child: ListTile(
-                title: Text(
-                  '${m.year}-${(m.month ?? 0).toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  'Billed ${moneyPaise(m.billedPaise)} · '
-                  'Collected ${moneyPaise(m.collectedPaise)} · '
-                  'Outstanding ${moneyPaise(m.outstandingPrincipalPaise)}',
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _exporting
-              ? null
-              : () => _export('financial', from: r.from, to: r.to),
-          icon: const Icon(Icons.download),
-          label: const Text('Export financial CSV'),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _exporting
-              ? null
-              : () => _export('payments', from: r.from, to: r.to),
-          icon: const Icon(Icons.payments_outlined),
-          label: const Text('Export payments CSV'),
-        ),
-      ],
-    );
-  }
-
-  Widget _collectionsTab(CollectionReport r) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        billDetailLine('Bills generated', '${r.totalBillsGenerated}'),
-        billDetailLine('Billed', moneyPaise(r.totalBilledPaise)),
-        billDetailLine('Collected', moneyPaise(r.totalAmountCollectedPaise)),
-        billDetailLine(
-          'Outstanding',
-          moneyPaise(r.totalAmountOutstandingPaise),
-        ),
-        billDetailLine('Paid bills', '${r.paidBills}'),
-        billDetailLine('Partially paid', '${r.partiallyPaidBills}'),
-        billDetailLine('Unpaid', '${r.unpaidBills}'),
-        billDetailLine('Overdue', '${r.overdueBills}'),
-        billDetailLine(
-          'Collection %',
-          '${r.collectionPercentage.toStringAsFixed(1)}%',
-        ),
-        Text(
-          r.collectionPercentageFormula,
-          style: const TextStyle(color: C.muted, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        const SectionTitle('By wing'),
-        const SizedBox(height: 8),
-        if (r.wingWise.isEmpty)
-          const EmptyState('No wing collection data')
-        else
-          ...r.wingWise.map(
-            (w) => AppCard(
-              child: ListTile(
-                title: Text(
-                  'Wing ${w.wingCode}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  'Billed ${moneyPaise(w.billedPaise)} · '
-                  'Collected ${moneyPaise(w.collectedPaise)} · '
-                  'Outstanding ${moneyPaise(w.outstandingPrincipalPaise)} · '
-                  '${w.collectionPercentage.toStringAsFixed(1)}%',
-                ),
-              ),
-            ),
-          ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _exporting
-              ? null
-              : () => _export('collections', from: r.from, to: r.to),
-          icon: const Icon(Icons.download),
-          label: const Text('Export collections CSV'),
+      HeroMoneyCard(
+        label: 'Outstanding principal',
+        amount:
+            moneyPaise(b.dashboard.outstandingTotals.outstandingPrincipalPaise),
+        subtitle:
+            'Collected ${moneyPaise(fin.totalCollectedPaise)} of ${moneyPaise(fin.totalBilledPaise)} billed · ${_pct(col.collectionPercentage)}',
+      ),
+      const SizedBox(height: 12),
+      MetricBand(items: [
+        MetricItem('Flats', '${soc.flats}'),
+        MetricItem('Occupied', '$occupied'),
+        MetricItem('Vacant', '${soc.vacantFlats}',
+            valueColor: soc.vacantFlats > 0 ? C.amber : C.navy),
+        MetricItem('Open complaints', '$openComplaints',
+            valueColor: openComplaints > 0 ? C.amber : C.green),
+      ]),
+      const SizedBox(height: 12),
+      MetricBand(items: [
+        MetricItem('Monthly maintenance', money(soc.monthlyMaintenanceTotal)),
+        MetricItem('Accrued interest', moneyPaise(fin.totalAccruedInterestPaise),
+            valueColor: fin.totalAccruedInterestPaise > 0 ? C.amber : C.navy),
+        MetricItem('Collection rate', _pct(col.collectionPercentage),
+            valueColor: C.green),
+      ]),
+      const SizedBox(height: 14),
+      DetailCard(title: 'Collections snapshot', children: [
+        DetailRow('Bills generated', '${col.totalBillsGenerated}'),
+        DetailRow('Paid', '${col.paidBills}'),
+        DetailRow('Partially paid', '${col.partiallyPaidBills}'),
+        DetailRow('Unpaid', '${col.unpaidBills}'),
+        DetailRow('Overdue', '${col.overdueBills}'),
+        DetailRow('Collection rate', _pct(col.collectionPercentage),
+            emphasize: true),
+      ]),
+      DetailCard(title: 'Complaints snapshot', children: [
+        DetailRow('Total', '${cmp.totalComplaints}'),
+        DetailRow('Open', '${cmp.open}'),
+        DetailRow('Assigned', '${cmp.assigned}'),
+        DetailRow('In progress', '${cmp.inProgress}'),
+        DetailRow('Resolved', '${cmp.resolved}'),
+        DetailRow('Closed', '${cmp.closed}'),
+        DetailRow('Cancelled', '${cmp.cancelled}'),
+      ]),
+      if (b.dashboard.topFlats.isNotEmpty) ...[
+        const SectionTitle('Top outstanding flats'),
+        AppCard(
+          margin: EdgeInsets.zero,
+          child: Column(children: [
+            for (var i = 0; i < b.dashboard.topFlats.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, indent: 56, endIndent: 12),
+              Builder(builder: (_) {
+                final f = b.dashboard.topFlats[i];
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  child: Row(children: [
+                    AppAvatar(text: f.wingCode, square: true, size: 36),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${f.wingCode}-${f.flatNumber}',
+                              style: T.bodyStrong),
+                          const SizedBox(height: 2),
+                          Text(f.ownerNameSnapshot, style: T.caption),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(moneyPaise(f.outstandingPrincipalPaise),
+                            style: T.money.copyWith(fontSize: 13)),
+                        if (f.accruedInterestPaise > 0)
+                          Text('+${moneyPaise(f.accruedInterestPaise)} interest',
+                              style: T.caption),
+                      ],
+                    ),
+                  ]),
+                );
+              }),
+            ],
+          ]),
         ),
       ],
-    );
+      const SizedBox(height: 16),
+      const SectionTitle('Export',
+          subtitle: 'CSV for the selected period and wing'),
+      for (final type in reportExportTypes)
+        QuickActionTile(
+          icon: Icons.ios_share_rounded,
+          label: _exportLabel(type),
+          subtitle: 'Share as CSV',
+          enabled: !_exporting,
+          onTap: () =>
+              _export(type, from: b.dashboard.from, to: b.dashboard.to),
+        ),
+      if (_exporting)
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: LinearProgressIndicator(minHeight: 3),
+        ),
+    ];
   }
 
-  Widget _outstandingTab(OutstandingReport r) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        billDetailLine(
-          'Principal',
-          moneyPaise(r.outstandingPrincipalPaise),
-        ),
-        billDetailLine('Interest', moneyPaise(r.accruedInterestPaise)),
-        billDetailLine('Flats', '${r.flatCount}'),
-        const SizedBox(height: 12),
-        if (r.items.isEmpty)
-          const EmptyState('No outstanding flats')
-        else
-          ...r.items.map(
-            (f) => AppCard(
-              child: ListTile(
-                title: Text(
-                  '${f.flatNumber} · ${f.wingCode}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  '${f.ownerNameSnapshot}\n'
-                  'Billed ${moneyPaise(f.billedPaise)} · '
-                  'Collected ${moneyPaise(f.collectedPaise)}\n'
-                  'Principal ${moneyPaise(f.outstandingPrincipalPaise)} · '
-                  'Interest ${moneyPaise(f.accruedInterestPaise)}',
-                ),
-                isThreeLine: true,
-              ),
-            ),
-          ),
-        if (r.pagination.totalPages > 1) ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text(
-                'Page ${r.pagination.page} of ${r.pagination.totalPages}',
-                style: const TextStyle(color: C.muted),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: r.pagination.page <= 1
-                    ? null
-                    : () {
-                        setState(() {
-                          _outstandingPage = r.pagination.page - 1;
-                          _future = _load(force: true);
-                        });
-                      },
-                child: const Text('Prev'),
-              ),
-              TextButton(
-                onPressed: r.pagination.page >= r.pagination.totalPages
-                    ? null
-                    : () {
-                        setState(() {
-                          _outstandingPage = r.pagination.page + 1;
-                          _future = _load(force: true);
-                        });
-                      },
-                child: const Text('Next'),
+  List<Widget> _financialTab(FinancialReport r) {
+    return [
+      Text(_periodLabel(r.from, r.to), style: T.caption),
+      const SizedBox(height: 12),
+      HeroMoneyCard(
+        label: 'Collected',
+        amount: moneyPaise(r.totalCollectedPaise),
+        subtitle:
+            'of ${moneyPaise(r.totalBilledPaise)} billed · ${_pct(r.collectionPercentage)} across ${r.billCount} bills',
+      ),
+      const SizedBox(height: 14),
+      DetailCard(title: 'Totals', children: [
+        DetailRow('Billed', moneyPaise(r.totalBilledPaise)),
+        DetailRow('Collected', moneyPaise(r.totalCollectedPaise)),
+        DetailRow('Outstanding principal',
+            moneyPaise(r.totalOutstandingPrincipalPaise),
+            emphasize: true),
+        DetailRow('Accrued interest', moneyPaise(r.totalAccruedInterestPaise)),
+        DetailRow('Refunds', moneyPaise(r.totalRefundsPaise)),
+      ]),
+      DetailCard(title: 'Channels', children: [
+        DetailRow(
+            'Offline collections', moneyPaise(r.totalOfflineCollectionsPaise)),
+        DetailRow(
+            'Online collections', moneyPaise(r.totalOnlineCollectionsPaise)),
+      ]),
+      DetailCard(title: 'Payments', children: [
+        DetailRow('Successful', '${r.paymentSuccessCount}'),
+        DetailRow('Failed', '${r.paymentFailureCount}'),
+        DetailRow('Refunded', '${r.paymentRefundedCount}'),
+        DetailRow('Pending', '${r.paymentPendingCount}'),
+      ]),
+      if (r.note.trim().isNotEmpty) InfoNote(r.note),
+      if (r.monthly.isNotEmpty) ...[
+        const SectionTitle('Month by month'),
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: Column(children: [
+            for (var i = 0; i < r.monthly.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                        _monthLabel(r.monthly[i].year, r.monthly[i].month),
+                        style: T.bodyStrong),
+                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(moneyPaise(r.monthly[i].collectedPaise),
+                        style: T.money),
+                    Text(
+                      'of ${moneyPaise(r.monthly[i].billedPaise)} · due ${moneyPaise(r.monthly[i].outstandingPrincipalPaise)}',
+                      style: T.caption,
+                    ),
+                  ]),
+                ]),
               ),
             ],
-          ),
-        ],
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _exporting
-              ? null
-              : () => _export('outstanding', from: r.from, to: r.to),
-          icon: const Icon(Icons.download),
-          label: const Text('Export outstanding CSV'),
+          ]),
         ),
       ],
-    );
+      const SizedBox(height: 16),
+      _exportButton('financial', from: r.from, to: r.to),
+      const SizedBox(height: 8),
+      _exportButton('payments', from: r.from, to: r.to),
+    ];
   }
 
-  Widget _complaintsTab(ComplaintReport r) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        billDetailLine('Total', '${r.totalComplaints}'),
-        billDetailLine('Open', '${r.open}'),
-        billDetailLine('Assigned', '${r.assigned}'),
-        billDetailLine('In progress', '${r.inProgress}'),
-        billDetailLine('Resolved', '${r.resolved}'),
-        billDetailLine('Closed', '${r.closed}'),
-        billDetailLine('Cancelled', '${r.cancelled}'),
-        if (r.averageResolutionHours != null)
-          billDetailLine(
-            'Avg resolution hours',
-            r.averageResolutionHours!.toStringAsFixed(1),
-          ),
-        const SizedBox(height: 12),
-        const SectionTitle('By category'),
-        ...r.byCategory.entries.map(
-          (e) => billDetailLine(e.key, '${e.value}'),
+  List<Widget> _collectionsTab(CollectionReport r) {
+    return [
+      Text(_periodLabel(r.from, r.to), style: T.caption),
+      const SizedBox(height: 12),
+      HeroMoneyCard(
+        label: 'Collected',
+        amount: moneyPaise(r.totalAmountCollectedPaise),
+        subtitle:
+            '${_pct(r.collectionPercentage)} of ${moneyPaise(r.totalBilledPaise)} billed · ${r.totalBillsGenerated} bills',
+      ),
+      const SizedBox(height: 14),
+      MiniStatStrip(children: [
+        MiniStat('Paid', '${r.paidBills}', tone: BadgeTone.success),
+        MiniStat('Partial', '${r.partiallyPaidBills}', tone: BadgeTone.warning),
+        MiniStat('Unpaid', '${r.unpaidBills}', tone: BadgeTone.neutral),
+        MiniStat('Overdue', '${r.overdueBills}',
+            tone: r.overdueBills > 0 ? BadgeTone.danger : BadgeTone.neutral),
+      ]),
+      const SizedBox(height: 10),
+      DetailCard(title: 'Totals', children: [
+        DetailRow('Billed', moneyPaise(r.totalBilledPaise)),
+        DetailRow('Collected', moneyPaise(r.totalAmountCollectedPaise)),
+        DetailRow('Outstanding', moneyPaise(r.totalAmountOutstandingPaise),
+            emphasize: true),
+        DetailRow('Collection rate', _pct(r.collectionPercentage)),
+      ]),
+      if (r.collectionPercentageFormula.trim().isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Text(r.collectionPercentageFormula, style: T.caption),
         ),
-        const SizedBox(height: 12),
-        const SectionTitle('By priority'),
-        ...r.byPriority.entries.map(
-          (e) => billDetailLine(e.key, '${e.value}'),
-        ),
-        if (r.byWing.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          const SectionTitle('By wing'),
-          ...r.byWing.map(
-            (w) => billDetailLine('Wing ${w.wingCode}', '${w.count}'),
+      const SectionTitle('By wing'),
+      if (r.wingWise.isEmpty)
+        const EmptyState('No wing collection data', compact: true)
+      else
+        for (final w in r.wingWise)
+          ListRow(
+            leading: AppAvatar(text: w.wingCode, square: true),
+            title: 'Wing ${w.wingCode}',
+            subtitle:
+                'Billed ${moneyPaise(w.billedPaise)} · Outstanding ${moneyPaise(w.outstandingPrincipalPaise)}',
+            trailing: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(moneyPaise(w.collectedPaise), style: T.money),
+                Text(_pct(w.collectionPercentage), style: T.caption),
+              ],
+            ),
+            showChevron: false,
           ),
-        ],
-        if (r.workload.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          const SectionTitle('Workload'),
-          ...r.workload.map(
-            (w) => billDetailLine(w.assignedToName, '${w.openAssigned} open'),
+      const SizedBox(height: 16),
+      _exportButton('collections', from: r.from, to: r.to),
+    ];
+  }
+
+  List<Widget> _outstandingTab(OutstandingReport r) {
+    return [
+      Text(_periodLabel(r.from, r.to), style: T.caption),
+      const SizedBox(height: 12),
+      HeroMoneyCard(
+        label: 'Outstanding principal',
+        amount: moneyPaise(r.outstandingPrincipalPaise),
+        subtitle:
+            '+ ${moneyPaise(r.accruedInterestPaise)} accrued interest · ${r.flatCount} flat${r.flatCount == 1 ? '' : 's'}',
+      ),
+      const SizedBox(height: 14),
+      if (r.items.isEmpty)
+        const EmptyState('No outstanding dues in this period',
+            icon: Icons.task_alt_rounded)
+      else ...[
+        ResultCount(r.pagination.total, 'flat'),
+        for (final f in r.items)
+          ListRow(
+            leading: AppAvatar(text: f.wingCode, square: true),
+            title: '${f.wingCode}-${f.flatNumber}',
+            subtitle:
+                '${f.ownerNameSnapshot}\nBilled ${moneyPaise(f.billedPaise)} · Collected ${moneyPaise(f.collectedPaise)}',
+            trailing: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(moneyPaise(f.outstandingPrincipalPaise), style: T.money),
+                if (f.accruedInterestPaise > 0)
+                  Text('+${moneyPaise(f.accruedInterestPaise)} interest',
+                      style: T.caption),
+              ],
+            ),
+            showChevron: false,
           ),
-        ],
-        const SizedBox(height: 8),
-        InfoNote(r.note),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _exporting
-              ? null
-              : () => _export('complaints', from: r.from, to: r.to),
-          icon: const Icon(Icons.download),
-          label: const Text('Export complaints CSV'),
+        PaginationBar(
+          page: r.pagination.page,
+          totalPages: r.pagination.totalPages,
+          onPrevious: () => setState(() {
+            _outstandingPage = r.pagination.page - 1;
+            _future = _load(force: true);
+          }),
+          onNext: () => setState(() {
+            _outstandingPage = r.pagination.page + 1;
+            _future = _load(force: true);
+          }),
         ),
       ],
-    );
+      const SizedBox(height: 12),
+      _exportButton('outstanding', from: r.from, to: r.to),
+    ];
+  }
+
+  List<Widget> _complaintsTab(ComplaintReport r) {
+    final active = r.open + r.assigned + r.inProgress;
+    return [
+      Text(_periodLabel(r.from, r.to), style: T.caption),
+      const SizedBox(height: 12),
+      MiniStatStrip(children: [
+        MiniStat('Total', '${r.totalComplaints}'),
+        MiniStat('Active', '$active',
+            tone: active > 0 ? BadgeTone.warning : BadgeTone.success),
+        MiniStat('Resolved', '${r.resolved + r.closed}',
+            tone: BadgeTone.success),
+        if (r.averageResolutionHours != null)
+          MiniStat('Avg hours', r.averageResolutionHours!.toStringAsFixed(1),
+              tone: BadgeTone.info),
+      ]),
+      const SizedBox(height: 10),
+      DetailCard(title: 'By status', children: [
+        DetailRow('Open', '${r.open}'),
+        DetailRow('Assigned', '${r.assigned}'),
+        DetailRow('In progress', '${r.inProgress}'),
+        DetailRow('Resolved', '${r.resolved}'),
+        DetailRow('Closed', '${r.closed}'),
+        DetailRow('Cancelled', '${r.cancelled}'),
+      ]),
+      if (r.byCategory.isNotEmpty)
+        DetailCard(title: 'By category', children: [
+          for (final e in r.byCategory.entries)
+            DetailRow(humanizeStatus(e.key), '${e.value}'),
+        ]),
+      if (r.byPriority.isNotEmpty)
+        DetailCard(title: 'By priority', children: [
+          for (final e in r.byPriority.entries)
+            DetailRow(humanizeStatus(e.key), '${e.value}'),
+        ]),
+      if (r.byWing.isNotEmpty)
+        DetailCard(title: 'By wing', children: [
+          for (final w in r.byWing)
+            DetailRow('Wing ${w.wingCode}', '${w.count}'),
+        ]),
+      if (r.workload.isNotEmpty)
+        DetailCard(title: 'Assignee workload', children: [
+          for (final w in r.workload)
+            DetailRow(w.assignedToName, '${w.openAssigned} open'),
+        ]),
+      if (r.note.trim().isNotEmpty) InfoNote(r.note),
+      const SizedBox(height: 12),
+      _exportButton('complaints', from: r.from, to: r.to),
+    ];
   }
 }
 
