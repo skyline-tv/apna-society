@@ -1,0 +1,83 @@
+import type { VisitorLogDocument } from '../models/visitor-log.model';
+
+type VisitorLean = {
+  _id: { toString(): string };
+  societyId: { toString(): string };
+  flatId: { toString(): string };
+  visitorName: string;
+  visitorPhone: string;
+  visitorType: string;
+  purpose: string;
+  vehicleNumber?: string;
+  numberOfVisitors: number;
+  requestedByGuardId: { toString(): string };
+  assignedResidentUserId: { toString(): string };
+  assignedResidentRole: string;
+  approvalStatus: string;
+  entryStatus: string;
+  entryOtpExpiresAt?: Date;
+  otpAttempts: number;
+  approvedAt?: Date;
+  rejectedAt?: Date;
+  entryAt?: Date;
+  exitAt?: Date;
+  checkedInBy?: { toString(): string };
+  checkedOutBy?: { toString(): string };
+  rejectionReason?: string;
+  notes?: string;
+  flatNumberSnapshot: string;
+  wingCodeSnapshot: string;
+  expiredAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  entryOtpHash?: string;
+};
+
+export function serializeVisitor(
+  doc: VisitorLean | VisitorLogDocument,
+  options?: { forGuard?: boolean; includeOtpMeta?: boolean },
+) {
+  const forGuard = options?.forGuard ?? false;
+  return {
+    id: String(doc._id),
+    societyId: String(doc.societyId),
+    flatId: String(doc.flatId),
+    visitorName: doc.visitorName,
+    // Guards see masked phone; admins/assigned residents see full.
+    visitorPhone: forGuard ? maskPhone(doc.visitorPhone) : doc.visitorPhone,
+    visitorType: doc.visitorType,
+    purpose: doc.purpose,
+    vehicleNumber: doc.vehicleNumber,
+    numberOfVisitors: doc.numberOfVisitors,
+    requestedByGuardId: String(doc.requestedByGuardId),
+    assignedResidentUserId: String(doc.assignedResidentUserId),
+    assignedResidentRole: doc.assignedResidentRole,
+    approvalStatus: doc.approvalStatus,
+    entryStatus: doc.entryStatus,
+    otpExpiresAt:
+      options?.includeOtpMeta && doc.entryOtpExpiresAt
+        ? doc.entryOtpExpiresAt.toISOString()
+        : undefined,
+    hasActiveOtp: Boolean(doc.entryOtpHash && doc.entryOtpExpiresAt && doc.entryOtpExpiresAt > new Date()),
+    otpAttempts: options?.includeOtpMeta ? doc.otpAttempts : undefined,
+    approvedAt: doc.approvedAt?.toISOString(),
+    rejectedAt: doc.rejectedAt?.toISOString(),
+    entryAt: doc.entryAt?.toISOString(),
+    exitAt: doc.exitAt?.toISOString(),
+    checkedInBy: doc.checkedInBy ? String(doc.checkedInBy) : undefined,
+    checkedOutBy: doc.checkedOutBy ? String(doc.checkedOutBy) : undefined,
+    rejectionReason: doc.rejectionReason,
+    notes: doc.notes,
+    flatNumberSnapshot: doc.flatNumberSnapshot,
+    wingCodeSnapshot: doc.wingCodeSnapshot,
+    expiredAt: doc.expiredAt?.toISOString(),
+    createdAt: new Date(doc.createdAt).toISOString(),
+    updatedAt: new Date(doc.updatedAt).toISOString(),
+  };
+}
+
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '****';
+  return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}

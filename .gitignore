@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.iml
+
+# Flutter (also ignored inside app/)
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/build/
+app/coverage/
+app/**/doc/api/
+app/**/ios/Flutter/.last_build_id
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+app/*.symbols
+app/*.map.json
+
+# Backend (legacy path, if present)
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/.env
+backend/*.log
+
+# Backend v2
+backend-v2/node_modules/
+backend-v2/dist/
+backend-v2/coverage/
+backend-v2/.env
+backend-v2/*.log

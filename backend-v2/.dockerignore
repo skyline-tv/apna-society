@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+.git
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.mongo-data
+tmp
+tests
+docs
+README.md
+.vscode
+.idea
