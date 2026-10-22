@@ -75,6 +75,17 @@ export async function provisionResident(
   input: ProvisionUserInput,
   actor: Actor,
 ) {
+  if (input.vehicles?.length) {
+    const { assertNoActiveDuplicatePlates, prepareVehicleDrafts } = await import(
+      '../../vehicles/services/vehicle.service'
+    );
+    const drafts = prepareVehicleDrafts(input.vehicles);
+    await assertNoActiveDuplicatePlates(
+      societyId,
+      drafts.map((draft) => draft.registrationNumber),
+    );
+  }
+
   const email = normalizeEmail(input.email);
   const role = input.role;
   const username = assertValidUsername(input.username ?? usernameFromEmail(email));
@@ -181,6 +192,25 @@ export async function provisionResident(
     }
   }
 
+  let flatAssigned = false;
+  let vehicles: Array<Record<string, unknown>> | undefined;
+  if (input.flatId) {
+    const { assignOwner, assignTenant } = await import(
+      '../../society/services/occupancy-lifecycle.service'
+    );
+    const occupancyInput = {
+      userId: String(user._id),
+      effectiveFrom: new Date(),
+      vehicles: input.vehicles,
+    };
+    const assigned =
+      role === 'OWNER'
+        ? await assignOwner(societyId, input.flatId, occupancyInput, actor)
+        : await assignTenant(societyId, input.flatId, occupancyInput, actor);
+    flatAssigned = true;
+    vehicles = assigned.vehicles as Array<Record<string, unknown>> | undefined;
+  }
+
   await writeAuditLog({
     action: created ? 'USER_CREATED' : 'USER_UPDATED',
     actorUserId: actor.userId,
@@ -192,7 +222,8 @@ export async function provisionResident(
       username,
       role,
       reusedExisting: !created,
-      flatAssigned: false,
+      flatAssigned,
+      vehicleCount: vehicles?.length ?? 0,
       passwordGenerated: passwordWasGenerated,
       // Never include the password or hash in audit metadata.
     },
@@ -207,7 +238,8 @@ export async function provisionResident(
   return {
     user: serialized,
     reusedExisting: !created,
-    flatAssigned: false,
+    flatAssigned,
+    ...(vehicles?.length ? { vehicles } : {}),
     /** Returned once — admin must deliver out-of-band. Never logged. */
     temporaryPassword: credentialsIssued ? temporaryPassword : undefined,
     mustChangePassword: Boolean(user.mustChangePassword),

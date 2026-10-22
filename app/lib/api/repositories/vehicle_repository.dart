@@ -179,6 +179,47 @@ class VehicleRepository {
     return page;
   }
 
+  Future<Vehicle> adminRegister(AdminRegisterVehicleRequest request) {
+    return _locked(() async {
+      final v = await _api.adminRegister(request);
+      invalidateCaches(vehicleId: v.id);
+      _vehicles[v.id] = v;
+      return v;
+    });
+  }
+
+  Future<Vehicle> adminUpdate(
+    String vehicleId, {
+    String? make,
+    String? model,
+    String? colour,
+    String? vehicleType,
+    String? registrationNumber,
+  }) {
+    return _locked(() async {
+      final v = await _api.adminUpdate(
+        vehicleId,
+        make: make,
+        model: model,
+        colour: colour,
+        vehicleType: vehicleType,
+        registrationNumber: registrationNumber,
+      );
+      invalidateCaches(vehicleId: vehicleId);
+      _vehicles[v.id] = v;
+      return v;
+    });
+  }
+
+  Future<Vehicle> adminDeactivate(String vehicleId, {String? reason}) {
+    return _locked(() async {
+      final v = await _api.adminDeactivate(vehicleId, reason: reason);
+      invalidateCaches(vehicleId: vehicleId);
+      _vehicles[v.id] = v;
+      return v;
+    });
+  }
+
   Future<ParkingSummary> parkingSummary({bool force = false}) async {
     if (!force && lastSummary != null) return lastSummary!;
     final s = await _api.parkingSummary();

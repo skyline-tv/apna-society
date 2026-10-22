@@ -1,5 +1,6 @@
 import '../models/admin_user_models.dart';
 import '../models/common.dart';
+import '../models/vehicle_models.dart';
 import '../services/admin_user_api.dart';
 
 /// Cached admin resident user reads and provisioning writes.
@@ -68,6 +69,8 @@ class AdminUserRepository {
     String? phone,
     String? username,
     String? password,
+    String? flatId,
+    List<VehicleDraftPayload>? vehicles,
   }) async {
     final result = await _api.provision(
       name: name,
@@ -76,6 +79,8 @@ class AdminUserRepository {
       phone: phone,
       username: username,
       password: password,
+      flatId: flatId,
+      vehicles: vehicles,
     );
     _byId[result.user.id] = result.user;
     invalidateLists();

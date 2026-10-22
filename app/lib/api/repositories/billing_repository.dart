@@ -16,7 +16,9 @@ class BillingRepository {
   Paged<PaymentSummary>? lastResidentPayments;
   BillingSummary? lastSummary;
   List<EligibleFlat>? lastEligibleFlats;
+  Paged<AdditionalService>? lastAdditionalServices;
   final Map<String, Bill> _bills = {};
+  final Map<String, AdditionalService> _services = {};
   final Map<String, InterestBreakdown> _interest = {};
   final Map<String, ReceiptDetail> _receipts = {};
 
@@ -32,7 +34,9 @@ class BillingRepository {
     lastResidentPayments = null;
     lastSummary = null;
     lastEligibleFlats = null;
+    lastAdditionalServices = null;
     _bills.clear();
+    _services.clear();
     _interest.clear();
     _receipts.clear();
     paymentSubmitLocked = false;
@@ -47,6 +51,8 @@ class BillingRepository {
     lastResidentPayments = null;
     lastSummary = null;
     lastEligibleFlats = null;
+    lastAdditionalServices = null;
+    _services.clear();
     if (billId != null) {
       _bills.remove(billId);
       _interest.remove(billId);
@@ -350,5 +356,71 @@ class BillingRepository {
     int? limit,
   }) {
     return _api.listAdminReceipts(page: page, limit: limit);
+  }
+
+  Future<Paged<AdditionalService>> listAdditionalServices({
+    String? flatId,
+    String? wingId,
+    bool? isActive,
+    int? page,
+    int? limit,
+    bool force = false,
+  }) async {
+    if (!force &&
+        lastAdditionalServices != null &&
+        flatId == null &&
+        wingId == null &&
+        isActive == null) {
+      return lastAdditionalServices!;
+    }
+    final result = await _api.listAdditionalServices(
+      flatId: flatId,
+      wingId: wingId,
+      isActive: isActive,
+      page: page,
+      limit: limit,
+    );
+    if (flatId == null && wingId == null && isActive == null) {
+      lastAdditionalServices = result;
+    }
+    for (final service in result.items) {
+      _services[service.id] = service;
+    }
+    return result;
+  }
+
+  Future<AdditionalService> createAdditionalService(
+    CreateAdditionalServiceRequest request,
+  ) async {
+    final service = await _api.createAdditionalService(request);
+    lastAdditionalServices = null;
+    lastEligibleFlats = null;
+    _services[service.id] = service;
+    return service;
+  }
+
+  Future<AdditionalService> updateAdditionalService(
+    String serviceId,
+    UpdateAdditionalServiceRequest request,
+  ) async {
+    final service = await _api.updateAdditionalService(serviceId, request);
+    lastAdditionalServices = null;
+    lastEligibleFlats = null;
+    _services[service.id] = service;
+    return service;
+  }
+
+  Future<AdditionalService> deactivateAdditionalService(
+    String serviceId, {
+    String? reason,
+  }) async {
+    final service = await _api.deactivateAdditionalService(
+      serviceId,
+      reason: reason,
+    );
+    lastAdditionalServices = null;
+    lastEligibleFlats = null;
+    _services[service.id] = service;
+    return service;
   }
 }

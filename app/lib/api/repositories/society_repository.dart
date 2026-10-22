@@ -1,6 +1,7 @@
 import '../models/admin_user_models.dart';
 import '../models/common.dart';
 import '../models/society_models.dart';
+import '../models/vehicle_models.dart';
 import '../services/society_api.dart';
 
 /// Cached admin society / wing / flat / dashboard reads and occupancy writes.
@@ -281,12 +282,14 @@ class SocietyRepository {
     required String userId,
     required DateTime effectiveFrom,
     String? notes,
+    List<VehicleDraftPayload>? vehicles,
   }) async {
     final result = await _api.assignOwner(
       flatId,
       userId: userId,
       effectiveFrom: effectiveFrom,
       notes: notes,
+      vehicles: vehicles,
     );
     invalidateAfterOccupancy(flatId);
     return result;
@@ -297,12 +300,14 @@ class SocietyRepository {
     required String userId,
     required DateTime effectiveFrom,
     String? notes,
+    List<VehicleDraftPayload>? vehicles,
   }) async {
     final result = await _api.assignTenant(
       flatId,
       userId: userId,
       effectiveFrom: effectiveFrom,
       notes: notes,
+      vehicles: vehicles,
     );
     invalidateAfterOccupancy(flatId);
     return result;

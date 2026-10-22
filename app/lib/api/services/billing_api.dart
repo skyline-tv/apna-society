@@ -338,4 +338,75 @@ class BillingApi {
       decode: ReceiptDetail.fromJson,
     );
   }
+
+  Future<AdditionalService> createAdditionalService(
+    CreateAdditionalServiceRequest request, {
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_admin/billing/additional-services',
+      body: request.toJson(),
+      societyId: societyId,
+      decode: AdditionalService.fromJson,
+    );
+  }
+
+  Future<Paged<AdditionalService>> listAdditionalServices({
+    String? flatId,
+    String? wingId,
+    bool? isActive,
+    int? page,
+    int? limit,
+    String? societyId,
+  }) {
+    return _client.get(
+      '$_admin/billing/additional-services',
+      query: omitNulls({
+        'flatId': flatId,
+        'wingId': wingId,
+        'isActive': isActive,
+        'page': page,
+        'limit': limit,
+      }),
+      societyId: societyId,
+      decode: (data) => Paged.fromJson(data, AdditionalService.fromJson),
+    );
+  }
+
+  Future<AdditionalService> additionalService(
+    String serviceId, {
+    String? societyId,
+  }) {
+    return _client.get(
+      '$_admin/billing/additional-services/$serviceId',
+      societyId: societyId,
+      decode: AdditionalService.fromJson,
+    );
+  }
+
+  Future<AdditionalService> updateAdditionalService(
+    String serviceId,
+    UpdateAdditionalServiceRequest request, {
+    String? societyId,
+  }) {
+    return _client.patch(
+      '$_admin/billing/additional-services/$serviceId',
+      body: request.toJson(),
+      societyId: societyId,
+      decode: AdditionalService.fromJson,
+    );
+  }
+
+  Future<AdditionalService> deactivateAdditionalService(
+    String serviceId, {
+    String? reason,
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_admin/billing/additional-services/$serviceId/deactivate',
+      body: omitNulls({'reason': reason}),
+      societyId: societyId,
+      decode: AdditionalService.fromJson,
+    );
+  }
 }

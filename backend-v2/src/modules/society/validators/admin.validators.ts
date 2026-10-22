@@ -20,6 +20,7 @@ export const updateSocietySchema = z
     timezone: z.string().trim().min(1).max(64).optional(),
     currency: z.string().trim().min(3).max(8).optional(),
     maintenanceDayOfMonth: z.number().int().min(1).max(28).optional(),
+    annualInterestRateBps: z.number().int().min(0).max(100_000).optional(),
     isActive: z.boolean().optional(),
   })
   .strict()

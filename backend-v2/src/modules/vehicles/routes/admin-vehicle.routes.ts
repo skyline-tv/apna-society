@@ -13,11 +13,19 @@ import {
   adminSetSlotActiveHandler,
   adminUpdateSlotHandler,
 } from '../controllers/parking.controller';
-import { adminListVehiclesHandler } from '../controllers/vehicle.controller';
 import {
+  adminDeactivateVehicleHandler,
+  adminListVehiclesHandler,
+  adminRegisterVehicleHandler,
+  adminUpdateVehicleHandler,
+} from '../controllers/vehicle.controller';
+import {
+  adminRegisterVehicleSchema,
+  adminUpdateVehicleSchema,
   allocateParkingSchema,
   allocationIdParamSchema,
   createParkingSlotSchema,
+  deactivateVehicleSchema,
   listAdminVehiclesQuerySchema,
   listAllocationsQuerySchema,
   listParkingSlotsQuerySchema,
@@ -25,6 +33,7 @@ import {
   setParkingSlotActiveSchema,
   slotIdParamSchema,
   updateParkingSlotSchema,
+  vehicleIdParamSchema,
 } from '../validators/vehicle.validators';
 
 const router = Router();
@@ -33,6 +42,23 @@ router.get(
   '/vehicles',
   validateQuery(listAdminVehiclesQuerySchema),
   asyncHandler(adminListVehiclesHandler),
+);
+router.post(
+  '/vehicles',
+  validateBody(adminRegisterVehicleSchema),
+  asyncHandler(adminRegisterVehicleHandler),
+);
+router.patch(
+  '/vehicles/:vehicleId',
+  validateParams(vehicleIdParamSchema),
+  validateBody(adminUpdateVehicleSchema),
+  asyncHandler(adminUpdateVehicleHandler),
+);
+router.post(
+  '/vehicles/:vehicleId/deactivate',
+  validateParams(vehicleIdParamSchema),
+  validateBody(deactivateVehicleSchema),
+  asyncHandler(adminDeactivateVehicleHandler),
 );
 
 router.post(

@@ -3,6 +3,9 @@ import '../http/json_read.dart';
 /// Backend `VEHICLE_TYPES` / slot `parkingType`.
 const kApiVehicleTypes = ['TWO_WHEELER', 'FOUR_WHEELER', 'OTHER'];
 
+/// Admin resident registration only offers two- and four-wheelers.
+const kAdminSelectableVehicleTypes = ['TWO_WHEELER', 'FOUR_WHEELER'];
+
 const kAllocationStatuses = ['ACTIVE', 'ENDED'];
 const kVehicleLogStatuses = ['INSIDE', 'EXITED'];
 
@@ -49,6 +52,11 @@ class Vehicle {
     this.deactivationReason,
     this.activeAllocationId,
     this.parkingSlotId,
+    this.residentName,
+    this.flatNumber,
+    this.wingCode,
+    this.societyName,
+    this.societyCode,
   });
 
   final String id;
@@ -67,6 +75,33 @@ class Vehicle {
   final String updatedAt;
   final String? activeAllocationId;
   final String? parkingSlotId;
+  final String? residentName;
+  final String? flatNumber;
+  final String? wingCode;
+  final String? societyName;
+  final String? societyCode;
+
+  String get makeModelLabel {
+    final parts = [
+      if ((make ?? '').trim().isNotEmpty) make!.trim(),
+      if ((model ?? '').trim().isNotEmpty) model!.trim(),
+    ];
+    return parts.isEmpty ? '—' : parts.join(' ');
+  }
+
+  String get flatLabel {
+    final number = (flatNumber ?? '').trim();
+    final wing = (wingCode ?? '').trim();
+    if (number.isEmpty) return flatId;
+    if (wing.isEmpty) return number;
+    final upperNumber = number.toUpperCase();
+    final upperWing = wing.toUpperCase();
+    if (upperNumber.startsWith('$upperWing-') ||
+        upperNumber.startsWith(upperWing)) {
+      return number;
+    }
+    return '$wing-$number';
+  }
 
   factory Vehicle.fromJson(Object? data) {
     final json = requireMap(data, 'vehicle');
@@ -87,6 +122,11 @@ class Vehicle {
       updatedAt: requireString(json, 'updatedAt'),
       activeAllocationId: optionalString(json, 'activeAllocationId'),
       parkingSlotId: optionalString(json, 'parkingSlotId'),
+      residentName: optionalString(json, 'residentName'),
+      flatNumber: optionalString(json, 'flatNumber'),
+      wingCode: optionalString(json, 'wingCode'),
+      societyName: optionalString(json, 'societyName'),
+      societyCode: optionalString(json, 'societyCode'),
     );
   }
 }
@@ -128,6 +168,60 @@ class RegisterVehicleRequest {
         'model': model,
         'colour': colour,
       };
+}
+
+class VehicleDraftPayload {
+  const VehicleDraftPayload({
+    required this.vehicleType,
+    required this.registrationNumber,
+    this.make,
+    this.model,
+    this.colour,
+  });
+
+  final String vehicleType;
+  final String registrationNumber;
+  final String? make;
+  final String? model;
+  final String? colour;
+
+  Map<String, Object?> toJson() => omitNulls({
+        'vehicleType': vehicleType,
+        'registrationNumber': registrationNumber,
+        'make': make,
+        'model': model,
+        'colour': colour,
+      });
+}
+
+class AdminRegisterVehicleRequest {
+  const AdminRegisterVehicleRequest({
+    required this.flatId,
+    required this.registeredUserId,
+    required this.vehicleType,
+    required this.registrationNumber,
+    this.make,
+    this.model,
+    this.colour,
+  });
+
+  final String flatId;
+  final String registeredUserId;
+  final String vehicleType;
+  final String registrationNumber;
+  final String? make;
+  final String? model;
+  final String? colour;
+
+  Map<String, Object?> toJson() => omitNulls({
+        'flatId': flatId,
+        'registeredUserId': registeredUserId,
+        'vehicleType': vehicleType,
+        'registrationNumber': registrationNumber,
+        'make': make,
+        'model': model,
+        'colour': colour,
+      });
 }
 
 class VehicleLog {
@@ -387,6 +481,7 @@ class ParkingSummary {
 class ListAdminVehiclesQuery {
   const ListAdminVehiclesQuery({
     this.flatId,
+    this.registeredUserId,
     this.isActive,
     this.registrationNumber,
     this.page,
@@ -394,6 +489,7 @@ class ListAdminVehiclesQuery {
   });
 
   final String? flatId;
+  final String? registeredUserId;
   final bool? isActive;
   final String? registrationNumber;
   final int? page;
@@ -401,6 +497,7 @@ class ListAdminVehiclesQuery {
 
   Map<String, Object?> toQuery() => {
         'flatId': flatId,
+        'registeredUserId': registeredUserId,
         'isActive': isActive == null ? null : (isActive! ? 'true' : 'false'),
         'registrationNumber': registrationNumber,
         'page': page,

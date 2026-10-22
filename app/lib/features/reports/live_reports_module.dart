@@ -72,7 +72,7 @@ class LiveAdminReportsPage extends StatefulWidget {
 
 class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 5, vsync: this);
+  late final TabController _tabs = TabController(length: 4, vsync: this);
   late Future<_ReportsBundle> _future = _load();
 
   DateTime? _from;
@@ -122,7 +122,6 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
       repos.reports.financial(query: q, force: force),
       repos.reports.collections(query: q, force: force),
       repos.reports.outstanding(query: q, force: force),
-      repos.reports.complaints(query: q, force: force),
     ]);
     return _ReportsBundle(
       society: results[0] as DashboardStats,
@@ -130,7 +129,6 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
       financial: results[2] as FinancialReport,
       collections: results[3] as CollectionReport,
       outstanding: results[4] as OutstandingReport,
-      complaints: results[5] as ComplaintReport,
     );
   }
 
@@ -316,7 +314,6 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
               Tab(text: 'Financial'),
               Tab(text: 'Collections'),
               Tab(text: 'Outstanding'),
-              Tab(text: 'Complaints'),
             ],
           ),
         ),
@@ -342,7 +339,6 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
                   _wrap(_financialTab(b.financial)),
                   _wrap(_collectionsTab(b.collections)),
                   _wrap(_outstandingTab(b.outstanding)),
-                  _wrap(_complaintsTab(b.complaints)),
                 ],
               );
             },
@@ -366,9 +362,7 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
     final fin = b.dashboard.financial;
     final col = b.dashboard.collections;
     final soc = b.society.totals;
-    final cmp = b.dashboard.complaints;
     final occupied = soc.ownerOccupiedFlats + soc.tenantOccupiedFlats;
-    final openComplaints = cmp.open + cmp.assigned + cmp.inProgress;
     return [
       PageHeader(
         'Society overview',
@@ -388,15 +382,16 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
         MetricItem('Occupied', '$occupied'),
         MetricItem('Vacant', '${soc.vacantFlats}',
             valueColor: soc.vacantFlats > 0 ? C.amber : C.navy),
-        MetricItem('Open complaints', '$openComplaints',
-            valueColor: openComplaints > 0 ? C.amber : C.green),
+        MetricItem('Collection rate', _pct(col.collectionPercentage),
+            valueColor: C.green),
       ]),
       const SizedBox(height: 12),
       MetricBand(items: [
         MetricItem('Monthly maintenance', money(soc.monthlyMaintenanceTotal)),
-        MetricItem('Accrued interest', moneyPaise(fin.totalAccruedInterestPaise),
+        MetricItem(
+            'Accrued interest', moneyPaise(fin.totalAccruedInterestPaise),
             valueColor: fin.totalAccruedInterestPaise > 0 ? C.amber : C.navy),
-        MetricItem('Collection rate', _pct(col.collectionPercentage),
+        MetricItem('Collected', moneyPaise(fin.totalCollectedPaise),
             valueColor: C.green),
       ]),
       const SizedBox(height: 14),
@@ -409,23 +404,13 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
         DetailRow('Collection rate', _pct(col.collectionPercentage),
             emphasize: true),
       ]),
-      DetailCard(title: 'Complaints snapshot', children: [
-        DetailRow('Total', '${cmp.totalComplaints}'),
-        DetailRow('Open', '${cmp.open}'),
-        DetailRow('Assigned', '${cmp.assigned}'),
-        DetailRow('In progress', '${cmp.inProgress}'),
-        DetailRow('Resolved', '${cmp.resolved}'),
-        DetailRow('Closed', '${cmp.closed}'),
-        DetailRow('Cancelled', '${cmp.cancelled}'),
-      ]),
       if (b.dashboard.topFlats.isNotEmpty) ...[
         const SectionTitle('Top outstanding flats'),
         AppCard(
           margin: EdgeInsets.zero,
           child: Column(children: [
             for (var i = 0; i < b.dashboard.topFlats.length; i++) ...[
-              if (i > 0)
-                const Divider(height: 1, indent: 56, endIndent: 12),
+              if (i > 0) const Divider(height: 1, indent: 56, endIndent: 12),
               Builder(builder: (_) {
                 final f = b.dashboard.topFlats[i];
                 return Padding(
@@ -451,7 +436,8 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
                         Text(moneyPaise(f.outstandingPrincipalPaise),
                             style: T.money.copyWith(fontSize: 13)),
                         if (f.accruedInterestPaise > 0)
-                          Text('+${moneyPaise(f.accruedInterestPaise)} interest',
+                          Text(
+                              '+${moneyPaise(f.accruedInterestPaise)} interest',
                               style: T.caption),
                       ],
                     ),
@@ -466,14 +452,15 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
       const SectionTitle('Export',
           subtitle: 'CSV for the selected period and wing'),
       for (final type in reportExportTypes)
-        QuickActionTile(
-          icon: Icons.ios_share_rounded,
-          label: _exportLabel(type),
-          subtitle: 'Share as CSV',
-          enabled: !_exporting,
-          onTap: () =>
-              _export(type, from: b.dashboard.from, to: b.dashboard.to),
-        ),
+        if (type != 'complaints')
+          QuickActionTile(
+            icon: Icons.ios_share_rounded,
+            label: _exportLabel(type),
+            subtitle: 'Share as CSV',
+            enabled: !_exporting,
+            onTap: () =>
+                _export(type, from: b.dashboard.from, to: b.dashboard.to),
+          ),
       if (_exporting)
         const Padding(
           padding: EdgeInsets.only(top: 4),
@@ -659,56 +646,6 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
       _exportButton('outstanding', from: r.from, to: r.to),
     ];
   }
-
-  List<Widget> _complaintsTab(ComplaintReport r) {
-    final active = r.open + r.assigned + r.inProgress;
-    return [
-      Text(_periodLabel(r.from, r.to), style: T.caption),
-      const SizedBox(height: 12),
-      MiniStatStrip(children: [
-        MiniStat('Total', '${r.totalComplaints}'),
-        MiniStat('Active', '$active',
-            tone: active > 0 ? BadgeTone.warning : BadgeTone.success),
-        MiniStat('Resolved', '${r.resolved + r.closed}',
-            tone: BadgeTone.success),
-        if (r.averageResolutionHours != null)
-          MiniStat('Avg hours', r.averageResolutionHours!.toStringAsFixed(1),
-              tone: BadgeTone.info),
-      ]),
-      const SizedBox(height: 10),
-      DetailCard(title: 'By status', children: [
-        DetailRow('Open', '${r.open}'),
-        DetailRow('Assigned', '${r.assigned}'),
-        DetailRow('In progress', '${r.inProgress}'),
-        DetailRow('Resolved', '${r.resolved}'),
-        DetailRow('Closed', '${r.closed}'),
-        DetailRow('Cancelled', '${r.cancelled}'),
-      ]),
-      if (r.byCategory.isNotEmpty)
-        DetailCard(title: 'By category', children: [
-          for (final e in r.byCategory.entries)
-            DetailRow(humanizeStatus(e.key), '${e.value}'),
-        ]),
-      if (r.byPriority.isNotEmpty)
-        DetailCard(title: 'By priority', children: [
-          for (final e in r.byPriority.entries)
-            DetailRow(humanizeStatus(e.key), '${e.value}'),
-        ]),
-      if (r.byWing.isNotEmpty)
-        DetailCard(title: 'By wing', children: [
-          for (final w in r.byWing)
-            DetailRow('Wing ${w.wingCode}', '${w.count}'),
-        ]),
-      if (r.workload.isNotEmpty)
-        DetailCard(title: 'Assignee workload', children: [
-          for (final w in r.workload)
-            DetailRow(w.assignedToName, '${w.openAssigned} open'),
-        ]),
-      if (r.note.trim().isNotEmpty) InfoNote(r.note),
-      const SizedBox(height: 12),
-      _exportButton('complaints', from: r.from, to: r.to),
-    ];
-  }
 }
 
 class _ReportsBundle {
@@ -718,7 +655,6 @@ class _ReportsBundle {
     required this.financial,
     required this.collections,
     required this.outstanding,
-    required this.complaints,
   });
 
   final DashboardStats society;
@@ -726,5 +662,4 @@ class _ReportsBundle {
   final FinancialReport financial;
   final CollectionReport collections;
   final OutstandingReport outstanding;
-  final ComplaintReport complaints;
 }

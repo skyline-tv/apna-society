@@ -9,6 +9,7 @@ import 'package:apna_society/api/http/api_exception.dart';
 import 'package:apna_society/api/models/vehicle_models.dart';
 import 'package:apna_society/api/repositories/live_repositories.dart';
 import 'package:apna_society/api/repositories/vehicle_repository.dart';
+import 'package:apna_society/features/vehicles/vehicle_drafts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,40 @@ void main() {
       expect(v.vehicleType, 'FOUR_WHEELER');
       expect(v.activeAllocationId, allocationId);
       expect(v.parkingSlotId, slotId);
+    });
+
+    test('parses admin list labels for resident-linked vehicles', () {
+      final v = Vehicle.fromJson({
+        ..._vehicle(),
+        'residentName': 'Owner One',
+        'flatNumber': 'V-101',
+        'wingCode': 'V',
+        'societyName': 'Apna Society',
+        'societyCode': 'APNA',
+      });
+      expect(v.residentName, 'Owner One');
+      expect(v.makeModelLabel, 'Honda City');
+      expect(v.flatLabel, 'V-101');
+      expect(v.societyName, 'Apna Society');
+    });
+
+    test('vehicle drafts skip blanks and reject invalid plates', () {
+      final empty = VehicleDraftControllers();
+      final valid = VehicleDraftControllers(
+        registration: 'mh 12-ab 1234',
+        make: 'Honda',
+        model: 'City',
+      );
+      final invalid = VehicleDraftControllers(registration: 'NOPE');
+      addTearDown(() {
+        empty.dispose();
+        valid.dispose();
+        invalid.dispose();
+      });
+      expect(validateVehicleDrafts([empty, valid]), isNull);
+      expect(vehicleDraftPayloads([empty, valid]), hasLength(1));
+      expect(vehicleDraftPayloads([valid]).first.registrationNumber, 'MH12AB1234');
+      expect(validateVehicleDrafts([invalid]), isNotNull);
     });
 
     test('normalizes and validates Indian plates', () {
@@ -54,37 +89,89 @@ void main() {
   });
 
   group('Resident vehicles', () {
-    test('registers and lists vehicles', () async {
+    test('lists resident vehicles with flat labels', () async {
       final adapter = ScriptedAdapter((options) async {
-        if (options.method == 'POST') {
-          expect(options.path.endsWith('/resident/vehicles'), isTrue);
-          expect(options.data['registrationNumber'], 'MH12AB1234');
-          return jsonBody(201, {
-            'success': true,
-            'data': _vehicle(),
-          });
-        }
+        expect(options.method, 'GET');
+        expect(options.path.endsWith('/resident/vehicles'), isTrue);
         return jsonBody(200, {
           'success': true,
           'data': {
-            'items': [_vehicle()],
+            'items': [
+              {
+                ..._vehicle(),
+                'flatNumber': '101',
+                'wingCode': 'A',
+              },
+            ],
           },
         });
       });
       final repo = VehicleRepository(_api(adapter).vehicles);
-      final created = await repo.register(
-        const RegisterVehicleRequest(
-          flatId: flatId,
-          vehicleType: 'FOUR_WHEELER',
-          registrationNumber: 'MH12AB1234',
-        ),
-      );
-      expect(created.id, vehicleId);
       final list = await repo.listResident(force: true);
       expect(list.items, hasLength(1));
+      expect(list.items.first.flatLabel, 'A-101');
+      expect(list.items.first.makeModelLabel, 'Honda City');
     });
 
-    test('duplicate registration surfaces DUPLICATE_VEHICLE', () async {
+    test('resident write APIs surface RESIDENT_VEHICLE_READ_ONLY', () async {
+      final adapter = ScriptedAdapter((options) async {
+        return jsonBody(403, {
+          'success': false,
+          'error': {
+            'code': 'RESIDENT_VEHICLE_READ_ONLY',
+            'message': 'Read only',
+          },
+        });
+      });
+      final repo = VehicleRepository(_api(adapter).vehicles);
+      await expectLater(
+        repo.register(
+          const RegisterVehicleRequest(
+            flatId: flatId,
+            vehicleType: 'FOUR_WHEELER',
+            registrationNumber: 'MH12AB1234',
+          ),
+        ),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'RESIDENT_VEHICLE_READ_ONLY'),
+        ),
+      );
+    });
+
+    test('admin registers a vehicle against resident and flat', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.method, 'POST');
+        expect(options.path.endsWith('/admin/vehicles'), isTrue);
+        expect(options.data['registeredUserId'], '507f1f77bcf86cd799439021');
+        expect(options.data['flatId'], flatId);
+        return jsonBody(201, {
+          'success': true,
+          'data': {
+            ..._vehicle(),
+            'residentName': 'Owner One',
+            'flatNumber': '101',
+            'wingCode': 'A',
+            'societyName': 'Demo Society',
+          },
+        });
+      });
+      final repo = VehicleRepository(_api(adapter).vehicles);
+      final created = await repo.adminRegister(
+        const AdminRegisterVehicleRequest(
+          flatId: flatId,
+          registeredUserId: '507f1f77bcf86cd799439021',
+          vehicleType: 'FOUR_WHEELER',
+          registrationNumber: 'MH12AB1234',
+          make: 'Honda',
+          model: 'City',
+        ),
+      );
+      expect(created.residentName, 'Owner One');
+      expect(created.flatLabel, 'A-101');
+    });
+
+    test('admin duplicate registration surfaces DUPLICATE_VEHICLE', () async {
       final adapter = ScriptedAdapter((options) async {
         return jsonBody(409, {
           'success': false,
@@ -96,9 +183,10 @@ void main() {
       });
       final repo = VehicleRepository(_api(adapter).vehicles);
       await expectLater(
-        repo.register(
-          const RegisterVehicleRequest(
+        repo.adminRegister(
+          const AdminRegisterVehicleRequest(
             flatId: flatId,
+            registeredUserId: '507f1f77bcf86cd799439021',
             vehicleType: 'FOUR_WHEELER',
             registrationNumber: 'MH12AB1234',
           ),

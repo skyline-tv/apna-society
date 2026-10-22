@@ -7,16 +7,15 @@ import 'package:flutter/services.dart';
 
 /// ApnaSociety colour tokens.
 ///
-/// Warm stone canvas, ink text, and a deep pine for actions. Semantic green,
-/// amber and red stay limited to status. The field is still named [blue] so
-/// existing call sites keep compiling; the colour is pine, not royal blue.
+/// Warm stone canvas, ink text, and a deep blue for actions. Semantic green,
+/// amber and red stay limited to status (paid, warning, error).
 class C {
   C._();
 
   // Brand
-  static const blue = Color(0xFF1B4D3E);
-  static const blueDark = Color(0xFF12352B);
-  static const softBlue = Color(0xFF3E7A64);
+  static const blue = Color(0xFF1B4F8A);
+  static const blueDark = Color(0xFF123A68);
+  static const softBlue = Color(0xFF3D73B8);
   static const navy = Color(0xFF1C1917);
   static const charcoal = Color(0xFF44403C);
 
@@ -28,7 +27,7 @@ class C {
   static const lineStrong = Color(0xFFD4CFC3);
   static const muted = Color(0xFF78716C);
   static const faint = Color(0xFFA8A29E);
-  static const chip = Color(0xFFE6F0EB);
+  static const chip = Color(0xFFE6EFF8);
 
   // Semantic
   static const green = Color(0xFF1F7A4D);
@@ -913,19 +912,25 @@ class StatGrid extends StatelessWidget {
     for (var i = 0; i < children.length; i += columns) {
       final slice = children.sublist(
           i, i + columns > children.length ? children.length : i + columns);
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var j = 0; j < columns; j++) ...[
-            if (j > 0) const SizedBox(width: 10),
-            Expanded(
-                child: j < slice.length ? slice[j] : const SizedBox.shrink()),
+      // IntrinsicHeight bounds the row so CrossAxisAlignment.stretch is safe
+      // inside a ListView (unbounded max height). IndexedStack still lays out
+      // offstage tabs, so this must not throw on AdminHome.
+      rows.add(IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var j = 0; j < columns; j++) ...[
+              if (j > 0) const SizedBox(width: 10),
+              Expanded(
+                  child:
+                      j < slice.length ? slice[j] : const SizedBox.shrink()),
+            ],
           ],
-        ],
+        ),
       ));
       if (i + columns < children.length) rows.add(const SizedBox(height: 10));
     }
-    return Column(children: rows);
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
   }
 }
 

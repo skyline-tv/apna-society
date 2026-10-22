@@ -77,7 +77,7 @@ void main() {
         expect(options.path.endsWith('/guard/visitors'), isTrue);
         expect(options.method, 'POST');
         expect(options.data['flatId'], flatId);
-        expect(options.data['visitorEmail'], 'guest@example.com');
+        expect(options.data.containsKey('visitorEmail'), isFalse);
         expect(options.data.containsKey('otp'), isFalse);
         return jsonBody(201, {
           'success': true,
@@ -90,7 +90,6 @@ void main() {
           flatId: flatId,
           visitorName: 'Guest',
           visitorPhone: '9876543210',
-          visitorEmail: 'guest@example.com',
           visitorType: 'GUEST',
           purpose: 'Visit',
         ),

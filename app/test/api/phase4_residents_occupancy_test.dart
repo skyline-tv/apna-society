@@ -7,6 +7,7 @@ import 'package:apna_society/api/config/api_config.dart';
 import 'package:apna_society/api/http/api_client.dart';
 import 'package:apna_society/api/http/api_exception.dart';
 import 'package:apna_society/api/models/admin_user_models.dart';
+import 'package:apna_society/api/models/vehicle_models.dart';
 import 'package:apna_society/api/repositories/admin_user_repository.dart';
 import 'package:apna_society/api/repositories/live_repositories.dart';
 import 'package:apna_society/api/repositories/society_repository.dart';
@@ -47,6 +48,36 @@ void main() {
       expect(result.reusedExisting, isFalse);
       expect(result.user.id, ownerId);
       expect(result.flatAssigned, isFalse);
+    });
+
+    test('provision can assign a flat and vehicles together', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.path, '/api/v1/admin/users');
+        expect(options.data['flatId'], flatId);
+        expect(options.data['vehicles'][0]['registrationNumber'], 'MH12AB9999');
+        return jsonBody(201, {
+          'success': true,
+          'data': {
+            'user': _user(ownerId, role: 'OWNER'),
+            'reusedExisting': false,
+            'flatAssigned': true,
+          },
+        });
+      });
+      final repo = AdminUserRepository(_api(adapter).adminUsers);
+      final result = await repo.provision(
+        name: 'Owner One',
+        email: 'owner@example.com',
+        role: 'OWNER',
+        flatId: flatId,
+        vehicles: const [
+          VehicleDraftPayload(
+            vehicleType: 'TWO_WHEELER',
+            registrationNumber: 'MH12AB9999',
+          ),
+        ],
+      );
+      expect(result.flatAssigned, isTrue);
     });
 
     test('tenant provisioning reuses existing account', () async {
@@ -166,6 +197,52 @@ void main() {
       );
       expect(result.occupancyStatus, 'TENANT_OCCUPIED');
       expect(result.activeTenantUserId, tenantId);
+    });
+
+    test('assigns owner with optional vehicles', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.path.endsWith('/assign-owner'), isTrue);
+        expect(options.data['vehicles'], isA<List<dynamic>>());
+        expect(options.data['vehicles'][0]['registrationNumber'], 'MH12AB1234');
+        return jsonBody(201, {
+          'success': true,
+          'data': {
+            'flatId': flatId,
+            'occupancyStatus': 'OWNER_OCCUPIED',
+            'activeOwnerUserId': ownerId,
+            'activeTenantUserId': null,
+            'vehicles': [
+              {
+                'id': '507f1f77bcf86cd799439091',
+                'societyId': societyId,
+                'flatId': flatId,
+                'registeredUserId': ownerId,
+                'vehicleType': 'FOUR_WHEELER',
+                'registrationNumber': 'MH12AB1234',
+                'isActive': true,
+                'createdAt': '2026-10-20T10:00:00.000Z',
+                'updatedAt': '2026-10-20T10:00:00.000Z',
+              },
+            ],
+          },
+        });
+      });
+      final repo = SocietyRepository(_api(adapter).society);
+      final result = await repo.assignOwner(
+        flatId,
+        userId: ownerId,
+        effectiveFrom: DateTime.utc(2026, 3, 1),
+        vehicles: const [
+          VehicleDraftPayload(
+            vehicleType: 'FOUR_WHEELER',
+            registrationNumber: 'MH12AB1234',
+            make: 'Honda',
+            model: 'City',
+          ),
+        ],
+      );
+      expect(result.occupancyStatus, 'OWNER_OCCUPIED');
+      expect(result.activeOwnerUserId, ownerId);
     });
 
     test('duplicate assignment is rejected without local fallback', () async {

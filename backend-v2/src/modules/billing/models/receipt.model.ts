@@ -6,7 +6,7 @@ export interface ReceiptDocument extends Document {
   paymentId: Types.ObjectId;
   flatId: Types.ObjectId;
   receiptNumber: string;
-  ownerUserId: Types.ObjectId;
+  ownerUserId?: Types.ObjectId;
   ownerNameSnapshot: string;
   ownerEmailSnapshot: string;
   flatNumberSnapshot: string;
@@ -29,9 +29,9 @@ const receiptSchema = new Schema<ReceiptDocument>(
     paymentId: { type: Schema.Types.ObjectId, ref: 'Payment', required: true, unique: true },
     flatId: { type: Schema.Types.ObjectId, ref: 'Flat', required: true },
     receiptNumber: { type: String, required: true, trim: true },
-    ownerUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    ownerUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     ownerNameSnapshot: { type: String, required: true },
-    ownerEmailSnapshot: { type: String, required: true },
+    ownerEmailSnapshot: { type: String, required: true, default: 'unassigned' },
     flatNumberSnapshot: { type: String, required: true },
     wingCodeSnapshot: { type: String, required: true },
     societyNameSnapshot: { type: String, required: true },

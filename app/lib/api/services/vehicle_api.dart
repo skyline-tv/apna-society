@@ -111,6 +111,54 @@ class VehicleApi {
     );
   }
 
+  Future<Vehicle> adminRegister(
+    AdminRegisterVehicleRequest request, {
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_admin/vehicles',
+      body: request.toJson(),
+      societyId: societyId,
+      decode: Vehicle.fromJson,
+    );
+  }
+
+  Future<Vehicle> adminUpdate(
+    String vehicleId, {
+    String? make,
+    String? model,
+    String? colour,
+    String? vehicleType,
+    String? registrationNumber,
+    String? societyId,
+  }) {
+    return _client.patch(
+      '$_admin/vehicles/$vehicleId',
+      body: omitNulls({
+        'make': make,
+        'model': model,
+        'colour': colour,
+        'vehicleType': vehicleType,
+        'registrationNumber': registrationNumber,
+      }),
+      societyId: societyId,
+      decode: Vehicle.fromJson,
+    );
+  }
+
+  Future<Vehicle> adminDeactivate(
+    String vehicleId, {
+    String? reason,
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_admin/vehicles/$vehicleId/deactivate',
+      body: omitNulls({'reason': reason}),
+      societyId: societyId,
+      decode: Vehicle.fromJson,
+    );
+  }
+
   Future<ParkingSlot> createParkingSlot({
     required String slotNumber,
     required String parkingType,

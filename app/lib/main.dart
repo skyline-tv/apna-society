@@ -9,7 +9,15 @@ import 'api/auth/auth_session.dart';
 import 'api/auth/home_resolver.dart';
 import 'api/socket/visitor_socket.dart';
 import 'api/models/billing_models.dart'
-    show Bill, ListBillsQuery, billAmountDuePaise;
+    show
+        AdditionalService,
+        Bill,
+        ListBillsQuery,
+        activeAdditionalServiceCount,
+        billAmountDuePaise,
+        canAddActiveAdditionalService,
+        kAdditionalServiceLimitMessage,
+        kMaxActiveAdditionalServicesPerFlat;
 import 'api/models/common.dart' show Paged;
 import 'api/models/resident_home_context.dart';
 import 'api/models/resident_models.dart';
@@ -20,15 +28,14 @@ import 'data/local_database.dart' show LocalDatabase;
 import 'api/auth/admin_api_messages.dart';
 import 'api/models/admin_user_models.dart';
 import 'features/billing/collect_payment_page.dart';
+import 'features/billing/live_additional_services_module.dart';
 import 'features/billing/live_billing_module.dart';
 import 'features/reports/live_reports_module.dart';
 import 'features/residents/admin_residents_module.dart';
 import 'features/security/security_module.dart';
 import 'features/announcements/live_announcements_module.dart';
-import 'features/complaints/live_complaints_module.dart';
-import 'features/facilities/live_facilities_module.dart';
+import 'features/guards/admin_guards_module.dart';
 import 'features/notifications/live_notifications_module.dart';
-import 'features/staff/live_staff_module.dart';
 import 'features/vehicles/live_vehicles_module.dart';
 import 'features/visitors/live_visitors_module.dart';
 import 'services/bill_pdf.dart';
@@ -941,10 +948,6 @@ const _kResidentDests = <String, _ResidentDest>{
       'payments', 'Payments', Icons.payments_outlined, Icons.payments_rounded),
   'visitors': _ResidentDest(
       'visitors', 'Visitors', Icons.groups_outlined, Icons.groups_rounded),
-  'complaints': _ResidentDest('complaints', 'Complaints',
-      Icons.report_problem_outlined, Icons.report_problem_rounded),
-  'facilities': _ResidentDest('facilities', 'Facilities',
-      Icons.meeting_room_outlined, Icons.meeting_room_rounded),
   'vehicles': _ResidentDest('vehicles', 'Vehicles',
       Icons.directions_car_outlined, Icons.directions_car_rounded),
   'news': _ResidentDest(
@@ -968,7 +971,7 @@ class _OwnerHomeState extends State<OwnerHome> {
   void initState() {
     super.initState();
     home = widget.home;
-    // Keep create flows (complaints / facilities / vehicles) in sync.
+    // Keep create flows (vehicles) in sync with the selected flat.
     authSession?.selectResidentFlat(home.selectedFlat.flat.id);
     _profileFuture = _loadProfileBundle();
     _duesFuture = access.canFinance ? _loadDues() : null;
@@ -1050,14 +1053,11 @@ class _OwnerHomeState extends State<OwnerHome> {
     final finance = access.canFinance;
     final residential = access.canResidential;
     if (finance && residential) {
-      // Bills and visitors stay one tap away. Payments, complaints and
-      // bookings live in More so the bar is not a second copy of every tool.
+      // Bills and visitors stay one tap away. Payments and the rest live in More.
       return (
         primary: const ['home', 'bills', 'visitors', 'more'],
         more: const [
           'payments',
-          'complaints',
-          'facilities',
           'vehicles',
           'news',
           'profile',
@@ -1072,8 +1072,8 @@ class _OwnerHomeState extends State<OwnerHome> {
     }
     if (residential) {
       return (
-        primary: const ['home', 'visitors', 'complaints', 'facilities', 'more'],
-        more: const ['vehicles', 'news', 'profile'],
+        primary: const ['home', 'visitors', 'vehicles', 'more'],
+        more: const ['news', 'profile'],
       );
     }
     return (primary: const ['home', 'profile'], more: const []);
@@ -1092,10 +1092,6 @@ class _OwnerHomeState extends State<OwnerHome> {
             key: ValueKey('payments-$flatKey'), canFinance: access.canFinance);
       case 'visitors':
         return LiveResidentVisitorsPage(key: ValueKey('visitors-$flatKey'));
-      case 'complaints':
-        return LiveResidentComplaintsPage(key: ValueKey('complaints-$flatKey'));
-      case 'facilities':
-        return LiveResidentFacilitiesPage(key: ValueKey('facilities-$flatKey'));
       case 'vehicles':
         return LiveResidentVehiclesPage(key: ValueKey('vehicles-$flatKey'));
       case 'news':
@@ -1294,17 +1290,17 @@ class _OwnerHomeState extends State<OwnerHome> {
             ),
           if (ctx.access.canResidential)
             QuickAccessItem(
-              icon: Icons.report_problem_outlined,
-              label: 'Complaint',
-              color: C.amber,
-              onTap: () => _open('complaints'),
+              icon: Icons.directions_car_outlined,
+              label: 'Vehicles',
+              color: C.blueDark,
+              onTap: () => _open('vehicles'),
             ),
           if (ctx.access.canResidential)
             QuickAccessItem(
-              icon: Icons.meeting_room_outlined,
-              label: 'Facilities',
-              color: C.blueDark,
-              onTap: () => _open('facilities'),
+              icon: Icons.campaign_outlined,
+              label: 'Notices',
+              color: C.amber,
+              onTap: () => _open('news'),
             ),
         ];
 
@@ -1440,12 +1436,12 @@ class _OwnerHomeState extends State<OwnerHome> {
     );
   }
 
-  /// Home already leads with dues (owner) or visitor/complaint actions (tenant).
+  /// Home already leads with dues (owner) or visitor actions (tenant).
   bool _showOnHome(String key) {
     if (access.canFinance && (key == 'bills' || key == 'payments')) {
       return false;
     }
-    if (!access.canFinance && (key == 'visitors' || key == 'complaints')) {
+    if (!access.canFinance && key == 'visitors') {
       return false;
     }
     return true;
@@ -1459,10 +1455,6 @@ class _OwnerHomeState extends State<OwnerHome> {
         return 'History and receipts';
       case 'visitors':
         return 'Approve or deny entry';
-      case 'complaints':
-        return 'Raise an issue and follow it';
-      case 'facilities':
-        return 'Book a shared amenity';
       case 'vehicles':
         return 'Registered vehicles';
       case 'news':
@@ -1919,6 +1911,7 @@ class _AdminHomeState extends State<AdminHome> {
       'People',
       [
         ('residents', 'Residents', Icons.people_outline_rounded),
+        ('guards', 'Security guards', Icons.shield_outlined),
         ('visitors', 'Visitors', Icons.groups_outlined),
         ('vehicles', 'Vehicles & parking', Icons.directions_car_outlined),
       ]
@@ -1926,27 +1919,13 @@ class _AdminHomeState extends State<AdminHome> {
     (
       'Operations',
       [
-        ('complaints', 'Complaints', Icons.report_problem_outlined),
-        ('facilities', 'Facilities', Icons.meeting_room_outlined),
-        (
-          'facility-bookings',
-          'Facility bookings',
-          Icons.event_available_outlined
-        ),
         ('announcements', 'Announcements', Icons.campaign_outlined),
-      ]
-    ),
-    (
-      'Staff',
-      [
-        ('staff', 'Staff directory', Icons.badge_outlined),
-        ('attendance', 'Attendance', Icons.fact_check_outlined),
-        ('shifts', 'Shifts', Icons.schedule_outlined),
       ]
     ),
     (
       'Insights & setup',
       [
+        ('additional-services', 'Additional services', Icons.local_parking_outlined),
         ('reports', 'Reports & analytics', Icons.assessment_outlined),
         ('settings', 'Society settings', Icons.settings_outlined),
       ]
@@ -2025,20 +2004,12 @@ class _AdminHomeState extends State<AdminHome> {
         return const LiveAdminVisitorsPage();
       case 'vehicles':
         return const LiveAdminVehiclesPage();
-      case 'complaints':
-        return const LiveAdminComplaintsPage();
-      case 'staff':
-        return const LiveAdminStaffPage();
-      case 'attendance':
-        return const LiveAdminAttendancePage();
-      case 'shifts':
-        return const LiveAdminShiftsPage();
-      case 'facilities':
-        return const LiveAdminFacilitiesPage();
-      case 'facility-bookings':
-        return const LiveAdminFacilityBookingsPage();
+      case 'guards':
+        return const LiveAdminGuardsPage();
       case 'announcements':
         return const LiveAdminAnnouncementsPage();
+      case 'additional-services':
+        return const LiveAdditionalServicesPage(embedded: true);
       case 'reports':
         return const LiveAdminReportsPage();
       case 'settings':
@@ -2052,7 +2023,7 @@ class _AdminHomeState extends State<AdminHome> {
         padding: Sp.pagePadding,
         children: [
           const PageHeader('Directory',
-              subtitle: 'People, operations, staff and reports'),
+              subtitle: 'People, operations and reports'),
           for (var g = 0; g < _moreGroups.length; g++) ...[
             if (g > 0) const SizedBox(height: 18),
             ToolDirectory(
@@ -2079,22 +2050,14 @@ class _AdminHomeState extends State<AdminHome> {
         return 'Society-wide visitor records';
       case 'vehicles':
         return 'Vehicles and parking slots';
-      case 'complaints':
-        return 'Assign and resolve issues';
-      case 'facilities':
-        return 'Amenities and booking rules';
-      case 'facility-bookings':
-        return 'Confirm or reject requests';
+      case 'guards':
+        return 'Provision gate logins';
       case 'announcements':
         return 'Publish a notice';
-      case 'staff':
-        return 'Directory and roles';
-      case 'attendance':
-        return 'Mark and correct attendance';
-      case 'shifts':
-        return 'Duty schedules';
+      case 'additional-services':
+        return 'Recurring charges on individual flats';
       case 'reports':
-        return 'Collections, dues and complaints';
+        return 'Collections and outstanding dues';
       case 'settings':
         return 'Society profile and wings';
       default:
@@ -2203,7 +2166,14 @@ class _AdminHomeState extends State<AdminHome> {
               onRetry: reloadDashboard,
             );
           }
-          final bundle = snapshot.data!;
+          final bundle = snapshot.data;
+          if (bundle == null) {
+            return LoadFailure(
+              error: StateError('Dashboard returned no data.'),
+              title: 'Could not load dashboard',
+              onRetry: reloadDashboard,
+            );
+          }
           final society = bundle.society;
           final totals = bundle.dashboard.totals;
           final wings = bundle.dashboard.wings;
@@ -2277,6 +2247,12 @@ class _AdminHomeState extends State<AdminHome> {
                     onTap: () => _openMore('residents'),
                   ),
                   QuickAccessItem(
+                    icon: Icons.shield_outlined,
+                    label: 'Guards',
+                    color: C.softBlue,
+                    onTap: () => _openMore('guards'),
+                  ),
+                  QuickAccessItem(
                     icon: Icons.receipt_long_outlined,
                     label: 'Create bill',
                     color: C.amber,
@@ -2285,14 +2261,8 @@ class _AdminHomeState extends State<AdminHome> {
                   QuickAccessItem(
                     icon: Icons.campaign_outlined,
                     label: 'Notice',
-                    color: C.softBlue,
-                    onTap: () => _openMore('announcements'),
-                  ),
-                  QuickAccessItem(
-                    icon: Icons.assessment_outlined,
-                    label: 'Reports',
                     color: C.blueDark,
-                    onTap: () => _openMore('reports'),
+                    onTap: () => _openMore('announcements'),
                   ),
                 ]),
                 const SizedBox(height: 22),
@@ -2318,10 +2288,10 @@ class _AdminHomeState extends State<AdminHome> {
                       onTap: () => setState(() => tab = 3),
                     ),
                     ToolLink(
-                      icon: Icons.report_problem_outlined,
-                      label: 'Complaints',
-                      subtitle: 'Open issues and assignments',
-                      onTap: () => _openMore('complaints'),
+                      icon: Icons.shield_outlined,
+                      label: 'Security guards',
+                      subtitle: 'Create and manage gate logins',
+                      onTap: () => _openMore('guards'),
                     ),
                     ToolLink(
                       icon: Icons.campaign_outlined,
@@ -2669,11 +2639,59 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
       widget.flatId,
       force: force,
     );
-    return _FlatDetailBundle(flat: flat, history: history);
+    final services = await repos.billing.listAdditionalServices(
+      flatId: widget.flatId,
+      force: force,
+      limit: 200,
+    );
+    final bills = await repos.billing.listAdminBills(
+      force: force,
+      query: ListBillsQuery(flatId: widget.flatId, limit: 20),
+    );
+    return _FlatDetailBundle(
+      flat: flat,
+      history: history,
+      services: services.items,
+      bills: bills.items,
+    );
   }
 
   void _reload() {
     setState(() => _future = _load(force: true));
+  }
+
+  Widget _flatServiceRow(
+    BuildContext context,
+    AdditionalService service, {
+    required String title,
+    required String subtitle,
+  }) {
+    return ListRow(
+      onTap: () async {
+        final ok = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LiveAdditionalServiceFormPage(
+              existing: service,
+              presetFlatId: widget.flatId,
+            ),
+          ),
+        );
+        if (ok == true && mounted) _reload();
+      },
+      leading: AppAvatar(
+        icon: Icons.local_parking_outlined,
+        color: service.isActive ? C.blue : C.muted,
+        size: 42,
+      ),
+      title: title,
+      subtitle: subtitle,
+      trailing: Text(
+        '${moneyPaise(service.monthlyTotalPaise)}/month',
+        style: T.money.copyWith(fontSize: 14),
+      ),
+      showChevron: true,
+    );
   }
 
   Future<void> _assign(String role) async {
@@ -2684,47 +2702,17 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
       ),
     );
     if (user == null || !mounted) return;
-    final notes = await promptTextDialog(
+    final assigned = await Navigator.push<bool>(
       context,
-      title: 'Assign ${role == 'OWNER' ? 'owner' : 'tenant'}',
-      message: '${user.name} will be assigned from today.',
-      label: 'Notes (optional)',
-      confirmLabel: 'Assign',
-      maxLines: 2,
+      MaterialPageRoute(
+        builder: (_) => AssignOccupancyPage(
+          role: role,
+          user: user,
+          flatId: widget.flatId,
+        ),
+      ),
     );
-    if (notes == null || !mounted) return;
-    setState(() => busy = true);
-    try {
-      final session = authSession;
-      if (session == null) throw StateError('Not signed in.');
-      final repos = ensureLiveRepositories(session.api);
-      final trimmed = notes.isEmpty ? null : notes;
-      if (role == 'OWNER') {
-        await repos.society.assignOwner(
-          widget.flatId,
-          userId: user.id,
-          effectiveFrom: DateTime.now(),
-          notes: trimmed,
-        );
-      } else {
-        await repos.society.assignTenant(
-          widget.flatId,
-          userId: user.id,
-          effectiveFrom: DateTime.now(),
-          notes: trimmed,
-        );
-      }
-      repos.invalidateAfterResidentMutation(flatId: widget.flatId);
-      if (!mounted) return;
-      showSuccessSnack(
-          context, '${role == 'OWNER' ? 'Owner' : 'Tenant'} assigned.');
-      _reload();
-    } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, adminApiErrorMessage(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
+    if (assigned == true && mounted) _reload();
   }
 
   Future<void> _end({required bool owner}) async {
@@ -2898,6 +2886,135 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
                                     : null,
                   ),
                 const SizedBox(height: 20),
+                const SectionTitle('Billing & services'),
+                Builder(builder: (_) {
+                  final allServices = snap.data!.services;
+                  final extra = allServices
+                      .where((s) => s.isActive)
+                      .fold<int>(0, (sum, s) => sum + s.monthlyTotalPaise);
+                  final recurringPaise =
+                      (flat.maintenanceRate * 100) + extra;
+                  final activeCount =
+                      activeAdditionalServiceCount(allServices);
+                  final atCap = !canAddActiveAdditionalService(allServices);
+                  final activeServices =
+                      allServices.where((s) => s.isActive).toList();
+                  final inactiveServices =
+                      allServices.where((s) => !s.isActive).toList();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DetailCard(title: 'Recurring monthly', children: [
+                        DetailRow(
+                            'Base maintenance', money(flat.maintenanceRate)),
+                        DetailRow('Additional monthly charges',
+                            moneyPaise(extra)),
+                        DetailRow(
+                            'Total recurring', moneyPaise(recurringPaise),
+                            emphasize: true),
+                      ]),
+                      SectionTitle(
+                        'Additional Services — $activeCount/$kMaxActiveAdditionalServicesPerFlat',
+                      ),
+                      if (atCap) ...[
+                        const InfoNote(kAdditionalServiceLimitMessage,
+                            tone: NoteTone.warning),
+                        const SizedBox(height: 10),
+                      ],
+                      QuickActionTile(
+                        icon: Icons.add_rounded,
+                        label: 'Add additional service',
+                        subtitle: atCap
+                            ? kAdditionalServiceLimitMessage
+                            : 'Parking or other recurring charges for this flat',
+                        enabled: !atCap,
+                        onTap: () async {
+                          if (!canAddActiveAdditionalService(
+                              snap.data!.services)) {
+                            showAppSnack(context,
+                                kAdditionalServiceLimitMessage,
+                                tone: SnackTone.warning);
+                            return;
+                          }
+                          final ok = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => LiveAdditionalServiceFormPage(
+                                presetFlatId: widget.flatId,
+                              ),
+                            ),
+                          );
+                          if (ok == true && mounted) _reload();
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      if (allServices.isEmpty)
+                        const EmptyState(
+                            'No additional services on this flat',
+                            icon: Icons.local_parking_outlined,
+                            compact: true)
+                      else ...[
+                        ...activeServices.asMap().entries.map((entry) {
+                          final n = entry.key + 1;
+                          final service = entry.value;
+                          return _flatServiceRow(
+                            context,
+                            service,
+                            title: 'Service $n: ${service.name}',
+                            subtitle: 'Qty ${service.quantity}',
+                          );
+                        }),
+                        ...inactiveServices.map(
+                          (service) => _flatServiceRow(
+                            context,
+                            service,
+                            title: service.name,
+                            subtitle: 'Inactive · Qty ${service.quantity}',
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }),
+                const SizedBox(height: 12),
+                const SectionTitle('Billing history'),
+                if (snap.data!.bills.isEmpty)
+                  const EmptyState('No bills generated for this flat yet',
+                      icon: Icons.receipt_long_outlined, compact: true)
+                else
+                  ...snap.data!.bills.map(
+                    (bill) => ListRow(
+                      onTap: () async {
+                        await Navigator.push<void>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                LiveAdminBillDetailPage(billId: bill.id),
+                          ),
+                        );
+                        if (mounted) _reload();
+                      },
+                      title: bill.billNumber,
+                      subtitle:
+                          '${fmtIsoDate(bill.billingPeriodStart)} · ${humanizeStatus(bill.status)}',
+                      trailing: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(moneyPaise(bill.totalAmountPaise),
+                              style: T.money.copyWith(fontSize: 14)),
+                          Text(
+                            bill.outstandingPrincipalPaise > 0
+                                ? 'Due ${moneyPaise(billAmountDuePaise(bill))}'
+                                : 'Settled',
+                            style: T.caption,
+                          ),
+                        ],
+                      ),
+                      showChevron: true,
+                    ),
+                  ),
+                const SizedBox(height: 20),
                 const SectionTitle('Occupancy history'),
                 if (history.items.isEmpty)
                   const EmptyState('No occupancy history yet',
@@ -3028,9 +3145,16 @@ class _ResidentCard extends StatelessWidget {
 }
 
 class _FlatDetailBundle {
-  const _FlatDetailBundle({required this.flat, required this.history});
+  const _FlatDetailBundle({
+    required this.flat,
+    required this.history,
+    this.services = const [],
+    this.bills = const [],
+  });
   final FlatSummary flat;
   final AdminOccupancyHistory history;
+  final List<AdditionalService> services;
+  final List<Bill> bills;
 }
 
 class FlatEditorPage extends StatefulWidget {

@@ -959,40 +959,17 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/resident/vehicles`]: {
           post: {
             tags: ['Resident Vehicles'],
-            summary: 'Register a vehicle for a residentially accessible flat',
+            summary: 'Residents cannot register vehicles',
             description:
-              'Requires residential access (owner when OWNER_OCCUPIED, active tenant when TENANT_OCCUPIED). Registration numbers are normalized (uppercase, no spaces/hyphens). Duplicate active plates in the same society return 409.',
+              'Vehicle registration is admin-only. Residents receive 403 RESIDENT_VEHICLE_READ_ONLY.',
             security: adminSecurity,
-            parameters: [
-              { name: 'x-society-id', in: 'header', required: false, schema: { type: 'string' } },
-            ],
-            requestBody: {
-              required: true,
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    required: ['flatId', 'vehicleType', 'registrationNumber'],
-                    properties: {
-                      flatId: { type: 'string' },
-                      vehicleType: { type: 'string', enum: ['TWO_WHEELER', 'FOUR_WHEELER', 'OTHER'] },
-                      registrationNumber: { type: 'string', example: 'MH12AB1234' },
-                      make: { type: 'string' },
-                      model: { type: 'string' },
-                      colour: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
-            responses: {
-              201: { description: 'Vehicle registered' },
-              ...errorResponses,
-            },
+            responses: errorResponses,
           },
           get: {
             tags: ['Resident Vehicles'],
-            summary: 'List vehicles for residentially accessible flats',
+            summary: 'List vehicles registered to the current resident in this society',
+            description:
+              'Returns only vehicles whose registeredUserId matches the caller. Does not include other residents vehicles on the same flat.',
             security: adminSecurity,
             responses: { 200: { description: 'Vehicles' }, ...errorResponses },
           },
@@ -1000,26 +977,26 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/resident/vehicles/{vehicleId}`]: {
           get: {
             tags: ['Resident Vehicles'],
-            summary: 'Get vehicle details (residential access required)',
+            summary: 'Get a vehicle registered to the current resident',
             security: adminSecurity,
             parameters: [{ name: 'vehicleId', in: 'path', required: true, schema: { type: 'string' } }],
             responses: { 200: { description: 'Vehicle' }, ...errorResponses },
           },
           patch: {
             tags: ['Resident Vehicles'],
-            summary: 'Update permitted vehicle fields',
+            summary: 'Residents cannot update vehicles',
             security: adminSecurity,
             parameters: [{ name: 'vehicleId', in: 'path', required: true, schema: { type: 'string' } }],
-            responses: { 200: { description: 'Updated' }, ...errorResponses },
+            responses: errorResponses,
           },
         },
         [`${API_PREFIX}/resident/vehicles/{vehicleId}/deactivate`]: {
           post: {
             tags: ['Resident Vehicles'],
-            summary: 'Deactivate vehicle (soft; history preserved)',
+            summary: 'Residents cannot deactivate vehicles',
             security: adminSecurity,
             parameters: [{ name: 'vehicleId', in: 'path', required: true, schema: { type: 'string' } }],
-            responses: { 200: { description: 'Deactivated' }, ...errorResponses },
+            responses: errorResponses,
           },
         },
         [`${API_PREFIX}/resident/parking`]: {

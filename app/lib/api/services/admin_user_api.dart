@@ -2,6 +2,7 @@ import '../config/api_config.dart';
 import '../http/api_client.dart';
 import '../models/admin_user_models.dart';
 import '../models/common.dart';
+import '../models/vehicle_models.dart';
 
 /// Admin resident user APIs under `/api/v1/admin/users`.
 class AdminUserApi {
@@ -37,6 +38,8 @@ class AdminUserApi {
     String? phone,
     String? username,
     String? password,
+    String? flatId,
+    List<VehicleDraftPayload>? vehicles,
     String? societyId,
   }) {
     return _client.post(
@@ -50,6 +53,9 @@ class AdminUserApi {
         if (username != null && username.trim().isNotEmpty)
           'username': username.trim(),
         if (password != null && password.isNotEmpty) 'password': password,
+        if (flatId != null && flatId.isNotEmpty) 'flatId': flatId,
+        if (vehicles != null && vehicles.isNotEmpty)
+          'vehicles': vehicles.map((v) => v.toJson()).toList(),
       },
       decode: ProvisionUserResult.fromJson,
     );

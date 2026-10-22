@@ -15,6 +15,8 @@ export interface SocietyDocument extends Document {
     currency: string;
     timezone: string;
     maintenanceDayOfMonth: number;
+    /** Simple annual overdue interest in basis points. 2400 = 24% p.a. */
+    annualInterestRateBps: number;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +37,7 @@ const societySchema = new Schema<SocietyDocument>(
       currency: { type: String, default: 'INR' },
       timezone: { type: String, default: DEFAULT_TIMEZONE },
       maintenanceDayOfMonth: { type: Number, default: 1, min: 1, max: 28 },
+      annualInterestRateBps: { type: Number, default: 2400, min: 0, max: 100_000 },
     },
   },
   { timestamps: true },

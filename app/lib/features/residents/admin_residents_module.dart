@@ -4,10 +4,15 @@ import '../../api/auth/admin_api_messages.dart';
 import '../../api/auth/auth_session.dart';
 import '../../api/models/admin_user_models.dart';
 import '../../api/models/common.dart';
+import '../../api/models/society_models.dart';
+import '../../api/models/vehicle_models.dart';
 import '../../api/repositories/live_repositories.dart';
 import '../../app_core.dart';
 import '../../ui/components.dart';
+import '../../ui/issued_credentials_dialog.dart';
 import '../../ui/load_failure.dart';
+import '../vehicles/live_vehicles_module.dart' show vehicleErrorMessage;
+import '../vehicles/vehicle_drafts.dart';
 
 String _userPhone(AdminUser user) {
   if (user.mobileE164 != null) return '+${user.mobileE164}';
@@ -343,6 +348,30 @@ class _AdminProvisionResidentPageState
   bool saving = false;
   bool reviewing = false;
   String? formError;
+  String? flatId;
+  final vehicleDrafts = <VehicleDraftControllers>[];
+  late final Future<List<FlatSummary>> _flats = _loadFlats();
+
+  Future<List<FlatSummary>> _loadFlats() async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    return ensureLiveRepositories(session.api).society.listAllFlats(
+          isActive: true,
+        );
+  }
+
+  List<FlatSummary> _assignableFlats(List<FlatSummary> flats) {
+    final wanted = role == 'OWNER' ? 'VACANT' : 'OWNER_OCCUPIED';
+    return flats
+        .where((f) => f.occupancyStatus.toUpperCase() == wanted)
+        .toList();
+  }
+
+  String _flatLabel(FlatSummary flat) {
+    final wing = (flat.wingCode ?? '').trim();
+    final label = wing.isEmpty ? flat.number : '$wing-${flat.number}';
+    return '$label · ${humanizeStatus(flat.occupancyStatus)}';
+  }
 
   @override
   void dispose() {
@@ -350,6 +379,9 @@ class _AdminProvisionResidentPageState
     email.dispose();
     phone.dispose();
     username.dispose();
+    for (final draft in vehicleDrafts) {
+      draft.dispose();
+    }
     super.dispose();
   }
 
@@ -359,6 +391,16 @@ class _AdminProvisionResidentPageState
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => formError = null);
     if (!_formKey.currentState!.validate()) return;
+    final vehicleError = validateVehicleDrafts(vehicleDrafts);
+    if (vehicleError != null) {
+      setState(() => formError = vehicleError);
+      return;
+    }
+    final payloads = vehicleDraftPayloads(vehicleDrafts);
+    if (payloads.isNotEmpty && (flatId == null || flatId!.isEmpty)) {
+      setState(() => formError = 'Assign a flat to register vehicles.');
+      return;
+    }
     setState(() => reviewing = true);
   }
 
@@ -379,29 +421,18 @@ class _AdminProvisionResidentPageState
         role: role,
         phone: phone.text.trim().isEmpty ? null : phone.text,
         username: username.text.trim().isEmpty ? null : username.text.trim(),
+        flatId: flatId,
+        vehicles: vehicleDraftPayloads(vehicleDrafts),
       );
       repos.invalidateAfterResidentMutation();
       if (!mounted) return;
       final temp = result.temporaryPassword;
       if (temp != null && temp.isNotEmpty) {
-        await showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Credentials issued'),
-            content: Text(
-              'Username: ${result.user.username ?? username.text.trim()}\n'
-              'Temporary password: $temp\n\n'
-              'Share this out-of-band. The user must change it on first login. '
-              'It will not be shown again.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('I saved it'),
-              ),
-            ],
-          ),
+        await showIssuedCredentialsDialog(
+          context,
+          recipientName: result.user.name,
+          username: result.user.username ?? username.text.trim(),
+          temporaryPassword: temp,
         );
       }
       if (!mounted) return;
@@ -468,8 +499,12 @@ class _AdminProvisionResidentPageState
                 icon: Icon(Icons.person_pin_circle_outlined, size: 18)),
           ],
           selected: {role},
-          onSelectionChanged:
-              saving ? null : (s) => setState(() => role = s.first),
+          onSelectionChanged: saving
+              ? null
+              : (s) => setState(() {
+                    role = s.first;
+                    flatId = null;
+                  }),
         ),
         const SizedBox(height: 8),
         Text(
@@ -548,6 +583,72 @@ class _AdminProvisionResidentPageState
             prefixIcon: Icon(Icons.phone_outlined),
           ),
         ),
+        const SizedBox(height: 20),
+        const FormSectionLabel('Flat assignment'),
+        Text(
+          role == 'OWNER'
+              ? 'Optional. Vacant flats can be assigned now so vehicles can be registered with this owner.'
+              : 'Optional. Owner-occupied flats can be assigned now so vehicles can be registered with this tenant.',
+          style: T.caption,
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<List<FlatSummary>>(
+          future: _flats,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting &&
+                !snap.hasData) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: LinearProgressIndicator(),
+              );
+            }
+            if (snap.hasError) {
+              return InfoNote(
+                'Could not load flats. ${adminApiErrorMessage(snap.error!)}',
+                tone: NoteTone.warning,
+              );
+            }
+            final options = _assignableFlats(snap.data ?? const []);
+            final selectedId =
+                options.any((f) => f.id == flatId) ? (flatId ?? '') : '';
+            return DropdownButtonFormField<String>(
+              value: selectedId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Assign to flat',
+                helperText: options.isEmpty
+                    ? (role == 'OWNER'
+                        ? 'No vacant flats available right now.'
+                        : 'No owner-occupied flats available right now.')
+                    : 'Leave empty to assign later from Flat details.',
+                border: const OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: '',
+                  child: Text('Do not assign yet'),
+                ),
+                for (final flat in options)
+                  DropdownMenuItem<String>(
+                    value: flat.id,
+                    child: Text(_flatLabel(flat)),
+                  ),
+              ],
+              onChanged: saving
+                  ? null
+                  : (value) => setState(
+                        () => flatId =
+                            (value == null || value.isEmpty) ? null : value,
+                      ),
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+        VehicleDraftsEditor(
+          drafts: vehicleDrafts,
+          enabled: !saving,
+          onChanged: () => setState(() {}),
+        ),
         const SizedBox(height: 16),
         const InfoNote(
           'A temporary password is generated securely. Share it out-of-band; the resident must change it on first login. If this email already exists, the server reuses that account.',
@@ -555,24 +656,45 @@ class _AdminProvisionResidentPageState
         InlineError(formError),
       ];
 
-  List<Widget> _reviewBody() => [
-        ReviewSummary(
-          title: 'About to create',
-          rows: [
-            ('Role', _roleLabel),
-            ('Name', name.text.trim()),
-            ('Email', email.text.trim()),
-            ('Username', username.text.trim()),
-            (
-              'Phone',
-              phone.text.trim().isEmpty ? 'Not set yet' : phone.text.trim()
-            ),
-          ],
-          note:
-              'After creation, assign this person to a flat from Flat details. A temporary password will be shown once for you to share securely.',
-        ),
-        InlineError(formError),
-      ];
+  List<Widget> _reviewBody() {
+    final vehicles = vehicleDraftPayloads(vehicleDrafts);
+    final vehicleLines = vehicles.isEmpty
+        ? 'None'
+        : vehicles
+            .map(
+              (v) =>
+                  '${vehicleTypeLabel(v.vehicleType)} ${v.registrationNumber}'
+                  '${v.make == null && v.model == null ? '' : ' · ${[
+                    v.make,
+                    v.model,
+                  ].whereType<String>().join(' ')}'}',
+            )
+            .join('\n');
+    return [
+      ReviewSummary(
+        title: 'About to create',
+        rows: [
+          ('Role', _roleLabel),
+          ('Name', name.text.trim()),
+          ('Email', email.text.trim()),
+          ('Username', username.text.trim()),
+          (
+            'Phone',
+            phone.text.trim().isEmpty ? 'Not set yet' : phone.text.trim()
+          ),
+          (
+            'Flat',
+            flatId == null ? 'Assign later from Flat details' : 'Assign now'
+          ),
+          ('Vehicles', vehicleLines),
+        ],
+        note: flatId == null
+            ? 'After creation, assign this person to a flat from Flat details. A temporary password will be shown once for you to share securely.'
+            : 'This resident will be assigned to the selected flat. Any vehicles listed here are saved on that assignment.',
+      ),
+      InlineError(formError),
+    ];
+  }
 }
 
 class AdminResidentDetailPage extends StatefulWidget {
@@ -584,16 +706,29 @@ class AdminResidentDetailPage extends StatefulWidget {
       _AdminResidentDetailPageState();
 }
 
+class _ResidentDetailBundle {
+  const _ResidentDetailBundle({required this.user, required this.vehicles});
+  final AdminUser user;
+  final List<Vehicle> vehicles;
+}
+
 class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
-  late Future<AdminUser> _future = _load();
+  late Future<_ResidentDetailBundle> _future = _load();
   bool _busy = false;
 
-  Future<AdminUser> _load({bool force = false}) async {
+  Future<_ResidentDetailBundle> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api)
-        .users
-        .getUser(widget.userId, force: force);
+    final repos = ensureLiveRepositories(session.api);
+    final user = await repos.users.getUser(widget.userId, force: force);
+    final vehicles = await repos.vehicles.listAdminVehicles(
+      force: true,
+      query: ListAdminVehiclesQuery(
+        registeredUserId: widget.userId,
+        limit: 100,
+      ),
+    );
+    return _ResidentDetailBundle(user: user, vehicles: vehicles.items);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -656,23 +791,12 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
         final result = await repos.users.setPassword(user.id);
         repos.invalidateAfterResidentMutation();
         if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Temporary password'),
-            content: Text(
-              'Username: ${result.user.username ?? user.username}\n'
-              'Temporary password: ${result.temporaryPassword}\n\n'
-              'Share this securely. The user must change it on next login.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('I saved it'),
-              ),
-            ],
-          ),
+        await showIssuedCredentialsDialog(
+          context,
+          recipientName: result.user.name,
+          username: result.user.username ?? user.username ?? '',
+          temporaryPassword: result.temporaryPassword,
+          kind: IssuedCredentialsKind.reset,
         );
         if (!mounted) return;
         setState(() => _future = _load(force: true));
@@ -746,11 +870,132 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
     });
   }
 
+  Future<void> _addVehicle(AdminUser user) async {
+    final occupancies = user.activeOccupancies;
+    if (occupancies.isEmpty) {
+      showAppSnack(
+        context,
+        'Assign this resident to a flat before adding a vehicle.',
+        tone: SnackTone.warning,
+      );
+      return;
+    }
+    String? flatId = occupancies.first.flatId;
+    if (occupancies.length > 1) {
+      flatId = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Which flat?'),
+          children: [
+            for (final occupancy in occupancies)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, occupancy.flatId),
+                child: Text(
+                  '${_roleLabel(occupancy.role)} occupancy',
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    if (flatId == null || !mounted) return;
+    final selectedFlatId = flatId;
+    final payload = await showDialog<VehicleDraftPayload>(
+      context: context,
+      builder: (ctx) => const _VehicleEditorDialog(),
+    );
+    if (payload == null || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.vehicles.adminRegister(
+          AdminRegisterVehicleRequest(
+            flatId: selectedFlatId,
+            registeredUserId: user.id,
+            vehicleType: payload.vehicleType,
+            registrationNumber: payload.registrationNumber,
+            make: payload.make,
+            model: payload.model,
+          ),
+        );
+        repos.invalidateAfterResidentMutation(flatId: selectedFlatId);
+        if (!mounted) return;
+        showSuccessSnack(context, 'Vehicle registered.');
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, vehicleErrorMessage(e));
+      }
+    });
+  }
+
+  Future<void> _editVehicle(Vehicle vehicle) async {
+    final payload = await showDialog<VehicleDraftPayload>(
+      context: context,
+      builder: (ctx) => _VehicleEditorDialog(existing: vehicle),
+    );
+    if (payload == null || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.vehicles.adminUpdate(
+          vehicle.id,
+          vehicleType: payload.vehicleType,
+          registrationNumber: payload.registrationNumber,
+          make: payload.make,
+          model: payload.model,
+        );
+        repos.invalidateAfterResidentMutation(flatId: vehicle.flatId);
+        if (!mounted) return;
+        showSuccessSnack(context, 'Vehicle updated.');
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, vehicleErrorMessage(e));
+      }
+    });
+  }
+
+  Future<void> _deactivateVehicle(Vehicle vehicle) async {
+    final reason = await promptTextDialog(
+      context,
+      title: 'Deactivate ${vehicle.registrationNumber}?',
+      message: 'The vehicle stays on record but is no longer active.',
+      label: 'Reason (optional)',
+      confirmLabel: 'Deactivate',
+      destructive: true,
+      maxLines: 2,
+    );
+    if (reason == null || !mounted) return;
+    final session = authSession;
+    if (session == null) return;
+    await _run(() async {
+      try {
+        final repos = ensureLiveRepositories(session.api);
+        await repos.vehicles.adminDeactivate(
+          vehicle.id,
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+        );
+        repos.invalidateAfterResidentMutation(flatId: vehicle.flatId);
+        if (!mounted) return;
+        showAppSnack(context, 'Vehicle deactivated.', tone: SnackTone.warning);
+        setState(() => _future = _load(force: true));
+      } catch (e) {
+        if (!mounted) return;
+        showErrorSnack(context, vehicleErrorMessage(e));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Resident details')),
-      body: FutureBuilder<AdminUser>(
+      body: FutureBuilder<_ResidentDetailBundle>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting &&
@@ -764,7 +1009,8 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
               onRetry: () => setState(() => _future = _load(force: true)),
             );
           }
-          final user = snap.data!;
+          final user = snap.data!.user;
+          final vehicles = snap.data!.vehicles;
           final roles =
               user.societyRoles.isEmpty ? user.roles : user.societyRoles;
           final canDeactivate = user.isActive &&
@@ -913,6 +1159,48 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                               tone: BadgeTone.info,
                             ),
                           ]),
+                        ),
+                      ],
+                    ]),
+                  ),
+                const SizedBox(height: 20),
+                SectionTitle(
+                  'Registered vehicles',
+                  subtitle: user.activeOccupancies.isEmpty
+                      ? 'Assign a flat before adding vehicles'
+                      : 'Linked to this resident, their assigned flat, and the society',
+                  action: user.activeOccupancies.isEmpty
+                      ? null
+                      : TextButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () => _addVehicle(user),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add'),
+                        ),
+                ),
+                if (vehicles.isEmpty)
+                  const EmptyState(
+                    'No vehicles registered',
+                    icon: Icons.directions_car_outlined,
+                    compact: true,
+                  )
+                else
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (var i = 0; i < vehicles.length; i++) ...[
+                        if (i > 0)
+                          const Divider(height: 1, indent: 56, endIndent: 12),
+                        _ResidentVehicleRow(
+                          vehicle: vehicles[i],
+                          busy: _busy,
+                          onEdit: vehicles[i].isActive
+                              ? () => _editVehicle(vehicles[i])
+                              : null,
+                          onDeactivate: vehicles[i].isActive
+                              ? () => _deactivateVehicle(vehicles[i])
+                              : null,
                         ),
                       ],
                     ]),
@@ -1111,6 +1399,313 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ResidentVehicleRow extends StatelessWidget {
+  const _ResidentVehicleRow({
+    required this.vehicle,
+    required this.busy,
+    this.onEdit,
+    this.onDeactivate,
+  });
+
+  final Vehicle vehicle;
+  final bool busy;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDeactivate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppAvatar(
+            icon: vehicle.vehicleType == 'TWO_WHEELER'
+                ? Icons.two_wheeler_outlined
+                : Icons.directions_car_outlined,
+            square: true,
+            size: 36,
+            color: vehicle.isActive ? C.blue : C.muted,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(vehicle.registrationNumber, style: T.bodyStrong),
+                const SizedBox(height: 2),
+                Text(
+                  '${vehicleTypeLabel(vehicle.vehicleType)} · ${vehicle.makeModelLabel}',
+                  style: T.caption,
+                ),
+                Text('Flat ${vehicle.flatLabel}', style: T.caption),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              StatusBadge(vehicle.isActive ? 'Active' : 'Inactive'),
+              if (onEdit != null || onDeactivate != null)
+                PopupMenuButton<String>(
+                  enabled: !busy,
+                  onSelected: (value) {
+                    if (value == 'edit') onEdit?.call();
+                    if (value == 'deactivate') onDeactivate?.call();
+                  },
+                  itemBuilder: (context) => [
+                    if (onEdit != null)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Edit details'),
+                      ),
+                    if (onDeactivate != null)
+                      const PopupMenuItem(
+                        value: 'deactivate',
+                        child: Text('Deactivate'),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleEditorDialog extends StatefulWidget {
+  const _VehicleEditorDialog({this.existing});
+  final Vehicle? existing;
+
+  @override
+  State<_VehicleEditorDialog> createState() => _VehicleEditorDialogState();
+}
+
+class _VehicleEditorDialogState extends State<_VehicleEditorDialog> {
+  late final draft = VehicleDraftControllers(
+    vehicleType: widget.existing?.vehicleType == 'TWO_WHEELER'
+        ? 'TWO_WHEELER'
+        : 'FOUR_WHEELER',
+    registration: widget.existing?.registrationNumber ?? '',
+    make: widget.existing?.make ?? '',
+    model: widget.existing?.model ?? '',
+  );
+
+  @override
+  void dispose() {
+    draft.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final error = validateVehicleDrafts([draft]);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    final payload = draft.toPayloadOrNull();
+    if (payload == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a vehicle registration number.')),
+      );
+      return;
+    }
+    Navigator.pop(context, payload);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add vehicle' : 'Edit vehicle'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: draft.vehicleType,
+                decoration: const InputDecoration(
+                  labelText: 'Vehicle type',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final type in kAdminSelectableVehicleTypes)
+                    DropdownMenuItem(
+                      value: type,
+                      child: Text(vehicleTypeLabel(type)),
+                    ),
+                ],
+                onChanged: (value) => setState(
+                  () => draft.vehicleType = value ?? 'FOUR_WHEELER',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: draft.registration,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Registration number',
+                  helperText: 'Example: MH12AB1234',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: draft.make,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Make',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: draft.model,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Model',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.existing == null ? 'Add' : 'Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Confirm occupancy assignment with optional vehicle details.
+class AssignOccupancyPage extends StatefulWidget {
+  const AssignOccupancyPage({
+    super.key,
+    required this.role,
+    required this.user,
+    required this.flatId,
+  });
+
+  final String role;
+  final AdminUser user;
+  final String flatId;
+
+  @override
+  State<AssignOccupancyPage> createState() => _AssignOccupancyPageState();
+}
+
+class _AssignOccupancyPageState extends State<AssignOccupancyPage> {
+  final notes = TextEditingController();
+  final vehicleDrafts = <VehicleDraftControllers>[];
+  bool saving = false;
+  String? formError;
+
+  String get _roleLabel => widget.role == 'OWNER' ? 'owner' : 'tenant';
+
+  @override
+  void dispose() {
+    notes.dispose();
+    for (final draft in vehicleDrafts) {
+      draft.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final vehicleError = validateVehicleDrafts(vehicleDrafts);
+    if (vehicleError != null) {
+      setState(() => formError = vehicleError);
+      return;
+    }
+    final session = authSession;
+    if (session == null) {
+      setState(() => formError = 'Not signed in.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      formError = null;
+    });
+    try {
+      final repos = ensureLiveRepositories(session.api);
+      final payloads = vehicleDraftPayloads(vehicleDrafts);
+      final trimmed = notes.text.trim();
+      if (widget.role == 'OWNER') {
+        await repos.society.assignOwner(
+          widget.flatId,
+          userId: widget.user.id,
+          effectiveFrom: DateTime.now(),
+          notes: trimmed.isEmpty ? null : trimmed,
+          vehicles: payloads,
+        );
+      } else {
+        await repos.society.assignTenant(
+          widget.flatId,
+          userId: widget.user.id,
+          effectiveFrom: DateTime.now(),
+          notes: trimmed.isEmpty ? null : trimmed,
+          vehicles: payloads,
+        );
+      }
+      repos.invalidateAfterResidentMutation(flatId: widget.flatId);
+      if (!mounted) return;
+      showSuccessSnack(context, '${_roleLabel[0].toUpperCase()}${_roleLabel.substring(1)} assigned.');
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => formError = vehicleErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FormScaffold(
+      title: 'Assign $_roleLabel',
+      bottom: PrimaryButton(
+        label: 'Assign $_roleLabel',
+        icon: Icons.person_pin_circle_outlined,
+        busy: saving,
+        onPressed: saving ? null : _save,
+      ),
+      children: [
+        InfoNote(
+          '${widget.user.name} will be assigned from today. Vehicle details are optional.',
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: notes,
+          enabled: !saving,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Notes (optional)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 20),
+        VehicleDraftsEditor(
+          drafts: vehicleDrafts,
+          enabled: !saving,
+          onChanged: () => setState(() {}),
+        ),
+        InlineError(formError),
+      ],
     );
   }
 }

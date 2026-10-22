@@ -22,6 +22,7 @@ process.env.ANNOUNCEMENT_STORAGE_PROVIDER = 'memory';
 process.env.ANNOUNCEMENT_WORKER_ENABLED = 'false';
 process.env.SMS_PROVIDER = 'memory';
 process.env.SMS_OTP_ENABLED = 'false';
+process.env.SMS_OTP_DEV_BYPASS = 'false';
 process.env.SMS_OTP_LENGTH = '6';
 process.env.SMS_OTP_EXPIRY_MINUTES = '5';
 // Placeholder until memory server starts; connectDatabase is called in beforeAll with real URI.

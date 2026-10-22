@@ -36,6 +36,7 @@ export async function updateAdminSociety(
     timezone: society.config.timezone,
     currency: society.config.currency,
     maintenanceDayOfMonth: society.config.maintenanceDayOfMonth,
+    annualInterestRateBps: society.config.annualInterestRateBps,
     isActive: society.isActive,
   };
 
@@ -51,6 +52,9 @@ export async function updateAdminSociety(
   if (input.currency !== undefined) society.config.currency = input.currency;
   if (input.maintenanceDayOfMonth !== undefined) {
     society.config.maintenanceDayOfMonth = input.maintenanceDayOfMonth;
+  }
+  if (input.annualInterestRateBps !== undefined) {
+    society.config.annualInterestRateBps = input.annualInterestRateBps;
   }
 
   // Identifiers (code / _id) are intentionally immutable.

@@ -17,6 +17,7 @@ export function serializeSociety(society: {
     currency?: string;
     timezone?: string;
     maintenanceDayOfMonth?: number;
+    annualInterestRateBps?: number;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +35,7 @@ export function serializeSociety(society: {
     timezone: society.config?.timezone ?? DEFAULT_TIMEZONE,
     currency: society.config?.currency ?? 'INR',
     maintenanceDayOfMonth: society.config?.maintenanceDayOfMonth ?? 1,
+    annualInterestRateBps: society.config?.annualInterestRateBps ?? 2400,
     isActive: society.isActive,
     createdAt: new Date(society.createdAt).toISOString(),
     updatedAt: new Date(society.updatedAt).toISOString(),

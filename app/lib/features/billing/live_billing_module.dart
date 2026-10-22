@@ -14,6 +14,7 @@ import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import 'demo_payment_checkout.dart';
+import 'live_additional_services_module.dart';
 
 String billingErrorMessage(Object error) {
   if (error is ApiException) {
@@ -41,6 +42,24 @@ String billingErrorMessage(Object error) {
   }
   if (error is StateError) return error.message;
   return '$error';
+}
+
+List<Widget> _billBreakdownRows(Bill bill) {
+  if (bill.lineItems.isNotEmpty) {
+    return [
+      for (final item in bill.lineItems)
+        DetailRow(
+          item.quantity > 1 ? '${item.name} × ${item.quantity}' : item.name,
+          moneyPaise(item.amountPaise),
+        ),
+    ];
+  }
+  return [
+    DetailRow('Monthly maintenance', moneyPaise(bill.baseAmountPaise)),
+    if (bill.additionalServicesTotalPaise > 0)
+      DetailRow(
+          'Additional services', moneyPaise(bill.additionalServicesTotalPaise)),
+  ];
 }
 
 String _periodLabel(Bill bill) {
@@ -209,6 +228,8 @@ class LiveAdminBillsPage extends StatefulWidget {
 class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
   String? statusFilter;
   String? wingFilter;
+  String? occupancyFilter;
+  bool? ownerAssignedFilter;
   int page = 1;
   bool _refreshingInterest = false;
   late Future<_AdminBillsBundle> _future = _load();
@@ -222,6 +243,8 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
       query: ListBillsQuery(
         status: statusFilter,
         wingCode: wingFilter,
+        occupancyStatus: occupancyFilter,
+        ownerAssigned: ownerAssignedFilter,
         page: page,
         limit: 30,
       ),
@@ -350,9 +373,22 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
               const SizedBox(height: 12),
               StatGrid(children: [
                 StatCard(
-                  title: 'Billed',
-                  value: moneyPaise(summary.totalBilledPaise),
+                  title: 'Configured flats',
+                  value: '${summary.totalConfiguredFlats}',
+                  icon: Icons.apartment_outlined,
+                  caption: '${summary.billCount} bills generated',
+                ),
+                StatCard(
+                  title: 'Maintenance billed',
+                  value: moneyPaise(summary.totalMaintenanceBilledPaise == 0
+                      ? summary.totalBilledPaise
+                      : summary.totalMaintenanceBilledPaise),
                   icon: Icons.receipt_long_outlined,
+                ),
+                StatCard(
+                  title: 'Additional services',
+                  value: moneyPaise(summary.totalAdditionalServicesBilledPaise),
+                  icon: Icons.local_parking_outlined,
                 ),
                 StatCard(
                   title: 'Collected',
@@ -361,11 +397,18 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                   accent: C.green,
                 ),
                 StatCard(
+                  title: 'Outstanding',
+                  value: moneyPaise(summary.totalOutstandingPrincipalPaise),
+                  icon: Icons.account_balance_wallet_outlined,
+                  caption:
+                      'Interest ${moneyPaise(summary.totalAccruedInterestPaise)}',
+                ),
+                StatCard(
                   title: 'Overdue bills',
                   value: '${summary.overdueBills}',
                   icon: Icons.warning_amber_rounded,
                   accent: C.error,
-                  caption: '${summary.partiallyPaidBills} partially paid',
+                  caption: '${summary.pendingBills} pending',
                 ),
                 StatCard(
                   title: 'Paid bills',
@@ -374,12 +417,29 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                   accent: C.green,
                   caption: '${summary.issuedBills} issued',
                 ),
+                StatCard(
+                  title: 'Vacant / unassigned',
+                  value: '${summary.vacantFlatBills}',
+                  icon: Icons.home_work_outlined,
+                  caption: '${summary.unassignedFlatBills} unassigned bills',
+                ),
               ]),
               const SizedBox(height: 10),
               QuickActionTile(
+                icon: Icons.local_parking_outlined,
+                label: 'Additional services',
+                subtitle: 'Recurring charges attached to individual flats',
+                onTap: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const LiveAdditionalServicesPage()),
+                ),
+              ),
+              const SizedBox(height: 10),
+              QuickActionTile(
                 icon: Icons.preview_outlined,
-                label: 'Eligible flats',
-                subtitle: 'Flats that will be billed in the next run',
+                label: 'Billable flats',
+                subtitle: 'Every configured flat is billed, including vacant',
                 onTap: () => Navigator.push<void>(
                   context,
                   MaterialPageRoute(
@@ -422,9 +482,60 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                     selected: wingFilter == w.wingCode,
                     onSelected: () {
                       wingFilter = w.wingCode;
+                    reload(resetPage: true);
+                  },
+                ),
+              ]),
+              const SizedBox(height: 8),
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'All occupancy',
+                  selected: occupancyFilter == null,
+                  onSelected: () {
+                    occupancyFilter = null;
+                    reload(resetPage: true);
+                  },
+                ),
+                for (final status in const [
+                  'OWNER_OCCUPIED',
+                  'TENANT_OCCUPIED',
+                  'VACANT',
+                ])
+                  AppFilterChip(
+                    label: humanizeStatus(status),
+                    selected: occupancyFilter == status,
+                    onSelected: () {
+                      occupancyFilter = status;
                       reload(resetPage: true);
                     },
                   ),
+              ]),
+              const SizedBox(height: 8),
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'All owners',
+                  selected: ownerAssignedFilter == null,
+                  onSelected: () {
+                    ownerAssignedFilter = null;
+                    reload(resetPage: true);
+                  },
+                ),
+                AppFilterChip(
+                  label: 'Owner assigned',
+                  selected: ownerAssignedFilter == true,
+                  onSelected: () {
+                    ownerAssignedFilter = true;
+                    reload(resetPage: true);
+                  },
+                ),
+                AppFilterChip(
+                  label: 'Unassigned',
+                  selected: ownerAssignedFilter == false,
+                  onSelected: () {
+                    ownerAssignedFilter = false;
+                    reload(resetPage: true);
+                  },
+                ),
               ]),
               ResultCount(pagination.total, 'bill'),
               if (bills.isEmpty)
@@ -435,6 +546,8 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                   onAction: () {
                     statusFilter = null;
                     wingFilter = null;
+                    occupancyFilter = null;
+                    ownerAssignedFilter = null;
                     reload(resetPage: true);
                   },
                 )
@@ -533,7 +646,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
       context,
       title: 'Create bills now?',
       message:
-          'The server will create bills for $_periodLabel across ${rows.length} eligible ${rows.length == 1 ? 'flat' : 'flats'}. Vacant and unassigned flats stay skipped.',
+          'The server will create bills for $_periodLabel across ${rows.length} configured ${rows.length == 1 ? 'flat' : 'flats'}, including vacant and unassigned flats.',
       confirmLabel: 'Create bills',
       icon: Icons.auto_awesome_outlined,
     );
@@ -585,7 +698,12 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
     final rows = _eligible;
     final monthlyTotal = rows == null
         ? 0
-        : rows.fold<int>(0, (sum, f) => sum + f.monthlyRatePaise);
+        : rows.fold<int>(
+            0,
+            (sum, f) =>
+                sum +
+                (f.recurringMonthlyTotalPaise ??
+                    f.monthlyRatePaise + f.recurringAdditionalPaise));
     final estimated = monthlyTotal * months;
 
     return FormScaffold(
@@ -633,11 +751,11 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                     ),
                   ],
                   note:
-                      'Estimate uses current monthly rates × months. The server remains the source of truth for skips and conflicts.',
+                      'Estimate uses current monthly rates plus active additional services × months. The server remains the source of truth for totals, proration and conflicts.',
                 ),
                 const SizedBox(height: 16),
-                SectionTitle('Eligible flats',
-                    subtitle: 'Occupied flats with an active owner'),
+                SectionTitle('Billable flats',
+                    subtitle: 'Every configured flat, including vacant and unassigned'),
                 if (rows == null || rows.isEmpty)
                   const EmptyState(
                     'No eligible flats for billing',
@@ -684,8 +802,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
             ]
           : [
               const InfoNote(
-                'Bills are created only for occupied flats with an active owner. '
-                'Vacant and unassigned flats are skipped by the server.',
+                'Bills are created for every configured flat. Occupancy, owner assignment and active status do not exclude a flat. Additional services that apply to the period are included automatically.',
               ),
               const SizedBox(height: 20),
               const FormSectionLabel('Billing period'),
@@ -747,7 +864,7 @@ class _LiveEligibleFlatsPageState extends State<LiveEligibleFlatsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Eligible flats')),
+      appBar: AppBar(title: const Text('Billable flats')),
       body: FutureBuilder<List<EligibleFlat>>(
         future: _future,
         builder: (context, snap) {
@@ -769,7 +886,7 @@ class _LiveEligibleFlatsPageState extends State<LiveEligibleFlatsPage> {
 
           if (rows.isEmpty) {
             return _emptyScrollable(
-                const EmptyState('No eligible flats for billing',
+                const EmptyState('No configured flats found',
                     icon: Icons.apartment_outlined),
                 refresh);
           }
@@ -795,7 +912,9 @@ class _LiveEligibleFlatsPageState extends State<LiveEligibleFlatsPage> {
                   leading: AppAvatar(text: f.wingCode, square: true),
                   title: '${f.wingCode}-${f.number}',
                   subtitle:
-                      '${f.flatType} · ${humanizeStatus(f.occupancyStatus)}',
+                      '${f.flatType} · ${humanizeStatus(f.occupancyStatus)}'
+                      '${f.ownerAssigned ? '' : ' · Unassigned'}'
+                      '${f.recurringAdditionalPaise > 0 ? ' · Extra ${moneyPaise(f.recurringAdditionalPaise)}' : ''}',
                   trailing: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
@@ -1009,9 +1128,8 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                   DetailRow('Owner', bill.ownerNameSnapshot),
                   DetailRow('Flat type', bill.flatTypeSnapshot),
                 ]),
-                DetailCard(title: 'Amounts', children: [
-                  DetailRow('Monthly rate', moneyPaise(bill.monthlyRatePaise)),
-                  DetailRow('Base amount', moneyPaise(bill.baseAmountPaise)),
+                DetailCard(title: 'Breakdown', children: [
+                  ..._billBreakdownRows(bill),
                   if (adjustPaise != 0)
                     DetailRow('Adjustment',
                         '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}'),
@@ -1733,11 +1851,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                           '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot}'),
                       DetailRow('Bill number', bill.billNumber),
                     ]),
-                    DetailCard(title: 'Amounts', children: [
-                      DetailRow(
-                          'Monthly rate', moneyPaise(bill.monthlyRatePaise)),
-                      DetailRow(
-                          'Base amount', moneyPaise(bill.baseAmountPaise)),
+                    DetailCard(title: 'Breakdown', children: [
+                      ..._billBreakdownRows(bill),
                       if (adjustPaise != 0)
                         DetailRow('Adjustment',
                             '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}'),
@@ -1745,6 +1860,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                           emphasize: true),
                       DetailRow(
                           'Paid so far', moneyPaise(bill.amountPaidPaise)),
+                      DetailRow('Outstanding principal',
+                          moneyPaise(bill.outstandingPrincipalPaise)),
                     ]),
                     if (open)
                       DetailCard(title: 'Late-payment interest', children: [

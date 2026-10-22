@@ -62,7 +62,14 @@ export const createVisitorSchema = z
     flatId: objectId,
     visitorName: z.string().trim().min(1).max(120),
     visitorPhone: phoneSchema,
-    visitorEmail: z.string().trim().email().max(254).optional(),
+    visitorEmail: z.preprocess(
+      (value) => {
+        if (value == null) return undefined;
+        if (typeof value === 'string' && value.trim() === '') return undefined;
+        return value;
+      },
+      z.string().trim().email().max(254).optional(),
+    ),
     visitorType: z.enum(VISITOR_TYPES),
     purpose: z.string().trim().min(1).max(500),
     vehicleNumber: z.string().trim().max(32).optional(),

@@ -1,6 +1,12 @@
 import { z } from 'zod';
+import { OCCUPANCY_STATUSES } from '../../../config/constants';
 import { BILL_STATUSES } from '../models/bill.model';
 import { PAYMENT_STATUSES } from '../models/payment.model';
+
+const optionalBoolQuery = z
+  .enum(['true', 'false'])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === 'true'));
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid ObjectId');
 
@@ -17,8 +23,11 @@ export const listBillsQuerySchema = z.object({
   ownerUserId: objectId.optional(),
   wingCode: z.string().trim().min(1).max(10).optional(),
   billingPeriodStart: z.coerce.date().optional(),
+  occupancyStatus: z.enum(OCCUPANCY_STATUSES).optional(),
+  floor: z.coerce.number().int().min(0).max(200).optional(),
+  ownerAssigned: optionalBoolQuery,
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
 });
 export type ListBillsQuery = z.infer<typeof listBillsQuerySchema>;
 
@@ -41,6 +50,9 @@ export const billingSummaryQuerySchema = z.object({
   status: z.enum(BILL_STATUSES).optional(),
   ownerUserId: objectId.optional(),
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
+  occupancyStatus: z.enum(OCCUPANCY_STATUSES).optional(),
+  floor: z.coerce.number().int().min(0).max(200).optional(),
+  ownerAssigned: optionalBoolQuery,
 });
 export type BillingSummaryQuery = z.infer<typeof billingSummaryQuerySchema>;
 

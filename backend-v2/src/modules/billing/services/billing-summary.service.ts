@@ -13,6 +13,9 @@ type BillingSummaryQuery = {
   status?: string;
   ownerUserId?: string;
   paymentStatus?: string;
+  occupancyStatus?: string;
+  floor?: number;
+  ownerAssigned?: boolean;
 };
 
 async function loadBillingSummary(societyId: string, query: BillingSummaryQuery) {
@@ -25,10 +28,19 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
   if (query.ownerUserId) {
     billFilter.ownerUserId = parseObjectId(query.ownerUserId, 'ownerUserId');
   }
+  if (query.occupancyStatus) billFilter.occupancyStatusSnapshot = query.occupancyStatus;
+  if (query.floor !== undefined) billFilter.floorSnapshot = query.floor;
+  if (query.ownerAssigned === true) {
+    billFilter.ownerUserId = { $exists: true, $ne: null };
+  } else if (query.ownerAssigned === false) {
+    billFilter.$or = [{ ownerUserId: { $exists: false } }, { ownerUserId: null }];
+  }
 
-  const [billAgg, wingAgg, vacantOrUnassigned] = await Promise.all([
+  const [billAgg, wingAgg, vacantOrUnassigned, configuredFlats] = await Promise.all([
     BillModel.aggregate<{
       totalBilledPaise: number;
+      totalMaintenanceBilledPaise: number;
+      totalAdditionalServicesBilledPaise: number;
       totalCollectedPaise: number;
       totalOutstandingPrincipalPaise: number;
       totalAccruedInterestPaise: number;
@@ -37,6 +49,8 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
       overdueBills: number;
       issuedBills: number;
       cancelledBills: number;
+      vacantFlatBills: number;
+      unassignedFlatBills: number;
       billCount: number;
     }>([
       { $match: billFilter },
@@ -45,6 +59,18 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
           _id: null,
           totalBilledPaise: {
             $sum: { $cond: [{ $ne: ['$status', 'CANCELLED'] }, '$totalAmountPaise', 0] },
+          },
+          totalMaintenanceBilledPaise: {
+            $sum: { $cond: [{ $ne: ['$status', 'CANCELLED'] }, '$baseAmountPaise', 0] },
+          },
+          totalAdditionalServicesBilledPaise: {
+            $sum: {
+              $cond: [
+                { $ne: ['$status', 'CANCELLED'] },
+                { $ifNull: ['$additionalServicesTotalPaise', 0] },
+                0,
+              ],
+            },
           },
           totalCollectedPaise: {
             $sum: { $cond: [{ $ne: ['$status', 'CANCELLED'] }, '$amountPaidPaise', 0] },
@@ -71,6 +97,38 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
           },
           cancelledBills: {
             $sum: { $cond: [{ $eq: ['$status', 'CANCELLED'] }, 1, 0] },
+          },
+          vacantFlatBills: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$status', 'CANCELLED'] },
+                    { $eq: ['$occupancyStatusSnapshot', 'VACANT'] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          unassignedFlatBills: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$status', 'CANCELLED'] },
+                    {
+                      $or: [
+                        { $eq: [{ $ifNull: ['$ownerUserId', null] }, null] },
+                      ],
+                    },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           billCount: {
             $sum: { $cond: [{ $ne: ['$status', 'CANCELLED'] }, 1, 0] },
@@ -109,17 +167,19 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
     ]),
     FlatModel.countDocuments({
       societyId: societyObjectId,
-      isActive: true,
       $or: [
         { occupancyStatus: 'VACANT' },
         { activeOwnerUserId: { $exists: false } },
         { activeOwnerUserId: null },
       ],
     }),
+    FlatModel.countDocuments({ societyId: societyObjectId }),
   ]);
 
   const totals = billAgg[0] ?? {
     totalBilledPaise: 0,
+    totalMaintenanceBilledPaise: 0,
+    totalAdditionalServicesBilledPaise: 0,
     totalCollectedPaise: 0,
     totalOutstandingPrincipalPaise: 0,
     totalAccruedInterestPaise: 0,
@@ -128,6 +188,8 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
     overdueBills: 0,
     issuedBills: 0,
     cancelledBills: 0,
+    vacantFlatBills: 0,
+    unassignedFlatBills: 0,
     billCount: 0,
   };
 
@@ -159,15 +221,21 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
   ]);
 
   return {
+    totalConfiguredFlats: configuredFlats,
     totalBilledPaise: totals.totalBilledPaise,
+    totalMaintenanceBilledPaise: totals.totalMaintenanceBilledPaise,
+    totalAdditionalServicesBilledPaise: totals.totalAdditionalServicesBilledPaise,
     totalCollectedPaise: totals.totalCollectedPaise,
     totalOutstandingPrincipalPaise: totals.totalOutstandingPrincipalPaise,
     totalAccruedInterestPaise: totals.totalAccruedInterestPaise,
     paidBills: totals.paidBills,
     partiallyPaidBills: totals.partiallyPaidBills,
+    pendingBills: totals.issuedBills + totals.partiallyPaidBills,
     overdueBills: totals.overdueBills,
     issuedBills: totals.issuedBills,
     cancelledBills: totals.cancelledBills,
+    vacantFlatBills: totals.vacantFlatBills,
+    unassignedFlatBills: totals.unassignedFlatBills,
     vacantOrUnassignedFlatsSkipped: vacantOrUnassigned,
     collectionPercentage,
     billCount: totals.billCount,
@@ -190,6 +258,9 @@ export async function getBillingSummary(societyId: string, query: BillingSummary
     status: query.status ?? null,
     ownerUserId: query.ownerUserId ?? null,
     paymentStatus: query.paymentStatus ?? null,
+    occupancyStatus: query.occupancyStatus ?? null,
+    floor: query.floor ?? null,
+    ownerAssigned: query.ownerAssigned ?? null,
   });
   return cacheAside(
     CacheKeys.billingSummary(societyId, filtersHash),

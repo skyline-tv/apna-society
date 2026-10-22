@@ -77,7 +77,9 @@ void main() {
         isTrue,
       );
       // Partial-only clear after assign must not remain.
-      final assignBlock = src.split('Future<void> _assign(String role)').last
+      final assignBlock = src
+          .split('Future<void> _assign(String role)')
+          .last
           .split('Future<void> _end')
           .first;
       expect(assignBlock.contains('repos.resident.clear();'), isFalse);
@@ -260,7 +262,8 @@ void main() {
       expect(session.selectedResidentFlat, isNull);
     });
 
-    test('OWNER single-flat account selectedResidentFlat resolves without select()',
+    test(
+        'OWNER single-flat account selectedResidentFlat resolves without select()',
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
@@ -301,7 +304,8 @@ void main() {
       expect(session.selectedResidentFlatId, flatA);
     });
 
-    test('TENANT single-flat account selectedResidentFlat resolves without select()',
+    test(
+        'TENANT single-flat account selectedResidentFlat resolves without select()',
         () async {
       final store = MemorySecureTokenStore();
       final adapter = ScriptedAdapter((options) async {
@@ -362,8 +366,7 @@ void main() {
     test('OwnerHome flat switch invalidates caches and keys pages by flat', () {
       final src = File('lib/main.dart').readAsStringSync();
       expect(src.contains('invalidateAfterFlatSelectionChange'), isTrue);
-      expect(src.contains("ValueKey('complaints-\$flatKey')"), isTrue);
-      expect(src.contains("ValueKey('facilities-\$flatKey')"), isTrue);
+      expect(src.contains("ValueKey('visitors-\$flatKey')"), isTrue);
       expect(src.contains("ValueKey('vehicles-\$flatKey')"), isTrue);
     });
 
@@ -415,7 +418,8 @@ void main() {
       expect(src.contains('db.setLateInterestAnnualRate'), isFalse);
       expect(src.contains('db.lateInterestAnnualRate'), isFalse);
       expect(
-        src.contains('Late interest for live bills is calculated by the server'),
+        src.contains(
+            'Late interest for live bills is calculated by the server'),
         isTrue,
       );
     });
@@ -423,14 +427,14 @@ void main() {
 
   group('Demo payment gateway', () {
     test('Flutter never embeds mock payment secret or HMAC helper', () {
-      final demoSrc =
-          File('lib/features/billing/demo_payment_checkout.dart').readAsStringSync();
+      final demoSrc = File('lib/features/billing/demo_payment_checkout.dart')
+          .readAsStringSync();
       expect(demoSrc.contains('test_razorpay_secret'), isFalse);
       expect(demoSrc.contains('signDemoMockPayment'), isFalse);
       expect(demoSrc.contains('Hmac'), isFalse);
       expect(demoSrc.contains('kDemoMockPaymentSecret'), isFalse);
-      final billingSrc =
-          File('lib/features/billing/live_billing_module.dart').readAsStringSync();
+      final billingSrc = File('lib/features/billing/live_billing_module.dart')
+          .readAsStringSync();
       expect(billingSrc.contains('completeDemoPayment'), isTrue);
       expect(billingSrc.contains('openDemoPaymentCheckout'), isTrue);
       expect(billingSrc.contains('test_razorpay_secret'), isFalse);

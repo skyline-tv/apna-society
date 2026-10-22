@@ -402,7 +402,7 @@ class _PulseDotState extends State<_PulseDot>
           width: 7,
           height: 7,
           decoration: const BoxDecoration(
-            color: Color(0xFF4ADE80),
+            color: C.softBlue,
             shape: BoxShape.circle,
           ),
         ),
@@ -459,7 +459,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _email = TextEditingController();
   final _purpose = TextEditingController();
   final _vehicle = TextEditingController();
   final _notes = TextEditingController();
@@ -484,7 +483,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
   void dispose() {
     _name.dispose();
     _phone.dispose();
-    _email.dispose();
     _purpose.dispose();
     _vehicle.dispose();
     _notes.dispose();
@@ -573,8 +571,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
               flatId: flat.id,
               visitorName: _name.text.trim(),
               visitorPhone: _phone.text.trim(),
-              visitorEmail:
-                  _email.text.trim().isEmpty ? null : _email.text.trim(),
               visitorType: _type,
               purpose: _purpose.text.trim(),
               vehicleNumber:
@@ -613,7 +609,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
       );
     }
 
-    final email = _email.text.trim();
     final purpose = _purpose.text.trim();
     final vehicle = _vehicle.text.trim();
     final notes = _notes.text.trim();
@@ -653,7 +648,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                     'Party size',
                     '$_count ${_count == 1 ? 'person' : 'people'}'
                   ),
-                  if (email.isNotEmpty) ('Email', email),
                   ('Purpose', purpose.isEmpty ? '—' : purpose),
                   if (vehicle.isNotEmpty) ('Vehicle', vehicle),
                   if (notes.isNotEmpty) ('Notes', notes),
@@ -746,27 +740,6 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
               ),
               const SizedBox(height: 20),
               const FormSectionLabel('Optional'),
-              TextFormField(
-                controller: _email,
-                enabled: !_submitting,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Visitor email',
-                  helperText:
-                      'Entry OTP is emailed by the server. Prefer the visitor’s email.',
-                  prefixIcon: Icon(Icons.alternate_email_rounded),
-                ),
-                validator: (v) {
-                  final t = (v ?? '').trim();
-                  if (t.isEmpty) return null;
-                  return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)
-                      ? null
-                      : 'Enter a valid email address.';
-                },
-              ),
-              const SizedBox(height: 12),
               TextFormField(
                 controller: _purpose,
                 enabled: !_submitting,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
@@ -44,6 +43,10 @@ String vehicleErrorMessage(Object error) {
         return 'Registration number does not match the selected vehicle.';
       case 'RESIDENTIAL_ACCESS_DENIED':
         return 'Residential vehicle access is not available for this flat.';
+      case 'RESIDENT_VEHICLE_READ_ONLY':
+        return 'Vehicles are managed by the society admin. You can view your registered vehicles here.';
+      case 'NOT_FLAT_OCCUPANT':
+        return 'This resident is not the active owner or tenant of that flat.';
       case 'FORBIDDEN_ROLE':
         return 'You do not have access to this action.';
       default:
@@ -78,7 +81,6 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
   late final TabController _tabs = TabController(length: 2, vsync: this);
   late Future<VehicleList> _vehicles = _loadVehicles();
   late Future<ParkingList> _parking = _loadParking();
-  final _busy = <String>{};
 
   Future<VehicleList> _loadVehicles({bool force = false}) async {
     final session = authSession;
@@ -107,66 +109,6 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
   void dispose() {
     _tabs.dispose();
     super.dispose();
-  }
-
-  Future<void> _openRegister() async {
-    final ok = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const LiveRegisterVehiclePage()),
-    );
-    if (ok == true) reload();
-  }
-
-  Future<void> _deactivate(Vehicle v) async {
-    if (_busy.contains(v.id)) return;
-    final reasonCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Deactivate vehicle'),
-        content: TextField(
-          controller: reasonCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Reason (optional)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Deactivate'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    setState(() => _busy.add(v.id));
-    try {
-      final session = authSession;
-      if (session == null) throw StateError('Not signed in.');
-      final reason = reasonCtrl.text.trim();
-      await ensureLiveRepositories(session.api).vehicles.deactivate(
-            v.id,
-            reason: reason.isEmpty ? null : reason,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vehicle deactivated')),
-      );
-      reload();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(vehicleErrorMessage(e))),
-      );
-    } finally {
-      reasonCtrl.dispose();
-      if (mounted) setState(() => _busy.remove(v.id));
-    }
   }
 
   @override
@@ -212,29 +154,18 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Registered vehicles',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: C.navy,
-                      ),
-                    ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _openRegister,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Register'),
-                  ),
-                ],
+              const Text(
+                'Registered vehicles',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: C.navy,
+                ),
               ),
               const SizedBox(height: 8),
               const InfoNote(
-                'Registration numbers are validated by the server. '
-                'Parking slots are assigned by the society admin.',
+                'These are the vehicles registered to your account. '
+                'The society admin adds, updates, or deactivates vehicles.',
               ),
               const SizedBox(height: 12),
               if (items.isEmpty)
@@ -275,9 +206,12 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
             ),
             const SizedBox(height: 4),
             Text(
-              '${vehicleTypeLabel(v.vehicleType)}'
-              '${v.make != null ? ' · ${v.make}' : ''}'
-              '${v.model != null ? ' ${v.model}' : ''}',
+              '${vehicleTypeLabel(v.vehicleType)} · ${v.makeModelLabel}',
+              style: const TextStyle(color: C.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Flat ${v.flatLabel}',
               style: const TextStyle(color: C.muted, fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -291,17 +225,6 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
                   const StatusBadge('No slot'),
               ],
             ),
-            if (v.isActive) ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton(
-                  onPressed:
-                      _busy.contains(v.id) ? null : () => _deactivate(v),
-                  child: const Text('Deactivate'),
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -387,180 +310,6 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage>
   }
 }
 
-class LiveRegisterVehiclePage extends StatefulWidget {
-  const LiveRegisterVehiclePage({super.key});
-
-  @override
-  State<LiveRegisterVehiclePage> createState() =>
-      _LiveRegisterVehiclePageState();
-}
-
-class _LiveRegisterVehiclePageState extends State<LiveRegisterVehiclePage> {
-  final _reg = TextEditingController();
-  final _make = TextEditingController();
-  final _model = TextEditingController();
-  final _colour = TextEditingController();
-  String _type = 'FOUR_WHEELER';
-  String? _flatId;
-  bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _flatId = authSession?.selectedResidentFlatId;
-  }
-
-  @override
-  void dispose() {
-    _reg.dispose();
-    _make.dispose();
-    _model.dispose();
-    _colour.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_submitting) return;
-    final flatId = _flatId;
-    if (flatId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No active flat for registration')),
-      );
-      return;
-    }
-    final normalized = normalizeRegistrationNumber(_reg.text);
-    if (!isValidIndianRegistrationNumber(normalized)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter a valid Indian registration number'),
-        ),
-      );
-      return;
-    }
-    setState(() => _submitting = true);
-    try {
-      final session = authSession;
-      if (session == null) throw StateError('Not signed in.');
-      await ensureLiveRepositories(session.api).vehicles.register(
-            RegisterVehicleRequest(
-              flatId: flatId,
-              vehicleType: _type,
-              registrationNumber: normalized,
-              make: _make.text.trim().isEmpty ? null : _make.text.trim(),
-              model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-              colour:
-                  _colour.text.trim().isEmpty ? null : _colour.text.trim(),
-            ),
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vehicle registered')),
-      );
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(vehicleErrorMessage(e))),
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final flats = authSession?.residentFlats ?? const [];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Register vehicle')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-        children: [
-          if (flats.length > 1)
-            DropdownButtonFormField<String>(
-              value: _flatId,
-              decoration: const InputDecoration(
-                labelText: 'Flat',
-                border: OutlineInputBorder(),
-              ),
-              items: flats
-                  .map(
-                    (f) => DropdownMenuItem(
-                      value: f.flat.id,
-                      child: Text(
-                        '${f.flat.wingCode ?? '?'}-${f.flat.number}',
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) {
-                setState(() => _flatId = v);
-                if (v != null) authSession?.selectResidentFlat(v);
-              },
-            ),
-          if (flats.length > 1) const SizedBox(height: 12),
-          TextField(
-            controller: _reg,
-            decoration: const InputDecoration(
-              labelText: 'Registration number',
-              helperText: 'Example: MH12AB1234',
-              border: OutlineInputBorder(),
-            ),
-            textCapitalization: TextCapitalization.characters,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\s-]')),
-            ],
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _type,
-            decoration: const InputDecoration(
-              labelText: 'Vehicle type',
-              border: OutlineInputBorder(),
-            ),
-            items: kApiVehicleTypes
-                .map(
-                  (t) => DropdownMenuItem(
-                    value: t,
-                    child: Text(vehicleTypeLabel(t)),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) => setState(() => _type = v ?? 'FOUR_WHEELER'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _make,
-            decoration: const InputDecoration(
-              labelText: 'Make (optional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _model,
-            decoration: const InputDecoration(
-              labelText: 'Model (optional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _colour,
-            decoration: const InputDecoration(
-              labelText: 'Colour (optional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _submitting ? null : _submit,
-            child: Text(_submitting ? 'Registering…' : 'Register'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class LiveResidentVehicleDetailPage extends StatefulWidget {
   const LiveResidentVehicleDetailPage({super.key, required this.vehicleId});
@@ -574,63 +323,13 @@ class LiveResidentVehicleDetailPage extends StatefulWidget {
 class _LiveResidentVehicleDetailPageState
     extends State<LiveResidentVehicleDetailPage> {
   late Future<Vehicle> _future = _load();
-  bool _saving = false;
-  final _make = TextEditingController();
-  final _model = TextEditingController();
-  final _colour = TextEditingController();
-  String? _type;
-  String? _seededForId;
 
   Future<Vehicle> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    final v = await ensureLiveRepositories(session.api)
+    return ensureLiveRepositories(session.api)
         .vehicles
         .getResident(widget.vehicleId, force: force);
-    if (_seededForId != v.id) {
-      _make.text = v.make ?? '';
-      _model.text = v.model ?? '';
-      _colour.text = v.colour ?? '';
-      _type = v.vehicleType;
-      _seededForId = v.id;
-    }
-    return v;
-  }
-
-  @override
-  void dispose() {
-    _make.dispose();
-    _model.dispose();
-    _colour.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save(Vehicle v) async {
-    if (_saving || !v.isActive) return;
-    setState(() => _saving = true);
-    try {
-      final session = authSession;
-      if (session == null) throw StateError('Not signed in.');
-      await ensureLiveRepositories(session.api).vehicles.update(
-            v.id,
-            make: _make.text.trim().isEmpty ? null : _make.text.trim(),
-            model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-            colour: _colour.text.trim().isEmpty ? null : _colour.text.trim(),
-            vehicleType: _type,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vehicle updated')),
-      );
-      setState(() => _future = _load(force: true));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(vehicleErrorMessage(e))),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 
   @override
@@ -665,64 +364,20 @@ class _LiveResidentVehicleDetailPageState
               const SizedBox(height: 8),
               StatusBadge(v.isActive ? 'Active' : 'Inactive'),
               const SizedBox(height: 16),
-              if (v.isActive) ...[
-                DropdownButtonFormField<String>(
-                  value: _type,
-                  decoration: const InputDecoration(
-                    labelText: 'Type',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: kApiVehicleTypes
-                      .map(
-                        (t) => DropdownMenuItem(
-                          value: t,
-                          child: Text(vehicleTypeLabel(t)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (t) => setState(() => _type = t),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _make,
-                  decoration: const InputDecoration(
-                    labelText: 'Make',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _model,
-                  decoration: const InputDecoration(
-                    labelText: 'Model',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _colour,
-                  decoration: const InputDecoration(
-                    labelText: 'Colour',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _saving ? null : () => _save(v),
-                  child: Text(_saving ? 'Saving…' : 'Save changes'),
-                ),
-              ] else ...[
-                _line('Type', vehicleTypeLabel(v.vehicleType)),
-                if (v.make != null) _line('Make', v.make!),
-                if (v.model != null) _line('Model', v.model!),
-                if (v.deactivationReason != null)
-                  _line('Deactivated', v.deactivationReason!),
-              ],
-              const SizedBox(height: 16),
+              _line('Type', vehicleTypeLabel(v.vehicleType)),
+              _line('Make / model', v.makeModelLabel),
+              _line('Flat', v.flatLabel),
+              if (v.deactivationReason != null)
+                _line('Deactivated', v.deactivationReason!),
+              const SizedBox(height: 8),
               if (v.parkingSlotId != null)
                 _line('Parking slot', v.parkingSlotId!)
               else
                 _line('Parking', 'Not allocated'),
+              const SizedBox(height: 12),
+              const InfoNote(
+                'Vehicle details are managed by the society admin.',
+              ),
             ],
           );
         },
@@ -912,8 +567,9 @@ class _AdminVehiclesTabState extends State<_AdminVehiclesTab> {
               ),
               const SizedBox(height: 12),
               const InfoNote(
-                'Residents register their own vehicles. '
-                'Admins allocate parking slots from the Slots and Allocations tabs.',
+                'Vehicles registered during resident assignment and by residents '
+                'themselves appear here. Admins allocate parking from the Slots '
+                'and Allocations tabs.',
               ),
               const SizedBox(height: 12),
               if (items.isEmpty)
@@ -934,8 +590,18 @@ class _AdminVehiclesTabState extends State<_AdminVehiclesTab> {
                               color: C.navy,
                             ),
                           ),
+                          const SizedBox(height: 4),
                           Text(
-                            '${vehicleTypeLabel(v.vehicleType)} · Flat ${v.flatId}',
+                            '${vehicleTypeLabel(v.vehicleType)} · ${v.makeModelLabel}',
+                            style: const TextStyle(
+                              color: C.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${v.residentName ?? 'Resident'} · Flat ${v.flatLabel}'
+                            '${(v.societyName ?? '').isEmpty ? '' : ' · ${v.societyName}'}',
                             style: const TextStyle(
                               color: C.muted,
                               fontSize: 13,

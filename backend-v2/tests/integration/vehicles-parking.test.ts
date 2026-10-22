@@ -5,7 +5,6 @@ import { loginByEmail } from '../helpers/auth-login';
 import { createUser } from '../helpers/factories';
 import { createAdminContext, createWingWithFlats } from '../helpers/admin';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
-import { MembershipModel } from '../../src/modules/users/models/membership.model';
 import { VehicleModel } from '../../src/modules/vehicles/models/vehicle.model';
 import { ParkingAllocationModel } from '../../src/modules/vehicles/models/parking-allocation.model';
 import { VehicleLogModel } from '../../src/modules/vehicles/models/vehicle-log.model';
@@ -16,6 +15,21 @@ const app = createApp();
 async function login(email: string) {
   const { token } = await loginByEmail(app, email);
   return token;
+}
+
+async function adminRegisterVehicle(
+  token: string,
+  body: {
+    flatId: string;
+    registeredUserId: string;
+    vehicleType: string;
+    registrationNumber: string;
+    make?: string;
+    model?: string;
+    colour?: string;
+  },
+) {
+  return request(app).post('/api/v1/admin/vehicles').set('Authorization', `Bearer ${token}`).send(body);
 }
 
 async function setupSociety(prefix: string) {
@@ -68,36 +82,67 @@ async function setupSociety(prefix: string) {
   };
 }
 
-describe('Resident vehicle registration', () => {
-  it('allows owner and active tenant; blocks owner-with-tenant, previous tenant, inactive, guard, duplicates, cross-society', async () => {
+describe('Resident vehicle visibility is read-only', () => {
+  it('lets residents view their own vehicles and blocks add, edit, deactivate, and other residents', async () => {
     const setup = await setupSociety('veh');
 
-    const ownerReg = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'MH 12 AB 1234',
-        make: 'Honda',
-        colour: 'White',
-      });
-    expect(ownerReg.status).toBe(201);
-    expect(ownerReg.body.data.registrationNumber).toBe('MH12AB1234');
-    expect(ownerReg.body.data.isActive).toBe(true);
+    const ownerVehicle = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'MH 12 AB 1234',
+      make: 'Honda',
+      model: 'City',
+    });
+    expect(ownerVehicle.status).toBe(201);
 
-    const dup = await request(app)
+    const residentCreate = await request(app)
       .post('/api/v1/resident/vehicles')
       .set('Authorization', `Bearer ${setup.ownerToken}`)
       .set('x-society-id', setup.ctx.societyId)
       .send({
         flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'mh12-ab-1234',
+        vehicleType: 'TWO_WHEELER',
+        registrationNumber: 'MH12CD5678',
       });
-    expect(dup.status).toBe(409);
-    expect(dup.body.error.code).toBe('DUPLICATE_VEHICLE');
+    expect(residentCreate.status).toBe(403);
+    expect(residentCreate.body.error.code).toBe('RESIDENT_VEHICLE_READ_ONLY');
+
+    const list = await request(app)
+      .get('/api/v1/resident/vehicles')
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(list.status).toBe(200);
+    expect(list.body.data.items).toHaveLength(1);
+    expect(list.body.data.items[0].registrationNumber).toBe('MH12AB1234');
+    expect(list.body.data.items[0].vehicleType).toBe('FOUR_WHEELER');
+    expect(list.body.data.items[0].make).toBe('Honda');
+    expect(list.body.data.items[0].model).toBe('City');
+    expect(list.body.data.items[0].flatNumber).toBe(setup.flats[0].number);
+    expect(list.body.data.items[0].registeredUserId).toBe(String(setup.owner._id));
+
+    const detail = await request(app)
+      .get(`/api/v1/resident/vehicles/${ownerVehicle.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.flatNumber).toBe(setup.flats[0].number);
+
+    const residentPatch = await request(app)
+      .patch(`/api/v1/resident/vehicles/${ownerVehicle.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ make: 'Hero' });
+    expect(residentPatch.status).toBe(403);
+    expect(residentPatch.body.error.code).toBe('RESIDENT_VEHICLE_READ_ONLY');
+
+    const residentDeactivate = await request(app)
+      .post(`/api/v1/resident/vehicles/${ownerVehicle.body.data.id}/deactivate`)
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ reason: 'Sold' });
+    expect(residentDeactivate.status).toBe(403);
+    expect(residentDeactivate.body.error.code).toBe('RESIDENT_VEHICLE_READ_ONLY');
 
     await FlatModel.updateOne(
       { _id: setup.flats[0]._id },
@@ -107,141 +152,38 @@ describe('Resident vehicle registration', () => {
         activeTenantUserId: setup.tenant._id,
       },
     );
-
-    const ownerBlocked = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'TWO_WHEELER',
-        registrationNumber: 'MH12CD5678',
-      });
-    expect(ownerBlocked.status).toBe(403);
-    expect(ownerBlocked.body.error.code).toBe('RESIDENTIAL_ACCESS_DENIED');
-
-    const tenantReg = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.tenantToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'TWO_WHEELER',
-        registrationNumber: 'MH12CD5678',
-      });
-    expect(tenantReg.status).toBe(201);
-
-    await FlatModel.updateOne(
-      { _id: setup.flats[0]._id },
-      {
-        occupancyStatus: 'OWNER_OCCUPIED',
-        activeOwnerUserId: setup.owner._id,
-        activeTenantUserId: null,
-      },
-    );
-
-    const previousTenant = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.tenantToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'OTHER',
-        registrationNumber: 'MH12EF9012',
-      });
-    expect(previousTenant.status).toBe(403);
-
-    await MembershipModel.updateOne(
-      { userId: setup.owner._id, societyId: setup.ctx.societyId },
-      { isActive: false },
-    );
-    const inactiveOwner = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'OTHER',
-        registrationNumber: 'MH12EF9012',
-      });
-    expect([403, 401]).toContain(inactiveOwner.status);
-    await MembershipModel.updateOne(
-      { userId: setup.owner._id, societyId: setup.ctx.societyId },
-      { isActive: true },
-    );
-
-    const guardReg = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.guardToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'MH12GH3456',
-      });
-    expect(guardReg.status).toBe(403);
-
-    const other = await createAdminContext(app, 'veh-other@example.com', 'VEHX');
-    const { flats: otherFlats } = await createWingWithFlats({
-      societyId: other.societyId,
-      code: 'X',
-      flatRates: [4000],
+    const tenantVehicle = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.tenant._id),
+      vehicleType: 'TWO_WHEELER',
+      registrationNumber: 'MH12CD5678',
+      make: 'Honda',
+      model: 'Activa',
     });
-    const otherOwner = await createUser({
-      email: 'veh-other-owner@example.com',
-      roles: ['OWNER'],
-      societyId: other.societyId,
-    });
-    await FlatModel.updateOne(
-      { _id: otherFlats[0]._id },
-      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: otherOwner._id },
-    );
-    const otherToken = await login('veh-other-owner@example.com');
-    const cross = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${otherToken}`)
-      .set('x-society-id', other.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'KA01AB9999',
-      });
-    expect([403, 404]).toContain(cross.status);
+    expect(tenantVehicle.status).toBe(201);
 
-    const vehicleId = ownerReg.body.data.id as string;
-    const deactivate = await request(app)
-      .post(`/api/v1/resident/vehicles/${vehicleId}/deactivate`)
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({ reason: 'Sold' });
-    expect(deactivate.status).toBe(200);
-    expect(deactivate.body.data.isActive).toBe(false);
+    const tenantList = await request(app)
+      .get('/api/v1/resident/vehicles')
+      .set('Authorization', `Bearer ${setup.tenantToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(tenantList.status).toBe(200);
+    expect(tenantList.body.data.items.map((v: { registrationNumber: string }) => v.registrationNumber)).toEqual([
+      'MH12CD5678',
+    ]);
 
-    const stillThere = await VehicleModel.findById(vehicleId).lean();
-    expect(stillThere).toBeTruthy();
-    expect(stillThere!.isActive).toBe(false);
-    expect(stillThere!.registrationNumber).toBe('MH12AB1234');
-  });
+    const tenantPeekOwner = await request(app)
+      .get(`/api/v1/resident/vehicles/${ownerVehicle.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.tenantToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(tenantPeekOwner.status).toBe(404);
 
-  it('lists only residential-accessible vehicles and blocks peering at other flats', async () => {
-    const setup = await setupSociety('vehl');
-    const created = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'DL1CAA1234',
-      });
-    expect(created.status).toBe(201);
-
-    const list = await request(app)
+    const ownerStillSeesOwn = await request(app)
       .get('/api/v1/resident/vehicles')
       .set('Authorization', `Bearer ${setup.ownerToken}`)
       .set('x-society-id', setup.ctx.societyId);
-    expect(list.status).toBe(200);
-    expect(list.body.data.items).toHaveLength(1);
+    expect(ownerStillSeesOwn.body.data.items.map((v: { registrationNumber: string }) => v.registrationNumber)).toEqual([
+      'MH12AB1234',
+    ]);
 
     const stranger = await createUser({
       email: 'vehl-stranger@example.com',
@@ -254,10 +196,55 @@ describe('Resident vehicle registration', () => {
     );
     const strangerToken = await login('vehl-stranger@example.com');
     const peek = await request(app)
-      .get(`/api/v1/resident/vehicles/${created.body.data.id}`)
+      .get(`/api/v1/resident/vehicles/${ownerVehicle.body.data.id}`)
       .set('Authorization', `Bearer ${strangerToken}`)
       .set('x-society-id', setup.ctx.societyId);
-    expect(peek.status).toBe(403);
+    expect(peek.status).toBe(404);
+
+    const guardList = await request(app)
+      .get('/api/v1/resident/vehicles')
+      .set('Authorization', `Bearer ${setup.guardToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(guardList.status).toBe(403);
+  });
+
+  it('lets admin add, edit, and deactivate vehicles after resident view is locked', async () => {
+    const setup = await setupSociety('vehadm');
+    const created = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'DL1CAA1234',
+      make: 'Tata',
+    });
+    expect(created.status).toBe(201);
+
+    const patched = await request(app)
+      .patch(`/api/v1/admin/vehicles/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ model: 'Nexon' });
+    expect(patched.status).toBe(200);
+    expect(patched.body.data.model).toBe('Nexon');
+
+    const duplicate = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'dl1caa1234',
+    });
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.error.code).toBe('DUPLICATE_VEHICLE');
+
+    const deactivated = await request(app)
+      .post(`/api/v1/admin/vehicles/${created.body.data.id}/deactivate`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ reason: 'Sold' });
+    expect(deactivated.status).toBe(200);
+    expect(deactivated.body.data.isActive).toBe(false);
+
+    const stillThere = await VehicleModel.findById(created.body.data.id).lean();
+    expect(stillThere?.isActive).toBe(false);
+    expect(stillThere?.registrationNumber).toBe('DL1CAA1234');
   });
 });
 
@@ -288,15 +275,12 @@ describe('Parking slots and allocations', () => {
       .send({ slotNumber: 'T-01', parkingType: 'TWO_WHEELER' });
     expect(twoWheelerSlot.status).toBe(201);
 
-    const vehicle = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'GJ01AB1001',
-      });
+    const vehicle = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'GJ01AB1001',
+    });
     expect(vehicle.status).toBe(201);
 
     const badCompat = await request(app)
@@ -331,15 +315,12 @@ describe('Parking slots and allocations', () => {
       });
     expect(dupSlotAlloc.status).toBe(409);
 
-    const vehicle2 = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'GJ01AB1002',
-      });
+    const vehicle2 = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'GJ01AB1002',
+    });
     expect(vehicle2.status).toBe(201);
 
     const slot2 = await request(app)
@@ -426,24 +407,18 @@ describe('Parking slots and allocations', () => {
       .send({ slotNumber: 'C-01', parkingType: 'FOUR_WHEELER' });
     expect(slot.status).toBe(201);
 
-    const v1 = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'TN09AB1111',
-      });
-    const v2 = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'TN09AB2222',
-      });
+    const v1 = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'TN09AB1111',
+    });
+    const v2 = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'TN09AB2222',
+    });
     expect(v1.status).toBe(201);
     expect(v2.status).toBe(201);
 
@@ -486,15 +461,12 @@ describe('Guard vehicle logs', () => {
   it('records entry/exit, rejects duplicate active entry, preserves history, blocks cross-society and allocation edits', async () => {
     const setup = await setupSociety('vlog');
 
-    const registered = await request(app)
-      .post('/api/v1/resident/vehicles')
-      .set('Authorization', `Bearer ${setup.ownerToken}`)
-      .set('x-society-id', setup.ctx.societyId)
-      .send({
-        flatId: setup.ownerFlatId,
-        vehicleType: 'FOUR_WHEELER',
-        registrationNumber: 'KA05MZ4321',
-      });
+    const registered = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'KA05MZ4321',
+    });
     expect(registered.status).toBe(201);
 
     const entry = await request(app)

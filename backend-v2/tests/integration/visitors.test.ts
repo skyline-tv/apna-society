@@ -150,6 +150,19 @@ describe('Visitor registration and routing', () => {
       });
     expect(ownerReq.status).toBe(201);
     expect(ownerReq.body.data.assignedResidentUserId).toBe(String(setup.owner._id));
+
+    const emptyEmail = await request(app)
+      .post('/api/v1/guard/visitors')
+      .set('Authorization', `Bearer ${setup.guardToken}`)
+      .send({
+        flatId: setup.ownerFlatId,
+        visitorName: 'Guest No Email',
+        visitorPhone: '+91 9876500099',
+        visitorType: 'GUEST',
+        purpose: 'Visit',
+        visitorEmail: '',
+      });
+    expect(emptyEmail.status).toBe(201);
     expect(ownerReq.body.data.assignedResidentRole).toBe('OWNER');
     expect(ownerReq.body.data.visitorPhone).not.toBe('+91 9876500001');
     expect(ownerReq.body.data.visitorPhone).toMatch(/\d{4}$/);

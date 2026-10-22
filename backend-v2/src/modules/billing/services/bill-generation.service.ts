@@ -9,7 +9,10 @@ import { FlatModel } from '../../society/models/flat.model';
 import { SocietyModel } from '../../society/models/society.model';
 import { WingModel } from '../../society/models/wing.model';
 import { UserModel } from '../../users/models/user.model';
-import { BillModel } from '../models/bill.model';
+import { FlatAdditionalServiceModel } from '../models/additional-service.model';
+import { BillModel, type BillLineItem } from '../models/bill.model';
+import { PaymentModel } from '../models/payment.model';
+import { ReceiptModel } from '../models/receipt.model';
 import { appendPrincipalEvent } from '../models/principal-ledger.model';
 import { nextSequence } from '../models/sequence.model';
 import {
@@ -18,7 +21,9 @@ import {
   periodsOverlap,
   startOfCivilDay,
 } from '../utils/billing-calendar';
+import { billComputedTotalPaise } from '../utils/bill-totals';
 import { multiplyPaise, rupeesIntegerToPaise } from '../utils/money';
+import { chargeAdditionalServiceForPeriod } from '../utils/additional-service-proration';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
 
@@ -28,16 +33,36 @@ export interface GenerateBillsInput {
   notes?: string;
 }
 
+const UNASSIGNED_OWNER_NAME = 'Unassigned';
+
+function serializeLineItem(item: BillLineItem) {
+  return {
+    type: item.type,
+    serviceId: item.serviceId ? String(item.serviceId) : undefined,
+    name: item.name,
+    description: item.description,
+    quantity: item.quantity,
+    unitAmountPaise: item.unitAmountPaise,
+    amountPaise: item.amountPaise,
+    applicableDays: item.applicableDays,
+    billedDays: item.billedDays,
+    prorationPolicy: item.prorationPolicy,
+  };
+}
+
 function serializeBill(bill: {
   _id: { toString(): string };
   billNumber: string;
   flatId: { toString(): string };
-  ownerUserId: { toString(): string };
+  ownerUserId?: { toString(): string } | null;
   billingPeriodStart: Date;
   billingPeriodEnd: Date;
   numberOfMonths: number;
   monthlyRatePaise: number;
   baseAmountPaise: number;
+  additionalServicesTotalPaise?: number;
+  adjustmentsPaise?: number;
+  lineItems?: BillLineItem[];
   totalAmountPaise: number;
   outstandingPrincipalPaise: number;
   interestAccruedPaise: number;
@@ -47,19 +72,46 @@ function serializeBill(bill: {
   flatNumberSnapshot: string;
   wingCodeSnapshot: string;
   flatTypeSnapshot: string;
+  occupancyStatusSnapshot?: string;
+  floorSnapshot?: number;
+  flatIsActiveSnapshot?: boolean;
   ownerNameSnapshot: string;
   ownerEmailSnapshot: string;
 }) {
+  const additionalServicesTotalPaise = bill.additionalServicesTotalPaise ?? 0;
+  const adjustmentsPaise = bill.adjustmentsPaise ?? 0;
+  const lineItems = (bill.lineItems ?? []).map(serializeLineItem);
+  const fallbackItems =
+    lineItems.length > 0
+      ? lineItems
+      : [
+          {
+            type: 'MAINTENANCE' as const,
+            serviceId: undefined,
+            name: 'Monthly maintenance',
+            description: undefined,
+            quantity: bill.numberOfMonths,
+            unitAmountPaise: bill.monthlyRatePaise,
+            amountPaise: bill.baseAmountPaise,
+            applicableDays: undefined,
+            billedDays: undefined,
+            prorationPolicy: undefined,
+          },
+        ];
   return {
     id: String(bill._id),
     billNumber: bill.billNumber,
     flatId: String(bill.flatId),
-    ownerUserId: String(bill.ownerUserId),
+    ownerUserId: bill.ownerUserId ? String(bill.ownerUserId) : undefined,
+    ownerAssigned: Boolean(bill.ownerUserId),
     billingPeriodStart: bill.billingPeriodStart.toISOString(),
     billingPeriodEnd: bill.billingPeriodEnd.toISOString(),
     numberOfMonths: bill.numberOfMonths,
     monthlyRatePaise: bill.monthlyRatePaise,
     baseAmountPaise: bill.baseAmountPaise,
+    additionalServicesTotalPaise,
+    adjustmentsPaise,
+    lineItems: fallbackItems,
     totalAmountPaise: bill.totalAmountPaise,
     outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
     interestAccruedPaise: bill.interestAccruedPaise,
@@ -69,6 +121,9 @@ function serializeBill(bill: {
     flatNumberSnapshot: bill.flatNumberSnapshot,
     wingCodeSnapshot: bill.wingCodeSnapshot,
     flatTypeSnapshot: bill.flatTypeSnapshot,
+    occupancyStatusSnapshot: bill.occupancyStatusSnapshot,
+    floorSnapshot: bill.floorSnapshot,
+    flatIsActiveSnapshot: bill.flatIsActiveSnapshot,
     ownerNameSnapshot: bill.ownerNameSnapshot,
     ownerEmailSnapshot: bill.ownerEmailSnapshot,
   };
@@ -84,12 +139,13 @@ async function createBillNumber(
   return `BILL-${year}-${seq.toString().padStart(6, '0')}`;
 }
 
+/**
+ * Every configured flat is billable. Occupancy, active flag, and owner/tenant
+ * assignment must never exclude a flat from generation.
+ */
 export async function listEligibleFlats(societyId: string) {
   const flats = await FlatModel.find({
     societyId: parseObjectId(societyId, 'societyId'),
-    isActive: true,
-    activeOwnerUserId: { $exists: true, $ne: null },
-    occupancyStatus: { $in: ['OWNER_OCCUPIED', 'TENANT_OCCUPIED'] },
   })
     .sort({ number: 1 })
     .lean();
@@ -97,15 +153,39 @@ export async function listEligibleFlats(societyId: string) {
   const wings = await WingModel.find({ societyId }).select('code').lean();
   const wingMap = new Map(wings.map((w) => [String(w._id), w.code]));
 
-  return flats.map((flat) => ({
-    id: String(flat._id),
-    number: flat.number,
-    wingCode: wingMap.get(String(flat.wingId)) ?? '',
-    flatType: flat.flatType,
-    monthlyRatePaise: rupeesIntegerToPaise(flat.maintenanceRate),
-    ownerUserId: String(flat.activeOwnerUserId),
-    occupancyStatus: flat.occupancyStatus,
-  }));
+  const services = await FlatAdditionalServiceModel.find({
+    societyId,
+    isActive: true,
+  })
+    .select('flatId monthlyChargePaise quantity')
+    .lean();
+  const additionalByFlat = new Map<string, number>();
+  for (const service of services) {
+    const key = String(service.flatId);
+    additionalByFlat.set(
+      key,
+      (additionalByFlat.get(key) ?? 0) + service.monthlyChargePaise * service.quantity,
+    );
+  }
+
+  return flats.map((flat) => {
+    const monthlyRatePaise = rupeesIntegerToPaise(flat.maintenanceRate);
+    const recurringAdditionalPaise = additionalByFlat.get(String(flat._id)) ?? 0;
+    return {
+      id: String(flat._id),
+      number: flat.number,
+      wingCode: wingMap.get(String(flat.wingId)) ?? '',
+      floor: flat.floor,
+      flatType: flat.flatType,
+      monthlyRatePaise,
+      recurringAdditionalPaise,
+      recurringMonthlyTotalPaise: monthlyRatePaise + recurringAdditionalPaise,
+      ownerUserId: flat.activeOwnerUserId ? String(flat.activeOwnerUserId) : undefined,
+      occupancyStatus: flat.occupancyStatus,
+      isActive: flat.isActive,
+      ownerAssigned: Boolean(flat.activeOwnerUserId),
+    };
+  });
 }
 
 export async function generateBills(
@@ -137,27 +217,34 @@ export async function generateBills(
   }
 
   const dueDate = dueDateForBillingPeriod(periodStart, timeZone);
-  const flats = await FlatModel.find({
-    societyId,
-    isActive: true,
-  }).lean();
+  const flats = await FlatModel.find({ societyId }).sort({ number: 1 }).lean();
 
   const wings = await WingModel.find({ societyId }).lean();
   const wingMap = new Map(wings.map((w) => [String(w._id), w]));
 
+  const ownerIds = flats
+    .map((flat) => flat.activeOwnerUserId)
+    .filter((id): id is NonNullable<typeof id> => Boolean(id));
+  const owners = await UserModel.find({ _id: { $in: ownerIds } }).lean();
+  const ownerMap = new Map(owners.map((owner) => [String(owner._id), owner]));
+
+  const services = await FlatAdditionalServiceModel.find({ societyId }).lean();
+  const servicesByFlat = new Map<string, typeof services>();
+  for (const service of services) {
+    const key = String(service.flatId);
+    const list = servicesByFlat.get(key) ?? [];
+    list.push(service);
+    servicesByFlat.set(key, list);
+  }
+
   const created: ReturnType<typeof serializeBill>[] = [];
   const skipped: Array<{ flatId: string; number: string; reason: string }> = [];
   const conflicts: Array<{ flatId: string; number: string; reason: string; billId?: string }> = [];
+  let vacantOrUnassignedCount = 0;
 
   for (const flat of flats) {
-    if (!flat.activeOwnerUserId || flat.occupancyStatus === 'VACANT') {
-      skipped.push({
-        flatId: String(flat._id),
-        number: flat.number,
-        reason: 'VACANT_OR_UNASSIGNED',
-      });
-      continue;
-    }
+    const unassigned = !flat.activeOwnerUserId || flat.occupancyStatus === 'VACANT';
+    if (unassigned) vacantOrUnassignedCount += 1;
 
     const existing = await BillModel.find({
       societyId,
@@ -178,19 +265,61 @@ export async function generateBills(
       continue;
     }
 
-    const owner = await UserModel.findById(flat.activeOwnerUserId).lean();
-    if (!owner || !owner.isActive) {
-      skipped.push({
-        flatId: String(flat._id),
-        number: flat.number,
-        reason: 'OWNER_INACTIVE_OR_MISSING',
-      });
-      continue;
-    }
-
+    const owner = flat.activeOwnerUserId
+      ? ownerMap.get(String(flat.activeOwnerUserId))
+      : undefined;
     const wing = wingMap.get(String(flat.wingId));
     const monthlyRatePaise = rupeesIntegerToPaise(flat.maintenanceRate);
     const baseAmountPaise = multiplyPaise(monthlyRatePaise, input.numberOfMonths);
+
+    const lineItems: BillLineItem[] = [
+      {
+        type: 'MAINTENANCE',
+        name: 'Monthly maintenance',
+        quantity: input.numberOfMonths,
+        unitAmountPaise: monthlyRatePaise,
+        amountPaise: baseAmountPaise,
+      },
+    ];
+
+    let additionalServicesTotalPaise = 0;
+    for (const service of servicesByFlat.get(String(flat._id)) ?? []) {
+      const snapshot = chargeAdditionalServiceForPeriod(
+        {
+          id: String(service._id),
+          name: service.name,
+          description: service.description,
+          monthlyChargePaise: service.monthlyChargePaise,
+          quantity: service.quantity,
+          effectiveFrom: service.effectiveFrom,
+          effectiveTo: service.effectiveTo,
+          isActive: service.isActive,
+        },
+        periodStart,
+        periodEnd,
+        timeZone,
+      );
+      if (!snapshot) continue;
+      additionalServicesTotalPaise += snapshot.amountPaise;
+      lineItems.push({
+        type: 'ADDITIONAL_SERVICE',
+        serviceId: service._id,
+        name: snapshot.name,
+        description: snapshot.description,
+        quantity: snapshot.quantity,
+        unitAmountPaise: snapshot.unitAmountPaise,
+        amountPaise: snapshot.amountPaise,
+        applicableDays: snapshot.applicableDays,
+        billedDays: snapshot.billedDays,
+        prorationPolicy: snapshot.prorationPolicy,
+      });
+    }
+
+    const totalAmountPaise = billComputedTotalPaise({
+      baseAmountPaise,
+      additionalServicesTotalPaise,
+      adjustmentsPaise: 0,
+    });
 
     try {
       const bill = await withTransaction(async (session) => {
@@ -204,18 +333,23 @@ export async function generateBills(
               billingPeriodStart: periodStart,
               billingPeriodEnd: periodEnd,
               numberOfMonths: input.numberOfMonths,
-              ownerUserId: owner._id,
-              ownerNameSnapshot: owner.name,
-              ownerEmailSnapshot: owner.email,
+              ownerUserId: owner?._id,
+              ownerNameSnapshot: owner?.name ?? UNASSIGNED_OWNER_NAME,
+              ownerEmailSnapshot: owner?.email || 'unassigned',
               flatNumberSnapshot: flat.number,
               wingCodeSnapshot: wing?.code ?? '',
               flatTypeSnapshot: flat.flatType,
+              occupancyStatusSnapshot: flat.occupancyStatus,
+              floorSnapshot: flat.floor,
+              flatIsActiveSnapshot: flat.isActive,
               monthlyRatePaise,
               baseAmountPaise,
+              additionalServicesTotalPaise,
               adjustmentsPaise: 0,
-              totalAmountPaise: baseAmountPaise,
+              lineItems,
+              totalAmountPaise,
               amountPaidPaise: 0,
-              outstandingPrincipalPaise: baseAmountPaise,
+              outstandingPrincipalPaise: totalAmountPaise,
               interestAccruedPaise: 0,
               dueDate,
               status: 'ISSUED',
@@ -232,8 +366,8 @@ export async function generateBills(
             societyId,
             billId: doc._id,
             eventType: 'OPENING',
-            deltaPrincipalPaise: baseAmountPaise,
-            principalAfterPaise: baseAmountPaise,
+            deltaPrincipalPaise: totalAmountPaise,
+            principalAfterPaise: totalAmountPaise,
             effectiveAt: startOfCivilDay(periodStart, timeZone),
             sourceType: 'bill',
             sourceId: String(doc._id),
@@ -252,9 +386,11 @@ export async function generateBills(
             metadata: {
               billNumber,
               flatId: String(flat._id),
-              ownerUserId: String(owner._id),
+              ownerUserId: owner ? String(owner._id) : null,
               numberOfMonths: input.numberOfMonths,
-              totalAmountPaise: baseAmountPaise,
+              baseAmountPaise,
+              additionalServicesTotalPaise,
+              totalAmountPaise,
             },
             ipAddress: actor.ipAddress,
             userAgent: actor.userAgent,
@@ -267,16 +403,18 @@ export async function generateBills(
 
       const serialized = serializeBill(bill);
       created.push(serialized);
-      await notifyBusinessEvent({
-        societyId,
-        recipientUserId: String(bill.ownerUserId),
-        type: 'BILL_GENERATED',
-        title: 'Maintenance bill generated',
-        body: `Bill ${serialized.billNumber} for ${serialized.wingCodeSnapshot}-${serialized.flatNumberSnapshot}`,
-        relatedEntityType: 'Bill',
-        relatedEntityId: String(bill._id),
-        idempotencyKey: `BILL_GENERATED:${String(bill._id)}`,
-      });
+      if (bill.ownerUserId) {
+        await notifyBusinessEvent({
+          societyId,
+          recipientUserId: String(bill.ownerUserId),
+          type: 'BILL_GENERATED',
+          title: 'Maintenance bill generated',
+          body: `Bill ${serialized.billNumber} for ${serialized.wingCodeSnapshot}-${serialized.flatNumberSnapshot}`,
+          relatedEntityType: 'Bill',
+          relatedEntityId: String(bill._id),
+          idempotencyKey: `BILL_GENERATED:${String(bill._id)}`,
+        });
+      }
     } catch (error) {
       if (isDuplicateKeyError(error) || isTransientTransactionError(error)) {
         const existingBill = await BillModel.findOne({
@@ -301,6 +439,11 @@ export async function generateBills(
   }
 
   const totalBilledPaise = created.reduce((sum, b) => sum + b.totalAmountPaise, 0);
+  const totalMaintenancePaise = created.reduce((sum, b) => sum + b.baseAmountPaise, 0);
+  const totalAdditionalPaise = created.reduce(
+    (sum, b) => sum + b.additionalServicesTotalPaise,
+    0,
+  );
 
   if (created.length > 0) {
     const { invalidateFinancialCaches } = await import('../../../cache/cache-invalidation');
@@ -315,11 +458,90 @@ export async function generateBills(
     createdCount: created.length,
     skippedCount: skipped.length,
     conflictCount: conflicts.length,
+    vacantOrUnassignedCount,
     totalBilledPaise,
+    totalMaintenancePaise,
+    totalAdditionalServicesPaise: totalAdditionalPaise,
     created,
     skipped,
     conflicts,
   };
+}
+
+/**
+ * When an owner is assigned to a previously unassigned/vacant flat, attach
+ * existing bills (and related payments/receipts) without recreating amounts.
+ */
+export async function attachUnassignedBillsToOwner(
+  societyId: string,
+  flatId: string,
+  owner: { _id: { toString(): string }; name: string; email: string },
+  actor: Actor,
+  session: ClientSession,
+): Promise<{ attachedBillCount: number }> {
+  const bills = await BillModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    flatId: parseObjectId(flatId, 'flatId'),
+    $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: null }],
+    status: { $ne: 'CANCELLED' },
+  }).session(session);
+
+  if (bills.length === 0) return { attachedBillCount: 0 };
+
+  const billIds = bills.map((bill) => bill._id);
+  await BillModel.updateMany(
+    { _id: { $in: billIds } },
+    {
+      $set: {
+        ownerUserId: owner._id,
+        ownerNameSnapshot: owner.name,
+        ownerEmailSnapshot: owner.email,
+      },
+    },
+    { session },
+  );
+  await PaymentModel.updateMany(
+    {
+      billId: { $in: billIds },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: null }],
+    },
+    { $set: { ownerUserId: owner._id } },
+    { session },
+  );
+  await ReceiptModel.updateMany(
+    {
+      billId: { $in: billIds },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: null }],
+    },
+    {
+      $set: {
+        ownerUserId: owner._id,
+        ownerNameSnapshot: owner.name,
+        ownerEmailSnapshot: owner.email,
+      },
+    },
+    { session },
+  );
+
+  await writeAuditLog(
+    {
+      action: 'BILL_OWNER_ATTACHED',
+      actorUserId: actor.userId,
+      societyId,
+      targetType: 'Flat',
+      targetId: flatId,
+      metadata: {
+        ownerUserId: String(owner._id),
+        attachedBillCount: bills.length,
+        billIds: bills.map((bill) => String(bill._id)),
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    session,
+  );
+
+  return { attachedBillCount: bills.length };
 }
 
 export async function getBill(societyId: string, billId: string) {
@@ -341,6 +563,9 @@ export async function listBills(
     ownerUserId?: string;
     wingCode?: string;
     billingPeriodStart?: Date;
+    occupancyStatus?: string;
+    floor?: number;
+    ownerAssigned?: boolean;
     page?: number;
     limit?: number;
   },
@@ -355,6 +580,13 @@ export async function listBills(
   if (query.ownerUserId) filter.ownerUserId = parseObjectId(query.ownerUserId, 'ownerUserId');
   if (query.wingCode) filter.wingCodeSnapshot = query.wingCode.toUpperCase();
   if (query.billingPeriodStart) filter.billingPeriodStart = query.billingPeriodStart;
+  if (query.occupancyStatus) filter.occupancyStatusSnapshot = query.occupancyStatus;
+  if (query.floor !== undefined) filter.floorSnapshot = query.floor;
+  if (query.ownerAssigned === true) {
+    filter.ownerUserId = { $exists: true, $ne: null };
+  } else if (query.ownerAssigned === false) {
+    filter.$or = [{ ownerUserId: { $exists: false } }, { ownerUserId: null }];
+  }
 
   const [total, rows] = await Promise.all([
     BillModel.countDocuments(filter),
@@ -378,7 +610,7 @@ export async function listBills(
 
 /**
  * Admin adjustment: changes adjustmentsPaise / total / outstanding without mutating
- * the original base amount or monthly rate snapshot. Audited.
+ * the original base amount, additional-service snapshots, or monthly rate.
  */
 export async function adjustBill(
   societyId: string,
@@ -407,7 +639,11 @@ export async function adjustBill(
     outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
   };
 
-  const newTotal = bill.baseAmountPaise + input.adjustmentsPaise;
+  const newTotal = billComputedTotalPaise({
+    baseAmountPaise: bill.baseAmountPaise,
+    additionalServicesTotalPaise: bill.additionalServicesTotalPaise,
+    adjustmentsPaise: input.adjustmentsPaise,
+  });
   if (newTotal < bill.amountPaidPaise) {
     throw badRequest(
       'Adjustment would make total less than amount already paid',
@@ -461,6 +697,7 @@ export async function adjustBill(
         metadata: {
           previous,
           adjustmentsPaise: bill.adjustmentsPaise,
+          additionalServicesTotalPaise: bill.additionalServicesTotalPaise,
           totalAmountPaise: bill.totalAmountPaise,
           outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
           baseAmountPaise: bill.baseAmountPaise,

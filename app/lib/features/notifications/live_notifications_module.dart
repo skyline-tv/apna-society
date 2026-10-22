@@ -13,8 +13,6 @@ import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import '../announcements/live_announcements_module.dart';
 import '../billing/live_billing_module.dart';
-import '../complaints/live_complaints_module.dart';
-import '../facilities/live_facilities_module.dart';
 import '../visitors/live_visitors_module.dart';
 
 String notificationErrorMessage(Object error) {
@@ -107,17 +105,6 @@ Widget? _linkedPage(AppNotification n) {
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
       return const LiveResidentVisitorsPage();
-    case 'COMPLAINT_ASSIGNED':
-    case 'COMPLAINT_STATUS_CHANGED':
-      return entityId == null
-          ? null
-          : LiveResidentComplaintDetailPage(complaintId: entityId);
-    case 'FACILITY_BOOKING_APPROVED':
-    case 'FACILITY_BOOKING_REJECTED':
-    case 'FACILITY_BOOKING_CANCELLED':
-      return entityId == null
-          ? null
-          : LiveResidentBookingDetailPage(bookingId: entityId);
     case 'BILL_GENERATED':
       // Financial detail is owner-only in the UI; the backend remains
       // authoritative for access.
@@ -137,13 +124,6 @@ String _linkLabel(String type) {
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
       return 'Open visitors';
-    case 'COMPLAINT_ASSIGNED':
-    case 'COMPLAINT_STATUS_CHANGED':
-      return 'Open complaint';
-    case 'FACILITY_BOOKING_APPROVED':
-    case 'FACILITY_BOOKING_REJECTED':
-    case 'FACILITY_BOOKING_CANCELLED':
-      return 'Open booking';
     case 'BILL_GENERATED':
       return 'Open bill';
     default:

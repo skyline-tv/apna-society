@@ -13,6 +13,7 @@ export interface SocietySummary {
   timezone: string;
   currency: string;
   maintenanceDayOfMonth: number;
+  annualInterestRateBps: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

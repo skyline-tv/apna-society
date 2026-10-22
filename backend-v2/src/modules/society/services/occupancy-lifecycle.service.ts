@@ -33,6 +33,13 @@ export interface AssignOccupancyInput {
   userId: string;
   effectiveFrom: string | Date;
   notes?: string;
+  vehicles?: Array<{
+    vehicleType: 'TWO_WHEELER' | 'FOUR_WHEELER' | 'OTHER';
+    registrationNumber: string;
+    make?: string;
+    model?: string;
+    colour?: string;
+  }>;
 }
 
 export interface EndOccupancyInput {
@@ -219,8 +226,13 @@ function assertTransitionAllowed(from: OccupancyStatus, to: OccupancyStatus, act
 }
 
 async function afterOccupancyCommit(societyId: string): Promise<void> {
-  const { invalidateOccupancyCaches } = await import('../../../cache/cache-invalidation');
-  await invalidateOccupancyCaches(societyId);
+  const { invalidateOccupancyCaches, invalidateFinancialCaches } = await import(
+    '../../../cache/cache-invalidation'
+  );
+  await Promise.all([
+    invalidateOccupancyCaches(societyId),
+    invalidateFinancialCaches(societyId),
+  ]);
 }
 
 export async function assignOwner(
@@ -288,6 +300,17 @@ export async function assignOwner(
       flat.occupancyStatus = 'OWNER_OCCUPIED';
       await flat.save({ session });
 
+      const { attachUnassignedBillsToOwner } = await import(
+        '../../billing/services/bill-generation.service'
+      );
+      await attachUnassignedBillsToOwner(
+        societyId,
+        flatId,
+        { _id: user._id, name: user.name, email: user.email },
+        actor,
+        session,
+      );
+
       await writeAuditLog(
         {
           action: 'OWNER_ASSIGNED',
@@ -299,6 +322,7 @@ export async function assignOwner(
             userId: String(user._id),
             effectiveFrom: effectiveFrom.toISOString(),
             notes: input.notes,
+            vehicleCount: input.vehicles?.length ?? 0,
             before: { occupancyStatus: 'VACANT' },
             after: { occupancyStatus: 'OWNER_OCCUPIED' },
           },
@@ -308,11 +332,29 @@ export async function assignOwner(
         session,
       );
 
+      let vehicles: Array<Record<string, unknown>> = [];
+      if (input.vehicles?.length) {
+        const { insertResidentVehicles } = await import(
+          '../../vehicles/services/vehicle.service'
+        );
+        vehicles = await insertResidentVehicles(
+          societyId,
+          {
+            flatId,
+            registeredUserId: String(user._id),
+            vehicles: input.vehicles,
+          },
+          actor,
+          { session, occupantConfirmed: true },
+        );
+      }
+
       return {
         flatId,
         occupancyStatus: 'OWNER_OCCUPIED' as OccupancyStatus,
         activeOwnerUserId: String(user._id),
         activeTenantUserId: null as string | null,
+        ...(vehicles.length ? { vehicles } : {}),
       };
     });
     await afterOccupancyCommit(societyId);
@@ -405,6 +447,7 @@ export async function assignTenant(
             ownerUserId: String(flat.activeOwnerUserId),
             effectiveFrom: effectiveFrom.toISOString(),
             notes: input.notes,
+            vehicleCount: input.vehicles?.length ?? 0,
             before: { occupancyStatus: before },
             after: { occupancyStatus: 'TENANT_OCCUPIED' },
           },
@@ -414,11 +457,29 @@ export async function assignTenant(
         session,
       );
 
+      let vehicles: Array<Record<string, unknown>> = [];
+      if (input.vehicles?.length) {
+        const { insertResidentVehicles } = await import(
+          '../../vehicles/services/vehicle.service'
+        );
+        vehicles = await insertResidentVehicles(
+          societyId,
+          {
+            flatId,
+            registeredUserId: String(user._id),
+            vehicles: input.vehicles,
+          },
+          actor,
+          { session, occupantConfirmed: true },
+        );
+      }
+
       return {
         flatId,
         occupancyStatus: 'TENANT_OCCUPIED' as OccupancyStatus,
         activeOwnerUserId: String(flat.activeOwnerUserId),
         activeTenantUserId: String(user._id),
+        ...(vehicles.length ? { vehicles } : {}),
       };
     });
     await afterOccupancyCommit(societyId);

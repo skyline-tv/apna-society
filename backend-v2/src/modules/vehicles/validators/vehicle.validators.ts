@@ -6,14 +6,28 @@ import { VEHICLE_TYPES } from '../models/vehicle.model';
 
 const objectId = z.string().refine(isObjectId, 'Must be a valid ObjectId');
 
-export const registerVehicleSchema = z
+export const vehicleDraftSchema = z
   .object({
-    flatId: objectId,
     vehicleType: z.enum(VEHICLE_TYPES),
     registrationNumber: z.string().trim().min(6).max(20),
     make: z.string().trim().min(1).max(80).optional(),
     model: z.string().trim().min(1).max(80).optional(),
     colour: z.string().trim().min(1).max(40).optional(),
+  })
+  .strict();
+
+export const vehicleDraftListSchema = z.array(vehicleDraftSchema).max(10);
+
+export const registerVehicleSchema = vehicleDraftSchema
+  .extend({
+    flatId: objectId,
+  })
+  .strict();
+
+export const adminRegisterVehicleSchema = vehicleDraftSchema
+  .extend({
+    flatId: objectId,
+    registeredUserId: objectId,
   })
   .strict();
 
@@ -23,6 +37,19 @@ export const updateVehicleSchema = z
     model: z.string().trim().min(1).max(80).optional(),
     colour: z.string().trim().min(1).max(40).optional(),
     vehicleType: z.enum(VEHICLE_TYPES).optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field is required',
+  });
+
+export const adminUpdateVehicleSchema = z
+  .object({
+    make: z.string().trim().min(1).max(80).optional(),
+    model: z.string().trim().min(1).max(80).optional(),
+    colour: z.string().trim().min(1).max(40).optional(),
+    vehicleType: z.enum(VEHICLE_TYPES).optional(),
+    registrationNumber: z.string().trim().min(6).max(20).optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
@@ -39,6 +66,7 @@ export const vehicleIdParamSchema = z.object({ vehicleId: objectId });
 
 export const listAdminVehiclesQuerySchema = z.object({
   flatId: objectId.optional(),
+  registeredUserId: objectId.optional(),
   isActive: z
     .enum(['true', 'false'])
     .optional()
@@ -141,8 +169,11 @@ export const listVehicleLogsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export type VehicleDraftInput = z.infer<typeof vehicleDraftSchema>;
 export type RegisterVehicleInput = z.infer<typeof registerVehicleSchema>;
+export type AdminRegisterVehicleInput = z.infer<typeof adminRegisterVehicleSchema>;
 export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;
+export type AdminUpdateVehicleInput = z.infer<typeof adminUpdateVehicleSchema>;
 export type CreateParkingSlotInput = z.infer<typeof createParkingSlotSchema>;
 export type AllocateParkingInput = z.infer<typeof allocateParkingSchema>;
 export type VehicleEntryInput = z.infer<typeof vehicleEntrySchema>;

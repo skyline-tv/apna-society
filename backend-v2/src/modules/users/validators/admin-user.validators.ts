@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isObjectId } from '../../../utils/object-id';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../../../utils/password';
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from '../../../utils/username';
+import { vehicleDraftListSchema } from '../../vehicles/validators/vehicle.validators';
 
 const objectId = z.string().refine(isObjectId, 'Must be a valid ObjectId');
 
@@ -33,8 +34,15 @@ export const provisionUserSchema = z
     username: usernameSchema.optional(),
     /** Optional admin-chosen password; otherwise a temporary password is generated. */
     password: passwordSchema.optional(),
+    /** Optional flat assignment at provision time. Required when vehicles are sent. */
+    flatId: objectId.optional(),
+    vehicles: vehicleDraftListSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((data) => !data.vehicles?.length || Boolean(data.flatId), {
+    message: 'Assign a flat to register vehicles',
+    path: ['flatId'],
+  });
 
 export const updateUserSchema = z
   .object({

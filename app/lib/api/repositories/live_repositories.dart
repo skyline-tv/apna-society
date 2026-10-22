@@ -1,4 +1,5 @@
 import '../apna_api.dart';
+import 'admin_guard_repository.dart';
 import 'admin_user_repository.dart';
 import 'announcement_repository.dart';
 import 'billing_repository.dart';
@@ -21,6 +22,7 @@ class LiveRepositories {
       : society = SocietyRepository(api.society),
         resident = ResidentRepository(api.residents),
         users = AdminUserRepository(api.adminUsers),
+        guards = AdminGuardRepository(api.adminGuards),
         billing = BillingRepository(api.billing),
         reports = ReportRepository(api.reports),
         visitors = VisitorRepository(api.visitors),
@@ -34,6 +36,7 @@ class LiveRepositories {
   final SocietyRepository society;
   final ResidentRepository resident;
   final AdminUserRepository users;
+  final AdminGuardRepository guards;
   final BillingRepository billing;
   final ReportRepository reports;
   final VisitorRepository visitors;
@@ -48,6 +51,7 @@ class LiveRepositories {
     society.clear();
     resident.clear();
     users.clear();
+    guards.clear();
     billing.clear();
     reports.clear();
     visitors.clear();
@@ -63,6 +67,7 @@ class LiveRepositories {
   void invalidateAfterResidentMutation({String? flatId}) {
     users.invalidateLists();
     resident.clear();
+    vehicles.invalidateCaches();
     visitors.invalidateCaches();
     facilities.invalidateCaches();
     announcements.invalidateCaches();

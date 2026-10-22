@@ -3,12 +3,14 @@ import { BillModel } from '../models/bill.model';
 import { PaymentModel } from '../models/payment.model';
 import { ReceiptModel } from '../models/receipt.model';
 import { parseObjectId } from '../../../utils/object-id';
+import { billComputedTotalPaise } from '../utils/bill-totals';
 
 /**
  * Hard financial checks. Discrepancies throw — they are never silently discarded.
  */
 export function assertBillFinancialInvariants(input: {
   baseAmountPaise: number;
+  additionalServicesTotalPaise?: number;
   adjustmentsPaise: number;
   totalAmountPaise: number;
   amountPaidPaise: number;
@@ -16,9 +18,10 @@ export function assertBillFinancialInvariants(input: {
   paymentAllocatedPrincipalPaise?: number;
   paymentAmountPaise?: number;
 }): void {
-  if (input.totalAmountPaise !== input.baseAmountPaise + input.adjustmentsPaise) {
+  const expectedTotal = billComputedTotalPaise(input);
+  if (input.totalAmountPaise !== expectedTotal) {
     throw conflict(
-      'Bill total does not equal base + adjustments',
+      'Bill total does not equal base + additional services + adjustments',
       'INVARIANT_TOTAL_MISMATCH',
     );
   }
@@ -57,6 +60,7 @@ export async function reconcileBillFinancials(societyId: string, billId: string)
 
   assertBillFinancialInvariants({
     baseAmountPaise: bill.baseAmountPaise,
+    additionalServicesTotalPaise: bill.additionalServicesTotalPaise,
     adjustmentsPaise: bill.adjustmentsPaise,
     totalAmountPaise: bill.totalAmountPaise,
     amountPaidPaise: bill.amountPaidPaise,

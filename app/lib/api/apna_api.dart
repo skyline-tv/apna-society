@@ -1,5 +1,6 @@
 import 'config/api_config.dart';
 import 'http/api_client.dart';
+import 'services/admin_guard_api.dart';
 import 'services/admin_user_api.dart';
 import 'services/announcement_api.dart';
 import 'services/auth_api.dart';
@@ -35,6 +36,7 @@ class ApnaApi {
   late final AuthApi auth = AuthApi(client);
   late final SocietyApi society = SocietyApi(client);
   late final AdminUserApi adminUsers = AdminUserApi(client);
+  late final AdminGuardApi adminGuards = AdminGuardApi(client);
   late final ResidentApi residents = ResidentApi(client);
   late final BillingApi billing = BillingApi(client);
   late final VisitorApi visitors = VisitorApi(client);

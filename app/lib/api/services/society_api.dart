@@ -5,6 +5,7 @@ import '../http/json_read.dart';
 import '../models/admin_user_models.dart';
 import '../models/common.dart';
 import '../models/society_models.dart';
+import '../models/vehicle_models.dart';
 
 /// Admin society, wing, flat reads, and occupancy lifecycle writes.
 ///
@@ -139,6 +140,7 @@ class SocietyApi {
     required String userId,
     required DateTime effectiveFrom,
     String? notes,
+    List<VehicleDraftPayload>? vehicles,
     String? societyId,
   }) {
     return _client.post(
@@ -148,6 +150,8 @@ class SocietyApi {
         'userId': userId,
         'effectiveFrom': effectiveFrom.toUtc().toIso8601String(),
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (vehicles != null && vehicles.isNotEmpty)
+          'vehicles': vehicles.map((v) => v.toJson()).toList(),
       },
       decode: OccupancyMutationResult.fromJson,
     );
@@ -158,6 +162,7 @@ class SocietyApi {
     required String userId,
     required DateTime effectiveFrom,
     String? notes,
+    List<VehicleDraftPayload>? vehicles,
     String? societyId,
   }) {
     return _client.post(
@@ -167,6 +172,8 @@ class SocietyApi {
         'userId': userId,
         'effectiveFrom': effectiveFrom.toUtc().toIso8601String(),
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (vehicles != null && vehicles.isNotEmpty)
+          'vehicles': vehicles.map((v) => v.toJson()).toList(),
       },
       decode: OccupancyMutationResult.fromJson,
     );

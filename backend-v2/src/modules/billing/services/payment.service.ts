@@ -107,7 +107,7 @@ export async function createPaymentOrder(
   if (bill.outstandingPrincipalPaise <= 0) {
     throw badRequest('Bill is already fully paid', 'BILL_ALREADY_PAID');
   }
-  if (String(bill.ownerUserId) !== ownerUserId) {
+  if (!bill.ownerUserId || String(bill.ownerUserId) !== ownerUserId) {
     throw forbidden('Only the bill owner may initiate payment', 'NOT_BILL_OWNER');
   }
 
@@ -305,6 +305,7 @@ export async function settleSuccessfulPayment(input: {
 
       assertBillFinancialInvariants({
         baseAmountPaise: bill.baseAmountPaise,
+        additionalServicesTotalPaise: bill.additionalServicesTotalPaise,
         adjustmentsPaise: bill.adjustmentsPaise,
         totalAmountPaise: bill.totalAmountPaise,
         amountPaidPaise: bill.amountPaidPaise,
@@ -382,7 +383,7 @@ export async function settleSuccessfulPayment(input: {
         receiptId: String(receipt._id),
         billStatus: bill.status,
         outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
-        ownerUserId: String(bill.ownerUserId),
+        ownerUserId: bill.ownerUserId ? String(bill.ownerUserId) : undefined,
       };
     });
   } catch (error) {
@@ -450,7 +451,7 @@ export async function verifyResidentPayment(
       targetId: String(payment._id),
       metadata: { reason: 'INVALID_SIGNATURE' },
     });
-    await notifyBusinessEvent({
+    if (payment.ownerUserId) await notifyBusinessEvent({
       societyId,
       recipientUserId: String(payment.ownerUserId),
       type: 'PAYMENT_FAILED',
@@ -520,7 +521,7 @@ export async function completeDemoResidentPayment(
         receiptId: existingReceipt ? String(existingReceipt._id) : undefined,
         billStatus: undefined,
         outstandingPrincipalPaise: undefined,
-        ownerUserId: String(payment.ownerUserId),
+        ownerUserId: payment.ownerUserId ? String(payment.ownerUserId) : undefined,
       };
     }
     if (payment.status !== 'FAILED') {
@@ -534,7 +535,7 @@ export async function completeDemoResidentPayment(
         targetId: String(payment._id),
         metadata: { reason: 'DEMO_FAILURE', source: 'demo-complete' },
       });
-      await notifyBusinessEvent({
+      if (payment.ownerUserId) await notifyBusinessEvent({
         societyId,
         recipientUserId: String(payment.ownerUserId),
         type: 'PAYMENT_FAILED',
@@ -594,7 +595,7 @@ export async function handleGatewayWebhook(
       targetId: String(payment._id),
       metadata: { gatewayStatus: event.status, eventId: event.eventId },
     });
-    await notifyBusinessEvent({
+    if (payment.ownerUserId) await notifyBusinessEvent({
       societyId: String(payment.societyId),
       recipientUserId: String(payment.ownerUserId),
       type: 'PAYMENT_FAILED',
@@ -732,7 +733,7 @@ export async function listPayments(
       paymentNumber: row.paymentNumber,
       billId: String(row.billId),
       flatId: String(row.flatId),
-      ownerUserId: String(row.ownerUserId),
+      ownerUserId: row.ownerUserId ? String(row.ownerUserId) : undefined,
       amountPaise: row.amountPaise,
       allocatedToPrincipalPaise: row.allocatedToPrincipalPaise,
       allocatedToInterestPaise: row.allocatedToInterestPaise,
@@ -928,6 +929,7 @@ export async function refundPayment(
 
     assertBillFinancialInvariants({
       baseAmountPaise: bill.baseAmountPaise,
+      additionalServicesTotalPaise: bill.additionalServicesTotalPaise,
       adjustmentsPaise: bill.adjustmentsPaise,
       totalAmountPaise: bill.totalAmountPaise,
       amountPaidPaise: bill.amountPaidPaise,

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isObjectId } from '../../../utils/object-id';
+import { vehicleDraftListSchema } from '../../vehicles/validators/vehicle.validators';
 
 const objectId = z.string().refine(isObjectId, 'Must be a valid ObjectId');
 
@@ -8,6 +9,7 @@ export const assignOccupancySchema = z
     userId: objectId,
     effectiveFrom: z.coerce.date(),
     notes: z.string().trim().max(1000).optional(),
+    vehicles: vehicleDraftListSchema.optional(),
   })
   .strict();
 

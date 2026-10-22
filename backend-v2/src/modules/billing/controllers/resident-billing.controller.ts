@@ -39,7 +39,7 @@ async function assertOwnerFinancialForBill(req: Request, billId: string) {
   if (!bill) {
     return null;
   }
-  if (String(bill.ownerUserId) !== req.user!.id) {
+  if (!bill.ownerUserId || String(bill.ownerUserId) !== req.user!.id) {
     throw forbidden('Only the bill owner may access this bill', 'NOT_BILL_OWNER');
   }
   await assertFinancialAccess({

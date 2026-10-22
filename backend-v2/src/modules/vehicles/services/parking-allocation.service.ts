@@ -245,6 +245,7 @@ export async function getAllocation(societyId: string, allocationId: string) {
 export async function listResidentParking(
   societyId: string,
   flatIds: string[],
+  registeredUserId?: string,
 ) {
   if (flatIds.length === 0) return { items: [] };
   const rows = await ParkingAllocationModel.find({
@@ -261,6 +262,12 @@ export async function listResidentParking(
         ParkingSlotModel.findById(row.parkingSlotId).lean(),
         VehicleModel.findById(row.vehicleId).lean(),
       ]);
+      if (
+        registeredUserId &&
+        (!vehicle || String(vehicle.registeredUserId) !== registeredUserId)
+      ) {
+        return null;
+      }
       return {
         ...serializeAllocation(row),
         slot: slot
@@ -282,7 +289,7 @@ export async function listResidentParking(
     }),
   );
 
-  return { items: enriched };
+  return { items: enriched.filter((item) => item !== null) };
 }
 
 export { serializeAllocation };

@@ -350,7 +350,9 @@ describe('Financial invariants', () => {
     expect(String(bill!.ownerUserId)).toBe(ownerId);
     expect(bill!.amountPaidPaise).toBe(150_000);
     expect(bill!.outstandingPrincipalPaise).toBe(250_000);
-    expect(bill!.totalAmountPaise).toBe(bill!.baseAmountPaise + bill!.adjustmentsPaise);
+    expect(bill!.totalAmountPaise).toBe(
+      bill!.baseAmountPaise + (bill!.additionalServicesTotalPaise ?? 0) + bill!.adjustmentsPaise,
+    );
     expect(bill!.amountPaidPaise + bill!.outstandingPrincipalPaise).toBe(bill!.totalAmountPaise);
 
     const refund = await request(app)

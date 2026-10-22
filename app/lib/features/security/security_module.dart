@@ -2435,29 +2435,9 @@ class AdminMorePage extends StatelessWidget {
               label: 'Vehicles',
               onTap: () => onOpen('vehicles')),
           QuickActionTile(
-              icon: Icons.report_problem_outlined,
-              label: 'Complaints',
-              onTap: () => onOpen('complaints')),
-          QuickActionTile(
-              icon: Icons.badge_outlined,
-              label: 'Staff HR',
-              onTap: () => onOpen('staff')),
-          QuickActionTile(
-              icon: Icons.fact_check_outlined,
-              label: 'Attendance',
-              onTap: () => onOpen('attendance')),
-          QuickActionTile(
-              icon: Icons.schedule_outlined,
-              label: 'Shifts',
-              onTap: () => onOpen('shifts')),
-          QuickActionTile(
-              icon: Icons.meeting_room_outlined,
-              label: 'Facilities',
-              onTap: () => onOpen('facilities')),
-          QuickActionTile(
-              icon: Icons.event_available_outlined,
-              label: 'Facility bookings',
-              onTap: () => onOpen('facility-bookings')),
+              icon: Icons.shield_outlined,
+              label: 'Security guards',
+              onTap: () => onOpen('guards')),
           QuickActionTile(
               icon: Icons.campaign_outlined,
               label: 'Announcements',

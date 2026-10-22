@@ -11,6 +11,11 @@ import {
   startOfCivilDay,
 } from '../utils/billing-calendar';
 import { calculateSimpleDailyInterestPaise } from '../utils/money';
+import { billComputedTotalPaise } from '../utils/bill-totals';
+
+function annualRateBpsForSociety(society?: { config?: { annualInterestRateBps?: number } }) {
+  return society?.config?.annualInterestRateBps ?? getEnv().BILLING_ANNUAL_INTEREST_BPS;
+}
 
 export interface InterestSegment {
   from: string;
@@ -203,6 +208,7 @@ export async function computeInterestForBill(
     | 'amountPaidPaise'
     | 'totalAmountPaise'
     | 'baseAmountPaise'
+    | 'additionalServicesTotalPaise'
     | 'adjustmentsPaise'
   >,
   asOf: Date,
@@ -229,7 +235,7 @@ export async function computeInterestForBill(
   const events = await loadPrincipalEvents(String(bill._id));
   const opening =
     events.find((e) => e.eventType === 'OPENING')?.principalAfterPaise ??
-    bill.baseAmountPaise + bill.adjustmentsPaise;
+    billComputedTotalPaise(bill);
 
   const breakdown = computeInterestFromPrincipalTimeline({
     dueDate: bill.dueDate,
@@ -245,19 +251,29 @@ export async function computeInterestForBill(
 
 /** Sync helper for callers that already loaded ledger events (e.g. inside a transaction). */
 export function computeInterestForBillWithEvents(
-  bill: Pick<BillDocument, '_id' | 'dueDate' | 'status' | 'outstandingPrincipalPaise' | 'baseAmountPaise' | 'adjustmentsPaise'>,
+  bill: Pick<
+    BillDocument,
+    | '_id'
+    | 'dueDate'
+    | 'status'
+    | 'outstandingPrincipalPaise'
+    | 'baseAmountPaise'
+    | 'additionalServicesTotalPaise'
+    | 'adjustmentsPaise'
+  >,
   events: PrincipalEventLike[],
   asOf: Date,
   timeZone: string,
   openingPrincipalPaise?: number,
+  annualRateBps = getEnv().BILLING_ANNUAL_INTEREST_BPS,
 ): InterestBreakdown {
   if (bill.status === 'CANCELLED') {
     return {
       billId: String(bill._id),
       principalOutstandingPaise: Math.max(0, bill.outstandingPrincipalPaise),
       overdueDays: 0,
-      annualInterestRateBps: getEnv().BILLING_ANNUAL_INTEREST_BPS,
-      annualInterestRatePercent: getEnv().BILLING_ANNUAL_INTEREST_BPS / 100,
+      annualInterestRateBps: annualRateBps,
+      annualInterestRatePercent: annualRateBps / 100,
       accruedInterestPaise: 0,
       asOf: asOf.toISOString(),
       dueDate: bill.dueDate.toISOString(),
@@ -268,14 +284,14 @@ export function computeInterestForBillWithEvents(
     };
   }
 
-  const opening =
-    openingPrincipalPaise ?? bill.baseAmountPaise + bill.adjustmentsPaise;
+  const opening = openingPrincipalPaise ?? billComputedTotalPaise(bill);
   const breakdown = computeInterestFromPrincipalTimeline({
     dueDate: bill.dueDate,
     openingPrincipalPaise: opening,
     events,
     asOf,
     timeZone,
+    annualRateBps,
   });
   breakdown.billId = String(bill._id);
   return breakdown as InterestBreakdown;
@@ -291,6 +307,7 @@ export async function getBillInterest(
     throw notFound('Society not found');
   }
   const timeZone = society.config?.timezone ?? 'Asia/Kolkata';
+  const annualRateBps = annualRateBpsForSociety(society);
   const bill = await BillModel.findOne({
     _id: parseObjectId(billId, 'billId'),
     societyId,
@@ -299,7 +316,7 @@ export async function getBillInterest(
     throw notFound('Bill not found');
   }
 
-  const breakdown = await computeInterestForBill(bill, asOf, timeZone);
+  const breakdown = await computeInterestForBill(bill, asOf, timeZone, annualRateBps);
 
   // Refresh stored summary idempotently from the ledger-derived total.
   bill.interestAccruedPaise = breakdown.accruedInterestPaise;
@@ -326,6 +343,7 @@ export async function refreshSocietyInterestSummaries(
     throw notFound('Society not found');
   }
   const timeZone = society.config?.timezone ?? 'Asia/Kolkata';
+  const annualRateBps = annualRateBpsForSociety(society);
   const bills = await BillModel.find({
     societyId,
     status: { $in: ['ISSUED', 'PARTIALLY_PAID', 'OVERDUE', 'PAID'] },
@@ -334,7 +352,7 @@ export async function refreshSocietyInterestSummaries(
   let updated = 0;
   for (const bill of bills) {
     if (bill.status === 'CANCELLED') continue;
-    const breakdown = await computeInterestForBill(bill, asOf, timeZone);
+    const breakdown = await computeInterestForBill(bill, asOf, timeZone, annualRateBps);
     bill.interestAccruedPaise = breakdown.accruedInterestPaise;
     bill.interestCalculatedAsOf = asOf;
     if (

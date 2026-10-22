@@ -10,7 +10,7 @@ export interface PaymentDocument extends Document {
   societyId: Types.ObjectId;
   billId: Types.ObjectId;
   flatId: Types.ObjectId;
-  ownerUserId: Types.ObjectId;
+  ownerUserId?: Types.ObjectId;
   paymentNumber: string;
   amountPaise: number;
   allocatedToPrincipalPaise: number;
@@ -39,7 +39,7 @@ const paymentSchema = new Schema<PaymentDocument>(
     societyId: { type: Schema.Types.ObjectId, ref: 'Society', required: true },
     billId: { type: Schema.Types.ObjectId, ref: 'Bill', required: true },
     flatId: { type: Schema.Types.ObjectId, ref: 'Flat', required: true },
-    ownerUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    ownerUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     paymentNumber: { type: String, required: true, trim: true },
     amountPaise: { type: Number, required: true, min: 1 },
     allocatedToPrincipalPaise: { type: Number, required: true, default: 0, min: 0 },

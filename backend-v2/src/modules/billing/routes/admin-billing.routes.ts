@@ -19,6 +19,13 @@ import {
   refundPaymentHandler,
 } from '../controllers/admin-billing.controller';
 import {
+  createAdditionalServiceHandler,
+  deactivateAdditionalServiceHandler,
+  getAdditionalServiceHandler,
+  listAdditionalServicesHandler,
+  updateAdditionalServiceHandler,
+} from '../controllers/additional-service.controller';
+import {
   adjustBillSchema,
   billIdParamSchema,
   billingSummaryQuerySchema,
@@ -33,6 +40,13 @@ import {
   receiptIdParamSchema,
   refundPaymentSchema,
 } from '../validators/billing.validators';
+import {
+  additionalServiceIdParamSchema,
+  createAdditionalServiceSchema,
+  deactivateAdditionalServiceSchema,
+  listAdditionalServicesQuerySchema,
+  updateAdditionalServiceSchema,
+} from '../validators/additional-service.validators';
 
 const router = Router();
 
@@ -72,6 +86,34 @@ router.get(
 );
 router.get('/billing/eligible-flats', asyncHandler(eligibleFlatsHandler));
 router.post('/billing/interest/refresh', asyncHandler(refreshInterestHandler));
+
+router.post(
+  '/billing/additional-services',
+  validateBody(createAdditionalServiceSchema),
+  asyncHandler(createAdditionalServiceHandler),
+);
+router.get(
+  '/billing/additional-services',
+  validateQuery(listAdditionalServicesQuerySchema),
+  asyncHandler(listAdditionalServicesHandler),
+);
+router.get(
+  '/billing/additional-services/:serviceId',
+  validateParams(additionalServiceIdParamSchema),
+  asyncHandler(getAdditionalServiceHandler),
+);
+router.patch(
+  '/billing/additional-services/:serviceId',
+  validateParams(additionalServiceIdParamSchema),
+  validateBody(updateAdditionalServiceSchema),
+  asyncHandler(updateAdditionalServiceHandler),
+);
+router.post(
+  '/billing/additional-services/:serviceId/deactivate',
+  validateParams(additionalServiceIdParamSchema),
+  validateBody(deactivateAdditionalServiceSchema),
+  asyncHandler(deactivateAdditionalServiceHandler),
+);
 
 router.post(
   '/payments/offline',

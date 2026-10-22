@@ -9,6 +9,7 @@ import 'package:apna_society/api/models/billing_models.dart';
 import 'package:apna_society/api/repositories/billing_repository.dart';
 import 'package:apna_society/api/repositories/live_repositories.dart';
 import 'package:apna_society/app_core.dart';
+import 'package:apna_society/features/billing/live_additional_services_module.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -85,6 +86,163 @@ void main() {
         expect(result.createdCount, 1);
         expect(result.numberOfMonths, months);
       }
+    });
+
+    test('parses unassigned bills and additional service line items', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.path.endsWith('/billing/bills'), isTrue);
+        return jsonBody(200, {
+          'success': true,
+          'data': {
+            'items': [
+              {
+                ..._bill(billId, flatId),
+                'ownerUserId': null,
+                'ownerAssigned': false,
+                'ownerNameSnapshot': 'Unassigned',
+                'additionalServicesTotalPaise': 50000,
+                'totalAmountPaise': 450000,
+                'lineItems': [
+                  {
+                    'type': 'MAINTENANCE',
+                    'name': 'Monthly maintenance',
+                    'quantity': 1,
+                    'unitAmountPaise': 400000,
+                    'amountPaise': 400000,
+                  },
+                  {
+                    'type': 'ADDITIONAL_SERVICE',
+                    'name': 'Additional car parking',
+                    'quantity': 1,
+                    'unitAmountPaise': 50000,
+                    'amountPaise': 50000,
+                  },
+                ],
+              },
+            ],
+            'pagination': {
+              'page': 1,
+              'limit': 20,
+              'total': 1,
+              'totalPages': 1,
+            },
+          },
+        });
+      });
+      final repo = BillingRepository(_api(adapter).billing);
+      final page = await repo.listAdminBills();
+      expect(page.items.first.ownerUserId, isNull);
+      expect(page.items.first.ownerAssigned, isFalse);
+      expect(page.items.first.additionalServicesTotalPaise, 50000);
+      expect(page.items.first.lineItems, hasLength(2));
+      expect(page.items.first.lineItems.last.name, 'Additional car parking');
+    });
+
+    test('enforces a 10-active-services-per-flat cap in models and API', () {
+      AdditionalService serviceAt(int i, {bool active = true}) {
+        return AdditionalService.fromJson({
+          ..._service(flatId),
+          'id': '507f1f77bcf86cd7994390${i.toString().padLeft(2, '0')}',
+          'name': 'Service $i',
+          'isActive': active,
+        });
+      }
+
+      expect(kMaxActiveAdditionalServicesPerFlat, 10);
+      expect(
+        canAddActiveAdditionalService(List.generate(9, serviceAt)),
+        isTrue,
+      );
+      expect(
+        canAddActiveAdditionalService(List.generate(10, serviceAt)),
+        isFalse,
+      );
+      expect(
+        canAddActiveAdditionalService([
+          ...List.generate(10, (i) => serviceAt(i, active: false)),
+          ...List.generate(9, (i) => serviceAt(20 + i)),
+        ]),
+        isTrue,
+      );
+      expect(
+        additionalServiceError(ApiException(
+          code: kAdditionalServiceLimitCode,
+          message: 'ignored',
+        )),
+        kAdditionalServiceLimitMessage,
+      );
+    });
+
+    test('maps ADDITIONAL_SERVICE_LIMIT from create', () async {
+      final adapter = ScriptedAdapter((options) async {
+        return jsonBody(409, {
+          'success': false,
+          'error': {
+            'code': kAdditionalServiceLimitCode,
+            'message': kAdditionalServiceLimitMessage,
+          },
+        });
+      });
+      final repo = BillingRepository(_api(adapter).billing);
+      expect(
+        () => repo.createAdditionalService(
+          const CreateAdditionalServiceRequest(
+            flatId: flatId,
+            name: 'Eleventh',
+            monthlyChargePaise: 1000,
+            quantity: 1,
+            effectiveFrom: '2026-04-01T00:00:00.000Z',
+          ),
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            kAdditionalServiceLimitCode,
+          ),
+        ),
+      );
+    });
+
+    test('creates and lists additional services', () async {
+      final adapter = ScriptedAdapter((options) async {
+        if (options.method == 'POST' &&
+            options.path.endsWith('/billing/additional-services')) {
+          return jsonBody(201, {
+            'success': true,
+            'data': _service(flatId),
+          });
+        }
+        if (options.method == 'GET' &&
+            options.path.endsWith('/billing/additional-services')) {
+          return jsonBody(200, {
+            'success': true,
+            'data': {
+              'items': [_service(flatId)],
+              'pagination': {
+                'page': 1,
+                'limit': 50,
+                'total': 1,
+                'totalPages': 1,
+              },
+            },
+          });
+        }
+        return notFound(options.path);
+      });
+      final repo = BillingRepository(_api(adapter).billing);
+      final created = await repo.createAdditionalService(
+        CreateAdditionalServiceRequest(
+          flatId: flatId,
+          name: 'Additional car parking',
+          monthlyChargePaise: 50000,
+          quantity: 1,
+          effectiveFrom: '2026-04-01T00:00:00.000Z',
+        ),
+      );
+      expect(created.monthlyTotalPaise, 50000);
+      final list = await repo.listAdditionalServices(force: true);
+      expect(list.items, hasLength(1));
     });
 
     test('eligible flats list has no SQLite fallback on failure', () async {
@@ -326,6 +484,22 @@ ApnaApi _api(ScriptedAdapter adapter) {
 }
 
 const societyId = '507f1f77bcf86cd799439011';
+
+Map<String, Object?> _service(String flatId) => {
+      'id': '507f1f77bcf86cd799439061',
+      'societyId': societyId,
+      'flatId': flatId,
+      'name': 'Additional car parking',
+      'monthlyChargePaise': 50000,
+      'quantity': 1,
+      'monthlyTotalPaise': 50000,
+      'effectiveFrom': '2026-04-01T00:00:00.000Z',
+      'isActive': true,
+      'createdAt': '2026-04-01T00:00:00.000Z',
+      'updatedAt': '2026-04-01T00:00:00.000Z',
+      'flatNumber': 'A-101',
+      'wingCode': 'A',
+    };
 
 Map<String, Object?> _bill(
   String id,

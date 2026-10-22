@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
-import { forbidden } from '../../../shared/errors/app-error';
+import { forbidden, notFound } from '../../../shared/errors/app-error';
 import { FlatModel } from '../../society/models/flat.model';
 import { getFlatAccess } from '../../users/services/access-control.service';
+import { VehicleModel } from '../models/vehicle.model';
 import {
   allocateParkingSlot,
   getAllocation,
@@ -145,7 +146,7 @@ export async function residentListParkingHandler(req: Request, res: Response): P
     if (access.residential) residentialFlatIds.push(String(flat._id));
   }
 
-  const data = await listResidentParking(society, residentialFlatIds);
+  const data = await listResidentParking(society, residentialFlatIds, req.user!.id);
   res.json({ success: true, data });
 }
 
@@ -155,6 +156,13 @@ export async function residentGetParkingAllocationHandler(
 ): Promise<void> {
   const society = societyId(req);
   const allocation = await getAllocation(society, String(req.params.allocationId));
+
+  const vehicle = await VehicleModel.findById(allocation.vehicleId)
+    .select('registeredUserId')
+    .lean();
+  if (!vehicle || String(vehicle.registeredUserId) !== req.user!.id) {
+    throw notFound('Allocation not found');
+  }
 
   const access = await getFlatAccess({
     userId: req.user!.id,
