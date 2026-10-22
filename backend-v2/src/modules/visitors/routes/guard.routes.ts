@@ -9,8 +9,10 @@ import {
   guardCheckoutHandler,
   guardCreateVisitorHandler,
   guardDashboardHandler,
+  guardConfirmEntryHandler,
   guardGetVisitorHandler,
   guardListVisitorsHandler,
+  guardVerifyOtpByCodeHandler,
   guardVerifyOtpHandler,
 } from '../controllers/visitor.controller';
 import {
@@ -34,6 +36,12 @@ router.get(
   validateQuery(listVisitorsQuerySchema),
   asyncHandler(guardListVisitorsHandler),
 );
+router.post(
+  '/visitors/verify-entry-otp',
+  visitorOtpRateLimiter,
+  validateBody(verifyEntryOtpSchema),
+  asyncHandler(guardVerifyOtpByCodeHandler),
+);
 router.get(
   '/visitors/:visitorId',
   validateParams(visitorIdParamSchema),
@@ -45,6 +53,11 @@ router.post(
   validateParams(visitorIdParamSchema),
   validateBody(verifyEntryOtpSchema),
   asyncHandler(guardVerifyOtpHandler),
+);
+router.post(
+  '/visitors/:visitorId/confirm-entry',
+  validateParams(visitorIdParamSchema),
+  asyncHandler(guardConfirmEntryHandler),
 );
 router.post(
   '/visitors/:visitorId/checkout',

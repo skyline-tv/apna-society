@@ -132,6 +132,26 @@ export async function allocateParkingSlot(
   }
 }
 
+/** End every active allocation for a vehicle. Safe if none exist. */
+export async function releaseActiveAllocationsForVehicle(
+  societyId: string,
+  vehicleId: string,
+  actor: Actor,
+  reason = 'Vehicle deactivated',
+): Promise<number> {
+  const active = await ParkingAllocationModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    vehicleId: parseObjectId(vehicleId, 'vehicleId'),
+    status: 'ACTIVE',
+  })
+    .select('_id')
+    .lean();
+  for (const row of active) {
+    await releaseParkingAllocation(societyId, String(row._id), reason, actor);
+  }
+  return active.length;
+}
+
 export async function releaseParkingAllocation(
   societyId: string,
   allocationId: string,

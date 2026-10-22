@@ -1584,8 +1584,7 @@ class _OwnerHomeState extends State<OwnerHome> {
       );
 
   String _flatOptionLabel(ResidentFlat f) =>
-      '${f.flat.wingCode ?? '?'}-${f.flat.number}'
-      '${f.access.role == 'TENANT' ? ' (tenant)' : ''}';
+      '${f.flat.label}${f.access.role == 'TENANT' ? ' (tenant)' : ''}';
 
   Future<void> _showFlatPicker(ResidentHomeContext ctx) async {
     final picked = await showAppSheet<ResidentFlat>(
@@ -1743,7 +1742,7 @@ class ResidentProfilePage extends StatelessWidget {
                 icon: item.flat.id == flat.id
                     ? Icons.radio_button_checked_rounded
                     : Icons.radio_button_off_rounded,
-                title: '${item.flat.wingCode ?? '?'}-${item.flat.number}',
+                title: item.flat.label,
                 value:
                     '${item.flat.wingName ?? item.flat.wingCode ?? 'Wing'} · '
                     '${item.access.role == 'TENANT' ? 'Tenant' : 'Owner'}'
@@ -2049,7 +2048,7 @@ class _AdminHomeState extends State<AdminHome> {
       case 'visitors':
         return 'Society-wide visitor records';
       case 'vehicles':
-        return 'Vehicles and parking slots';
+        return 'Assign vehicles and parking numbers to flats';
       case 'guards':
         return 'Provision gate logins';
       case 'announcements':

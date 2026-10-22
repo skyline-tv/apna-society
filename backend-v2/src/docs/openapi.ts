@@ -930,10 +930,27 @@ export function buildOpenApiSpec() {
             responses: { 200: { description: 'Visitors' }, ...errorResponses },
           },
         },
+        [`${API_PREFIX}/guard/visitors/verify-entry-otp`]: {
+          post: {
+            tags: ['Guard Visitors'],
+            summary: 'Verify a visitor entry OTP without recording physical entry',
+            security: adminSecurity,
+            responses: { 200: { description: 'OTP verified; authorized visitor details' }, ...errorResponses },
+          },
+        },
         [`${API_PREFIX}/guard/visitors/{visitorId}/verify-entry-otp`]: {
           post: {
             tags: ['Guard Visitors'],
-            summary: 'Verify entry OTP and mark ENTERED',
+            summary: 'Verify entry OTP for a known visitor without recording entry',
+            security: adminSecurity,
+            parameters: [{ name: 'visitorId', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: { 200: { description: 'OTP verified; authorized visitor details' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/guard/visitors/{visitorId}/confirm-entry`]: {
+          post: {
+            tags: ['Guard Visitors'],
+            summary: 'Record physical visitor entry after OTP verification',
             security: adminSecurity,
             parameters: [{ name: 'visitorId', in: 'path', required: true, schema: { type: 'string' } }],
             responses: { 200: { description: 'Entered' }, ...errorResponses },

@@ -1,5 +1,6 @@
 import '../http/api_exception.dart';
 import '../http/json_read.dart';
+import 'flat_label.dart';
 
 /// Backend-authoritative cap on [AdditionalService] rows with [isActive] true.
 const kMaxActiveAdditionalServicesPerFlat = 10;
@@ -12,6 +13,14 @@ int activeAdditionalServiceCount(Iterable<AdditionalService> services) =>
 
 bool canAddActiveAdditionalService(Iterable<AdditionalService> services) =>
     activeAdditionalServiceCount(services) < kMaxActiveAdditionalServicesPerFlat;
+
+/// Civil calendar date as IST midnight so backend proration matches the picker.
+String civilDateToIso(DateTime date) {
+  final y = date.year.toString().padLeft(4, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  final d = date.day.toString().padLeft(2, '0');
+  return '$y-$m-${d}T00:00:00.000+05:30';
+}
 
 class BillLineItem {
   const BillLineItem({
@@ -67,6 +76,7 @@ class Bill {
     required this.totalAmountPaise,
     required this.outstandingPrincipalPaise,
     required this.interestAccruedPaise,
+    this.totalPayablePaise,
     required this.amountPaidPaise,
     required this.dueDate,
     required this.status,
@@ -101,11 +111,14 @@ class Bill {
   final int totalAmountPaise;
   final int outstandingPrincipalPaise;
   final int interestAccruedPaise;
+  final int? totalPayablePaise;
   final int amountPaidPaise;
   final String dueDate;
   final String status;
   final String flatNumberSnapshot;
   final String wingCodeSnapshot;
+  String get flatLabel =>
+      formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
   final String flatTypeSnapshot;
   final String? occupancyStatusSnapshot;
   final int? floorSnapshot;
@@ -137,6 +150,7 @@ class Bill {
       totalAmountPaise: requireInt(json, 'totalAmountPaise'),
       outstandingPrincipalPaise: requireInt(json, 'outstandingPrincipalPaise'),
       interestAccruedPaise: requireInt(json, 'interestAccruedPaise'),
+      totalPayablePaise: optionalInt(json, 'totalPayablePaise'),
       amountPaidPaise: requireInt(json, 'amountPaidPaise'),
       dueDate: requireString(json, 'dueDate'),
       status: requireString(json, 'status'),
@@ -336,6 +350,7 @@ class EligibleFlat {
   final int monthlyRatePaise;
   final String? ownerUserId;
   final String occupancyStatus;
+  String get label => formatFlatLabel(wingCode, number);
   final int? floor;
   final bool isActive;
   final bool ownerAssigned;
@@ -519,6 +534,8 @@ class ReceiptSummary {
   final String paidAt;
   final String flatNumberSnapshot;
   final String wingCodeSnapshot;
+  String get flatLabel =>
+      formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
 
   factory ReceiptSummary.fromJson(JsonMap json) {
     return ReceiptSummary(
@@ -581,6 +598,8 @@ class ReceiptBody {
   final String ownerNameSnapshot;
   final String flatNumberSnapshot;
   final String wingCodeSnapshot;
+  String get flatLabel =>
+      formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
   final String? transactionReference;
 
   factory ReceiptBody.fromJson(JsonMap json) {
@@ -663,6 +682,7 @@ class BillingSummary {
     this.pendingBills = 0,
     this.vacantFlatBills = 0,
     this.unassignedFlatBills = 0,
+    this.totalPayablePaise,
   });
 
   final int totalConfiguredFlats;
@@ -672,6 +692,7 @@ class BillingSummary {
   final int totalCollectedPaise;
   final int totalOutstandingPrincipalPaise;
   final int totalAccruedInterestPaise;
+  final int? totalPayablePaise;
   final int paidBills;
   final int partiallyPaidBills;
   final int pendingBills;
@@ -706,6 +727,7 @@ class BillingSummary {
       totalCollectedPaise: requireInt(json, 'totalCollectedPaise'),
       totalOutstandingPrincipalPaise: requireInt(json, 'totalOutstandingPrincipalPaise'),
       totalAccruedInterestPaise: requireInt(json, 'totalAccruedInterestPaise'),
+      totalPayablePaise: optionalInt(json, 'totalPayablePaise'),
       paidBills: requireInt(json, 'paidBills'),
       partiallyPaidBills: requireInt(json, 'partiallyPaidBills'),
       pendingBills: optionalInt(json, 'pendingBills') ??
@@ -806,6 +828,7 @@ class AdditionalService {
   final String updatedAt;
   final String? flatNumber;
   final String? wingCode;
+  String get flatLabel => formatFlatLabel(wingCode, flatNumber);
   final int? floor;
   final String? deactivatedAt;
   final String? deactivationReason;
@@ -901,16 +924,11 @@ class UpdateAdditionalServiceRequest {
   }
 }
 
-class InterestRefreshResult {
-  const InterestRefreshResult({required this.updated});
-  final int updated;
-
-  factory InterestRefreshResult.fromJson(Object? data) {
-    final json = requireMap(data, 'interest refresh');
-    return InterestRefreshResult(updated: requireInt(json, 'updated'));
-  }
-}
-
-/// Principal + accrued interest still due (server paise values).
+/// Principal + accrued interest still due (server-authoritative when present).
 int billAmountDuePaise(Bill bill) =>
+    bill.totalPayablePaise ??
     bill.outstandingPrincipalPaise + bill.interestAccruedPaise;
+
+int billingSummaryPayablePaise(BillingSummary summary) =>
+    summary.totalPayablePaise ??
+    summary.totalOutstandingPrincipalPaise + summary.totalAccruedInterestPaise;

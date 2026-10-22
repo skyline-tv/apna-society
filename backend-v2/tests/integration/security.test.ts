@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
-import { loginAs as loginAsHelper } from '../helpers/auth-login';
-import { createSociety } from '../helpers/factories';
+import { loginAs as loginAsHelper, loginByEmail } from '../helpers/auth-login';
+import { createSociety, createUser } from '../helpers/factories';
+import { createAdminContext, createWingWithFlats } from '../helpers/admin';
+import { FlatModel } from '../../src/modules/society/models/flat.model';
 import { signAccessToken } from '../../src/modules/auth/services/token.service';
 
 const app = createApp();
@@ -99,5 +101,82 @@ describe('Input validation and error handling', () => {
     const api = await request(app).get('/api/v1/health');
     expect(api.status).toBe(200);
     expect(api.body.data.database.status).toBe('up');
+  });
+});
+
+describe('Guard resident privacy', () => {
+  it('hides occupancy and resident identity from guard APIs', async () => {
+    const ctx = await createAdminContext(app, 'gpriv-admin@example.com', 'GPRIV');
+    const { flats } = await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'E',
+      flatRates: [4000],
+    });
+    const owner = await createUser({
+      email: 'gpriv-owner@example.com',
+      name: 'Hidden Owner',
+      roles: ['OWNER'],
+      societyId: ctx.societyId,
+    });
+    await FlatModel.updateOne(
+      { _id: flats[0]._id },
+      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: owner._id },
+    );
+
+    const guardRes = await request(app)
+      .post('/api/v1/admin/guards')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        name: 'Gate Guard',
+        email: 'gpriv-guard@example.com',
+        phone: '+91 9000000099',
+        password: 'TestPassw0rd!',
+      });
+    expect(guardRes.status).toBe(201);
+    const guardToken = (await loginByEmail(app, 'gpriv-guard@example.com')).token;
+    const ownerToken = (await loginByEmail(app, owner.email)).token;
+
+    const publicFlats = await request(app)
+      .get(`/api/v1/societies/${ctx.societyId}/flats`)
+      .set('Authorization', `Bearer ${guardToken}`);
+    expect(publicFlats.status).toBe(200);
+    expect(publicFlats.body.data).toHaveLength(1);
+    expect(publicFlats.body.data[0].label).toBe('E-101');
+    expect(JSON.stringify(publicFlats.body)).not.toMatch(
+      /occupancyStatus|activeOwner|activeTenant|Hidden Owner|OWNER_OCCUPIED|email/,
+    );
+
+    const residentProfile = await request(app)
+      .get('/api/v1/resident/profile')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .set('x-society-id', ctx.societyId);
+    expect(residentProfile.status).toBe(403);
+
+    const adminFlats = await request(app)
+      .get('/api/v1/admin/flats')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .set('x-society-id', ctx.societyId);
+    expect(adminFlats.status).toBe(403);
+
+    const adminUsers = await request(app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .set('x-society-id', ctx.societyId);
+    expect(adminUsers.status).toBe(403);
+
+    const ownerProfile = await request(app)
+      .get('/api/v1/resident/profile')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', ctx.societyId);
+    expect(ownerProfile.status).toBe(200);
+    expect(ownerProfile.body.data.name).toBe('Hidden Owner');
+
+    const adminList = await request(app)
+      .get('/api/v1/admin/flats')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .set('x-society-id', ctx.societyId);
+    expect(adminList.status).toBe(200);
+    expect(adminList.body.data.items[0].occupancyStatus).toBe('OWNER_OCCUPIED');
+    expect(adminList.body.data.items[0].label).toBe('E-101');
   });
 });

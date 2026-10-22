@@ -11,6 +11,8 @@ import { UserModel } from '../../users/models/user.model';
 import { assertResidentialAccess } from '../../users/services/access-control.service';
 import { VehicleModel, type VehicleType } from '../models/vehicle.model';
 import { ParkingAllocationModel } from '../models/parking-allocation.model';
+import { ParkingSlotModel } from '../models/parking-slot.model';
+import { releaseActiveAllocationsForVehicle } from './parking-allocation.service';
 import {
   assertValidRegistrationNumber,
   normalizeRegistrationNumber,
@@ -24,6 +26,7 @@ export type VehicleDraftInput = {
   make?: string;
   model?: string;
   colour?: string;
+  parkingNumber?: string;
 };
 
 export type PreparedVehicleDraft = VehicleDraftInput & { registrationNumber: string };
@@ -38,6 +41,7 @@ function serializeVehicle(doc: {
   make?: string;
   vehicleModel?: string;
   colour?: string;
+  parkingNumber?: string;
   isActive: boolean;
   deactivatedAt?: Date;
   deactivationReason?: string;
@@ -54,6 +58,7 @@ function serializeVehicle(doc: {
     make: doc.make,
     model: doc.vehicleModel,
     colour: doc.colour,
+    parkingNumber: doc.parkingNumber,
     isActive: doc.isActive,
     deactivatedAt: doc.deactivatedAt?.toISOString(),
     deactivationReason: doc.deactivationReason,
@@ -88,6 +93,7 @@ export function prepareVehicleDrafts(drafts: VehicleDraftInput[]): PreparedVehic
       make: draft.make?.trim() || undefined,
       model: draft.model?.trim() || undefined,
       colour: draft.colour?.trim() || undefined,
+      parkingNumber: draft.parkingNumber?.trim() || undefined,
     });
   }
   return prepared;
@@ -180,6 +186,7 @@ export async function insertResidentVehicles(
             make: draft.make,
             vehicleModel: draft.model,
             colour: draft.colour,
+            parkingNumber: draft.parkingNumber,
             isActive: true,
           },
         ],
@@ -234,6 +241,7 @@ export async function registerVehicle(
     make?: string;
     model?: string;
     colour?: string;
+    parkingNumber?: string;
   },
   actor: Actor,
 ) {
@@ -261,6 +269,7 @@ export async function adminRegisterVehicle(
     make?: string;
     model?: string;
     colour?: string;
+    parkingNumber?: string;
   },
   actor: Actor,
 ) {
@@ -400,17 +409,12 @@ export async function deactivateResidentVehicle(
     return serializeVehicle(vehicle);
   }
 
-  const activeAllocation = await ParkingAllocationModel.findOne({
+  await releaseActiveAllocationsForVehicle(
     societyId,
-    vehicleId: vehicle._id,
-    status: 'ACTIVE',
-  }).lean();
-  if (activeAllocation) {
-    throw conflict(
-      'Release the active parking allocation before deactivating the vehicle',
-      'VEHICLE_HAS_ALLOCATION',
-    );
-  }
+    vehicleId,
+    actor,
+    reason || 'Vehicle deactivated',
+  );
 
   vehicle.isActive = false;
   vehicle.deactivatedAt = new Date();
@@ -440,6 +444,7 @@ export async function adminUpdateVehicle(
     colour?: string;
     vehicleType?: VehicleType;
     registrationNumber?: string;
+    parkingNumber?: string | null;
   },
   actor: Actor,
 ) {
@@ -462,6 +467,13 @@ export async function adminUpdateVehicle(
         'Invalid Indian vehicle registration number',
         'INVALID_REGISTRATION_NUMBER',
       );
+    }
+  }
+  if (input.parkingNumber !== undefined) {
+    if (input.parkingNumber == null || input.parkingNumber.trim() === '') {
+      vehicle.set('parkingNumber', undefined);
+    } else {
+      vehicle.parkingNumber = input.parkingNumber.trim();
     }
   }
 
@@ -507,17 +519,12 @@ export async function adminDeactivateVehicle(
     return serializeVehicle(vehicle);
   }
 
-  const activeAllocation = await ParkingAllocationModel.findOne({
+  await releaseActiveAllocationsForVehicle(
     societyId,
-    vehicleId: vehicle._id,
-    status: 'ACTIVE',
-  }).lean();
-  if (activeAllocation) {
-    throw conflict(
-      'Release the active parking allocation before deactivating the vehicle',
-      'VEHICLE_HAS_ALLOCATION',
-    );
-  }
+    vehicleId,
+    actor,
+    reason || 'Vehicle deactivated',
+  );
 
   vehicle.isActive = false;
   vehicle.deactivatedAt = new Date();
@@ -597,6 +604,7 @@ async function enrichAdminVehicles(
     make?: string;
     vehicleModel?: string;
     colour?: string;
+    parkingNumber?: string;
     isActive: boolean;
     deactivatedAt?: Date;
     deactivationReason?: string;
@@ -609,11 +617,29 @@ async function enrichAdminVehicles(
   const userIds = [...new Set(rows.map((r) => String(r.registeredUserId)))];
   const flatIds = [...new Set(rows.map((r) => String(r.flatId)))];
 
-  const [society, users, flats] = await Promise.all([
+  const [society, users, flats, allocations] = await Promise.all([
     SocietyModel.findById(societyId).select('name code').lean(),
     UserModel.find({ _id: { $in: userIds } }).select('name').lean(),
     FlatModel.find({ _id: { $in: flatIds } }).select('number wingId').lean(),
+    ParkingAllocationModel.find({
+      societyId,
+      vehicleId: { $in: rows.map((r) => r._id) },
+      status: 'ACTIVE',
+    })
+      .select('vehicleId parkingSlotId')
+      .lean(),
   ]);
+  const slotIds = allocations.map((a) => a.parkingSlotId);
+  const slots = slotIds.length
+    ? await ParkingSlotModel.find({ _id: { $in: slotIds } }).select('slotNumber').lean()
+    : [];
+  const slotNumberById = new Map(slots.map((s) => [String(s._id), s.slotNumber]));
+  const allocatedSlotByVehicle = new Map(
+    allocations.map((a) => [
+      String(a.vehicleId),
+      slotNumberById.get(String(a.parkingSlotId)),
+    ]),
+  );
 
   const wingIds = [...new Set(flats.map((f) => String(f.wingId)))];
   const wings = wingIds.length
@@ -631,8 +657,11 @@ async function enrichAdminVehicles(
 
   return rows.map((row) => {
     const flat = flatInfo.get(String(row.flatId));
+    const allocatedSlot = allocatedSlotByVehicle.get(String(row._id));
+    const serialized = serializeVehicle(row);
     return {
-      ...serializeVehicle(row),
+      ...serialized,
+      parkingNumber: serialized.parkingNumber || allocatedSlot,
       residentName: userName.get(String(row.registeredUserId)),
       flatNumber: flat?.number,
       wingCode: flat?.wingCode,

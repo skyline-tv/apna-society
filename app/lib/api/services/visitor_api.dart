@@ -54,6 +54,18 @@ class VisitorApi {
     );
   }
 
+  Future<Visitor> verifyEntryOtpByCode({
+    required String otp,
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_guard/visitors/verify-entry-otp',
+      body: {'otp': otp},
+      societyId: societyId,
+      decode: Visitor.fromJson,
+    );
+  }
+
   Future<Visitor> verifyEntryOtp(
     String visitorId, {
     required String otp,
@@ -62,6 +74,14 @@ class VisitorApi {
     return _client.post(
       '$_guard/visitors/$visitorId/verify-entry-otp',
       body: {'otp': otp},
+      societyId: societyId,
+      decode: Visitor.fromJson,
+    );
+  }
+
+  Future<Visitor> confirmVisitorEntry(String visitorId, {String? societyId}) {
+    return _client.post(
+      '$_guard/visitors/$visitorId/confirm-entry',
       societyId: societyId,
       decode: Visitor.fromJson,
     );

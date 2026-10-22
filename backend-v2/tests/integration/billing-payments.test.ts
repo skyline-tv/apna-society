@@ -377,4 +377,61 @@ describe('Billing payments', () => {
     const bill = await BillModel.findById(setup.billId).lean();
     expect(bill?.outstandingPrincipalPaise).toBe(0);
   });
+
+  it('settles mock checkout via demo-complete without a client signature', async () => {
+    const setup = await setupOccupiedBill('paydemo');
+    const ownerToken = await login(`${setup.owner.email}`);
+
+    const failedOrder = await request(app)
+      .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(failedOrder.status).toBe(201);
+    expect(failedOrder.body.data.order.provider).toBe('razorpay-mock');
+
+    const failed = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({
+        orderId: failedOrder.body.data.order.orderId,
+        outcome: 'failure',
+      });
+    expect(failed.status).toBe(400);
+    expect(failed.body.error.code).toBe('DEMO_PAYMENT_FAILED');
+
+    const order = await request(app)
+      .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(order.status).toBe(201);
+
+    const success = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({
+        orderId: order.body.data.order.orderId,
+        outcome: 'success',
+      });
+    expect(success.status).toBe(200);
+    expect(success.body.data.alreadySettled).toBe(false);
+    expect(success.body.data.receiptId).toBeTruthy();
+
+    const again = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({
+        orderId: order.body.data.order.orderId,
+        outcome: 'success',
+      });
+    expect(again.status).toBe(200);
+    expect(again.body.data.alreadySettled).toBe(true);
+
+    const bill = await BillModel.findById(setup.billId).lean();
+    expect(bill?.status).toBe('PAID');
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(1);
+  });
 });

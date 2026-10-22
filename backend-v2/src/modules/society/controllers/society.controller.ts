@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { getSocietyById, listFlats, listWings } from '../services/society.service';
+import { getSocietyById, listPublicFlats, listWings } from '../services/society.service';
 
 export async function getSocietyHandler(req: Request, res: Response): Promise<void> {
   const society = await getSocietyById(String(req.params.societyId));
@@ -12,6 +12,6 @@ export async function listWingsHandler(req: Request, res: Response): Promise<voi
 }
 
 export async function listFlatsHandler(req: Request, res: Response): Promise<void> {
-  const flats = await listFlats(String(req.params.societyId));
+  const flats = await listPublicFlats(String(req.params.societyId));
   res.json({ success: true, data: flats });
 }

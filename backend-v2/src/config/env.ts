@@ -77,6 +77,15 @@ const envSchema = z
     // Announcements / notifications
     ANNOUNCEMENT_WORKER_ENABLED: boolFromEnv,
     ANNOUNCEMENT_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
+    /**
+     * Daily overdue-interest accrual. Recomputes stored summaries from the ledger
+     * (idempotent; never adds the same civil day twice). Default on.
+     */
+    INTEREST_WORKER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    INTEREST_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
     ANNOUNCEMENT_STORAGE_PROVIDER: z.enum(['local', 'memory', 's3']).default('local'),
     ANNOUNCEMENT_STORAGE_LOCAL_DIR: z.string().default('./storage/announcements'),
     ANNOUNCEMENT_ATTACHMENT_MAX_BYTES: z.coerce

@@ -1,3 +1,4 @@
+import { invalidateFinancialCaches } from '../../../cache/cache-invalidation';
 import { getEnv } from '../../../config/env';
 import { notFound } from '../../../shared/errors/app-error';
 import { parseObjectId } from '../../../utils/object-id';
@@ -316,9 +317,10 @@ export async function getBillInterest(
     throw notFound('Bill not found');
   }
 
+  const previous = bill.interestAccruedPaise;
   const breakdown = await computeInterestForBill(bill, asOf, timeZone, annualRateBps);
 
-  // Refresh stored summary idempotently from the ledger-derived total.
+  // Refresh stored summary idempotently from the ledger-derived total (never +=).
   bill.interestAccruedPaise = breakdown.accruedInterestPaise;
   bill.interestCalculatedAsOf = asOf;
   if (
@@ -330,6 +332,9 @@ export async function getBillInterest(
     bill.status = 'OVERDUE';
   }
   await bill.save();
+  if (previous !== breakdown.accruedInterestPaise) {
+    await invalidateFinancialCaches(societyId);
+  }
 
   return breakdown;
 }
@@ -337,7 +342,7 @@ export async function getBillInterest(
 export async function refreshSocietyInterestSummaries(
   societyId: string,
   asOf = new Date(),
-): Promise<{ updated: number }> {
+): Promise<{ updated: number; skipped: number }> {
   const society = await SocietyModel.findById(parseObjectId(societyId, 'societyId')).lean();
   if (!society) {
     throw notFound('Society not found');
@@ -346,24 +351,29 @@ export async function refreshSocietyInterestSummaries(
   const annualRateBps = annualRateBpsForSociety(society);
   const bills = await BillModel.find({
     societyId,
-    status: { $in: ['ISSUED', 'PARTIALLY_PAID', 'OVERDUE', 'PAID'] },
+    status: { $in: ['ISSUED', 'PARTIALLY_PAID', 'OVERDUE'] },
+    outstandingPrincipalPaise: { $gt: 0 },
+    dueDate: { $lt: asOf },
   });
 
   let updated = 0;
+  let skipped = 0;
   for (const bill of bills) {
-    if (bill.status === 'CANCELLED') continue;
     const breakdown = await computeInterestForBill(bill, asOf, timeZone, annualRateBps);
+    const unchanged =
+      bill.interestAccruedPaise === breakdown.accruedInterestPaise &&
+      (bill.status === 'OVERDUE' || breakdown.overdueDays === 0);
     bill.interestAccruedPaise = breakdown.accruedInterestPaise;
     bill.interestCalculatedAsOf = asOf;
-    if (
-      bill.status !== 'PAID' &&
-      breakdown.overdueDays > 0 &&
-      bill.outstandingPrincipalPaise > 0
-    ) {
+    if (breakdown.overdueDays > 0 && bill.outstandingPrincipalPaise > 0) {
       bill.status = 'OVERDUE';
     }
     await bill.save();
-    updated += 1;
+    if (unchanged) skipped += 1;
+    else updated += 1;
   }
-  return { updated };
+  if (updated > 0) {
+    await invalidateFinancialCaches(societyId);
+  }
+  return { updated, skipped };
 }

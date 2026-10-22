@@ -1,14 +1,7 @@
 import '../../api/models/society_models.dart';
 
 /// Display label for announcement audience flat chips/rows.
-String announcementFlatLabel(FlatSummary flat) {
-  final wing = (flat.wingName?.trim().isNotEmpty == true)
-      ? flat.wingName!.trim()
-      : (flat.wingCode?.trim().isNotEmpty == true)
-          ? 'Wing ${flat.wingCode!.trim()}'
-          : 'Wing';
-  return '$wing · ${flat.number}';
-}
+String announcementFlatLabel(FlatSummary flat) => flat.label;
 
 /// Pure selection + client-side search/pagination for announcement flat picking.
 ///

@@ -43,6 +43,7 @@ IconData _typeIcon(String type) {
     case 'VISITOR_REQUEST':
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
+    case 'VISITOR_ENTERED':
       return Icons.badge_outlined;
     case 'COMPLAINT_ASSIGNED':
     case 'COMPLAINT_STATUS_CHANGED':
@@ -62,6 +63,7 @@ Color _typeColor(String type) {
   switch (type) {
     case 'PAYMENT_SUCCESS':
     case 'VISITOR_APPROVED':
+    case 'VISITOR_ENTERED':
     case 'FACILITY_BOOKING_APPROVED':
       return C.green;
     case 'PAYMENT_FAILED':
@@ -104,6 +106,7 @@ Widget? _linkedPage(AppNotification n) {
     case 'VISITOR_REQUEST':
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
+    case 'VISITOR_ENTERED':
       return const LiveResidentVisitorsPage();
     case 'BILL_GENERATED':
       // Financial detail is owner-only in the UI; the backend remains
@@ -123,6 +126,7 @@ String _linkLabel(String type) {
     case 'VISITOR_REQUEST':
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
+    case 'VISITOR_ENTERED':
       return 'Open visitors';
     case 'BILL_GENERATED':
       return 'Open bill';

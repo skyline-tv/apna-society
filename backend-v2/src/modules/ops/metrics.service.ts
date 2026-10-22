@@ -24,6 +24,7 @@ export function getOpsMetricsSnapshot() {
       visitorExpiry: env.VISITOR_EXPIRY_WORKER_ENABLED,
       announcements: env.ANNOUNCEMENT_WORKER_ENABLED,
       facilityBookings: env.FACILITY_BOOKING_WORKER_ENABLED,
+      interestAccrual: env.INTEREST_WORKER_ENABLED,
     },
   };
 }

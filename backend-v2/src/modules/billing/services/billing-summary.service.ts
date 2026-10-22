@@ -5,6 +5,7 @@ import { parseObjectId } from '../../../utils/object-id';
 import { FlatModel } from '../../society/models/flat.model';
 import { BillModel } from '../models/bill.model';
 import { PaymentModel } from '../models/payment.model';
+import { ensureSocietyInterestCurrent } from './interest-worker.service';
 
 type BillingSummaryQuery = {
   billingPeriodStart?: Date;
@@ -238,6 +239,8 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
     unassignedFlatBills: totals.unassignedFlatBills,
     vacantOrUnassignedFlatsSkipped: vacantOrUnassigned,
     collectionPercentage,
+    totalPayablePaise:
+      totals.totalOutstandingPrincipalPaise + totals.totalAccruedInterestPaise,
     billCount: totals.billCount,
     wingWise: wingAgg,
     paymentsByStatus: Object.fromEntries(
@@ -250,6 +253,7 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
 }
 
 export async function getBillingSummary(societyId: string, query: BillingSummaryQuery = {}) {
+  await ensureSocietyInterestCurrent(societyId);
   const env = getEnv();
   const filtersHash = hashFilters({
     billingPeriodStart: query.billingPeriodStart?.toISOString() ?? null,

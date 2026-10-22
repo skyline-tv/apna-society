@@ -6,6 +6,17 @@ export interface CivilDate {
   day: number;
 }
 
+export function formatCivilDate(civil: CivilDate): string {
+  const mm = civil.month.toString().padStart(2, '0');
+  const dd = civil.day.toString().padStart(2, '0');
+  return `${civil.year}-${mm}-${dd}`;
+}
+
+/** YYYY-MM-DD of `date` in the society timezone. */
+export function civilDateKey(date: Date, timeZone = 'Asia/Kolkata'): string {
+  return formatCivilDate(civilDateInTimeZone(date, timeZone));
+}
+
 /** Read calendar Y-M-D in a fixed-offset timezone (Asia/Kolkata has no DST). */
 export function civilDateInTimeZone(date: Date, timeZone = 'Asia/Kolkata'): CivilDate {
   const fmt = new Intl.DateTimeFormat('en-CA', {

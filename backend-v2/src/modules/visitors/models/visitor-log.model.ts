@@ -42,6 +42,8 @@ export interface VisitorLogDocument extends Document {
   entryOtpHash?: string;
   entryOtpExpiresAt?: Date;
   otpAttempts: number;
+  /** Set when OTP is verified; actual entry is recorded separately. */
+  otpVerifiedAt?: Date;
   approvedAt?: Date;
   rejectedAt?: Date;
   entryAt?: Date;
@@ -87,6 +89,7 @@ const visitorLogSchema = new Schema<VisitorLogDocument>(
     entryOtpHash: { type: String },
     entryOtpExpiresAt: { type: Date },
     otpAttempts: { type: Number, required: true, default: 0, min: 0 },
+    otpVerifiedAt: { type: Date },
     approvedAt: { type: Date },
     rejectedAt: { type: Date },
     entryAt: { type: Date },
@@ -119,5 +122,6 @@ visitorLogSchema.index({
 // Wing-scoped history + entry timeline
 visitorLogSchema.index({ societyId: 1, wingId: 1, createdAt: -1 });
 visitorLogSchema.index({ societyId: 1, entryAt: -1 });
+visitorLogSchema.index({ societyId: 1, entryOtpHash: 1 }, { sparse: true });
 
 export const VisitorLogModel = model<VisitorLogDocument>('VisitorLog', visitorLogSchema);

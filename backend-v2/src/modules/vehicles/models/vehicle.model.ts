@@ -13,6 +13,8 @@ export interface VehicleDocument extends Document {
   /** Stored as vehicleModel to avoid clashing with Mongoose Document#model. */
   vehicleModel?: string;
   colour?: string;
+  /** Free-text parking bay / slot label assigned by admin. */
+  parkingNumber?: string;
   isActive: boolean;
   deactivatedAt?: Date;
   deactivationReason?: string;
@@ -30,6 +32,7 @@ const vehicleSchema = new Schema<VehicleDocument>(
     make: { type: String, trim: true, maxlength: 80 },
     vehicleModel: { type: String, trim: true, maxlength: 80 },
     colour: { type: String, trim: true, maxlength: 40 },
+    parkingNumber: { type: String, trim: true, maxlength: 32 },
     isActive: { type: Boolean, required: true, default: true },
     deactivatedAt: { type: Date },
     deactivationReason: { type: String, trim: true, maxlength: 500 },

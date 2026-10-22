@@ -110,6 +110,21 @@ class VisitorRepository {
     }
   }
 
+  Future<Visitor> verifyEntryOtpByCode({required String otp}) async {
+    if (mutationLocked) {
+      throw StateError('Entry verification is already in progress.');
+    }
+    mutationLocked = true;
+    try {
+      final visitor = await _api.verifyEntryOtpByCode(otp: otp);
+      invalidateCaches(visitorId: visitor.id);
+      _store(visitor);
+      return visitor;
+    } finally {
+      mutationLocked = false;
+    }
+  }
+
   Future<Visitor> verifyEntryOtp(String visitorId, {required String otp}) async {
     if (mutationLocked) {
       throw StateError('Entry verification is already in progress.');
@@ -117,6 +132,21 @@ class VisitorRepository {
     mutationLocked = true;
     try {
       final visitor = await _api.verifyEntryOtp(visitorId, otp: otp);
+      invalidateCaches(visitorId: visitorId);
+      _store(visitor);
+      return visitor;
+    } finally {
+      mutationLocked = false;
+    }
+  }
+
+  Future<Visitor> confirmVisitorEntry(String visitorId) async {
+    if (mutationLocked) {
+      throw StateError('Visitor entry is already being recorded.');
+    }
+    mutationLocked = true;
+    try {
+      final visitor = await _api.confirmVisitorEntry(visitorId);
       invalidateCaches(visitorId: visitorId);
       _store(visitor);
       return visitor;

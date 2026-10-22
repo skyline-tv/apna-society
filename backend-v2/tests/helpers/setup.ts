@@ -20,6 +20,7 @@ process.env.COMPLAINT_STORAGE_PROVIDER = 'memory';
 process.env.FACILITY_PENDING_BOOKING_TTL_MS = '3600000';
 process.env.ANNOUNCEMENT_STORAGE_PROVIDER = 'memory';
 process.env.ANNOUNCEMENT_WORKER_ENABLED = 'false';
+process.env.INTEREST_WORKER_ENABLED = 'false';
 process.env.SMS_PROVIDER = 'memory';
 process.env.SMS_OTP_ENABLED = 'false';
 process.env.SMS_OTP_DEV_BYPASS = 'false';
@@ -98,6 +99,9 @@ beforeAll(async () => {
   const { NotificationModel } = await import(
     '../../src/modules/notifications/models/notification.model'
   );
+  const { InterestJobRunModel } = await import(
+    '../../src/modules/billing/models/interest-job-run.model'
+  );
   await Promise.all([
     MembershipModel.syncIndexes(),
     OccupancyRecordModel.syncIndexes(),
@@ -122,6 +126,7 @@ beforeAll(async () => {
     AnnouncementModel.syncIndexes(),
     AnnouncementReadModel.syncIndexes(),
     NotificationModel.syncIndexes(),
+    InterestJobRunModel.syncIndexes(),
   ]);
 
   setEmailService({

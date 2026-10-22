@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
+import '../../api/models/flat_label.dart';
 import '../../api/models/report_models.dart';
 import '../../api/models/society_models.dart';
 import '../../api/repositories/live_repositories.dart';
@@ -423,7 +424,7 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${f.wingCode}-${f.flatNumber}',
+                          Text(formatFlatLabel(f.wingCode, f.flatNumber),
                               style: T.bodyStrong),
                           const SizedBox(height: 2),
                           Text(f.ownerNameSnapshot, style: T.caption),
@@ -614,7 +615,7 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
         for (final f in r.items)
           ListRow(
             leading: AppAvatar(text: f.wingCode, square: true),
-            title: '${f.wingCode}-${f.flatNumber}',
+            title: formatFlatLabel(f.wingCode, f.flatNumber),
             subtitle:
                 '${f.ownerNameSnapshot}\nBilled ${moneyPaise(f.billedPaise)} · Collected ${moneyPaise(f.collectedPaise)}',
             trailing: Column(

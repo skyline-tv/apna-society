@@ -18,7 +18,7 @@ export interface VisitorEventPayload {
   visitorType: string;
   approvalStatus: string;
   entryStatus: string;
-  assignedResidentUserId: string;
+  assignedResidentUserId?: string;
   /** Never include OTP fields. */
 }
 
@@ -71,10 +71,17 @@ export function emitVisitorEvent(
     assignedResidentUserId: payload.assignedResidentUserId,
   };
 
-  const rooms = [residentVisitorRoom(safe.societyId, safe.assignedResidentUserId)];
-  if (options?.includeGuards !== false) {
-    rooms.push(societyGuardsRoom(safe.societyId));
-  }
+  const residentRoom = safe.assignedResidentUserId
+    ? residentVisitorRoom(safe.societyId, safe.assignedResidentUserId)
+    : undefined;
+  const rooms = [
+    ...(residentRoom ? [residentRoom] : []),
+    ...(options?.includeGuards !== false ? [societyGuardsRoom(safe.societyId)] : []),
+  ];
+  const guardSafe: VisitorEventPayload = {
+    ...safe,
+    assignedResidentUserId: undefined,
+  };
 
   if (testEmitter) {
     testEmitter(event, rooms, safe);
@@ -84,8 +91,11 @@ export function emitVisitorEvent(
     return;
   }
 
-  for (const room of rooms) {
-    ioRef.to(room).emit(event, safe);
+  if (residentRoom) {
+    ioRef.to(residentRoom).emit(event, safe);
+  }
+  if (options?.includeGuards !== false) {
+    ioRef.to(societyGuardsRoom(safe.societyId)).emit(event, guardSafe);
   }
   getLogger().debug({ event, rooms, visitorId: safe.visitorId }, 'Visitor socket event emitted');
 }

@@ -203,7 +203,7 @@ void main() {
     test('flat labels include wing and number', () {
       expect(
         announcementFlatLabel(f(12, wing: 'C')),
-        'Wing C · F-12',
+        'C-F-12',
       );
     });
 

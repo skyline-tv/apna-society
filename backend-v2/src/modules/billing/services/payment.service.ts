@@ -1,5 +1,5 @@
 import type { ClientSession } from 'mongoose';
-import { getEnv } from '../../../config/env';
+import { getEnv, isLivePaymentsEnabled } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
   AppError,
@@ -24,7 +24,7 @@ import { ReceiptModel } from '../models/receipt.model';
 import { nextSequence } from '../models/sequence.model';
 import { getPaymentProvider } from '../providers/payment-provider.factory';
 import { startOfCivilDay } from '../utils/billing-calendar';
-import { computeInterestForBillWithEvents } from './interest.service';
+import { computeInterestForBillWithEvents, getBillInterest } from './interest.service';
 import { assertBillFinancialInvariants } from './financial-invariants.service';
 import { buildReceiptPdf } from './pdf.service';
 
@@ -116,6 +116,8 @@ export async function createPaymentOrder(
     societyId,
     flatId: String(bill.flatId),
   });
+
+  await getBillInterest(societyId, billId);
 
   // Charge outstanding principal only (interest settled separately / optionally via remainder).
   const amountPaise = bill.outstandingPrincipalPaise;
@@ -486,9 +488,11 @@ export async function completeDemoResidentPayment(
   input: { orderId: string; outcome: 'success' | 'failure' },
   actor: Actor,
 ) {
-  const env = getEnv();
-  if (env.NODE_ENV === 'production') {
-    throw forbidden('Demo payments are disabled in production', 'DEMO_PAYMENTS_DISABLED');
+  if (isLivePaymentsEnabled()) {
+    throw forbidden(
+      'Demo payments are disabled when live Razorpay is enabled',
+      'DEMO_PAYMENTS_DISABLED',
+    );
   }
 
   const provider = getPaymentProvider();

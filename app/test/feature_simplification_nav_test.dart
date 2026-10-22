@@ -69,6 +69,40 @@ void main() {
       expect(src.contains('LiveResidentVehiclesPage'), isTrue);
     });
 
+    test('admin vehicles assignment has no payment fields', () {
+      final src = File('lib/features/vehicles/admin_vehicle_assignment.dart')
+          .readAsStringSync();
+      expect(src.contains('Add vehicle'), isTrue);
+      expect(src.contains('Parking number'), isTrue);
+      expect(src.contains('amountPaise'), isFalse);
+      expect(src.contains('paymentStatus'), isFalse);
+      expect(src.contains('Collect payment'), isFalse);
+    });
+
+    test('admin bills page has no manual interest action', () {
+      final src = File('lib/features/billing/live_billing_module.dart')
+          .readAsStringSync();
+      expect(src.contains('_refreshInterest'), isFalse);
+      expect(src.contains('refreshInterest'), isFalse);
+      expect(src.contains('Refresh late-payment interest'), isFalse);
+      expect(src.contains("label: const Text('Interest')"), isFalse);
+      expect(src.contains('Generate bills'), isTrue);
+      expect(src.contains('Total payable'), isTrue);
+      expect(src.contains('Accrued interest'), isTrue);
+    });
+
+    test('guard OTP screen is OTP-only until backend verification', () {
+      final src = File('lib/features/visitors/live_visitors_module.dart')
+          .readAsStringSync();
+      expect(src.contains("PageHeader('Verify Visitor')"), isTrue);
+      expect(src.contains("'Verify OTP'"), isTrue);
+      expect(src.contains("'Confirm Visitor Entry'"), isTrue);
+      expect(src.contains('verifyEntryOtpByCode'), isTrue);
+      expect(src.contains('confirmVisitorEntry'), isTrue);
+      expect(src.contains('Allow entry'), isFalse);
+      expect(src.contains('Verify & allow entry'), isFalse);
+    });
+
     test('reports UI no longer exposes a Complaints tab', () {
       final src = File('lib/features/reports/live_reports_module.dart')
           .readAsStringSync();

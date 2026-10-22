@@ -6,6 +6,13 @@ import { VEHICLE_TYPES } from '../models/vehicle.model';
 
 const objectId = z.string().refine(isObjectId, 'Must be a valid ObjectId');
 
+const optionalParkingNumber = z
+  .string()
+  .trim()
+  .max(32)
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : undefined));
+
 export const vehicleDraftSchema = z
   .object({
     vehicleType: z.enum(VEHICLE_TYPES),
@@ -13,6 +20,7 @@ export const vehicleDraftSchema = z
     make: z.string().trim().min(1).max(80).optional(),
     model: z.string().trim().min(1).max(80).optional(),
     colour: z.string().trim().min(1).max(40).optional(),
+    parkingNumber: optionalParkingNumber,
   })
   .strict();
 
@@ -50,6 +58,13 @@ export const adminUpdateVehicleSchema = z
     colour: z.string().trim().min(1).max(40).optional(),
     vehicleType: z.enum(VEHICLE_TYPES).optional(),
     registrationNumber: z.string().trim().min(6).max(20).optional(),
+    parkingNumber: z
+      .string()
+      .trim()
+      .max(32)
+      .nullable()
+      .optional()
+      .transform((v) => (v == null || v === '' ? null : v)),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {

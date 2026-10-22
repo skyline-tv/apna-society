@@ -27,6 +27,7 @@ async function adminRegisterVehicle(
     make?: string;
     model?: string;
     colour?: string;
+    parkingNumber?: string;
   },
 ) {
   return request(app).post('/api/v1/admin/vehicles').set('Authorization', `Bearer ${token}`).send(body);
@@ -245,6 +246,46 @@ describe('Resident vehicle visibility is read-only', () => {
     const stillThere = await VehicleModel.findById(created.body.data.id).lean();
     expect(stillThere?.isActive).toBe(false);
     expect(stillThere?.registrationNumber).toBe('DL1CAA1234');
+  });
+
+  it('deactivates a vehicle that still has a legacy parking allocation', async () => {
+    const setup = await setupSociety('vehrel');
+    const vehicle = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'MH12CD8899',
+      parkingNumber: 'B-9',
+    });
+    expect(vehicle.status).toBe(201);
+
+    const slot = await request(app)
+      .post('/api/v1/admin/parking/slots')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ slotNumber: 'LEG-1', parkingType: 'FOUR_WHEELER' });
+    expect(slot.status).toBe(201);
+
+    const alloc = await request(app)
+      .post('/api/v1/admin/parking/allocations')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        flatId: setup.ownerFlatId,
+        vehicleId: vehicle.body.data.id,
+        parkingSlotId: slot.body.data.id,
+      });
+    expect(alloc.status).toBe(201);
+
+    const deactivated = await request(app)
+      .post(`/api/v1/admin/vehicles/${vehicle.body.data.id}/deactivate`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ reason: 'Moved out' });
+    expect(deactivated.status).toBe(200);
+    expect(deactivated.body.data.isActive).toBe(false);
+    expect(deactivated.body.error).toBeUndefined();
+
+    const ended = await ParkingAllocationModel.findById(alloc.body.data.id).lean();
+    expect(ended?.status).toBe('ENDED');
+    expect(ended?.endReason).toBe('Moved out');
   });
 });
 
@@ -549,5 +590,48 @@ describe('Guard vehicle logs', () => {
       .set('Authorization', `Bearer ${setup.guardToken}`)
       .send({ slotNumber: 'HACK', parkingType: 'FOUR_WHEELER' });
     expect(guardSlot.status).toBe(403);
+  });
+
+  it('assigns a parking number on the vehicle without payment fields', async () => {
+    const setup = await setupSociety('vparknum');
+    const created = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'TWO_WHEELER',
+      registrationNumber: 'MH14CD7788',
+      parkingNumber: 'TW-12',
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.data.parkingNumber).toBe('TW-12');
+    expect(created.body.data.amountPaise).toBeUndefined();
+    expect(created.body.data.paymentStatus).toBeUndefined();
+
+    const second = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'MH14CD7799',
+      parkingNumber: 'B-3',
+    });
+    expect(second.status).toBe(201);
+    expect(second.body.data.flatId).toBe(setup.ownerFlatId);
+    expect(second.body.data.registeredUserId).toBe(String(setup.owner._id));
+
+    const patched = await request(app)
+      .patch(`/api/v1/admin/vehicles/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ parkingNumber: 'TW-14' });
+    expect(patched.status).toBe(200);
+    expect(patched.body.data.parkingNumber).toBe('TW-14');
+
+    const listed = await request(app)
+      .get('/api/v1/admin/vehicles')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .query({ flatId: setup.ownerFlatId, isActive: 'true' });
+    expect(listed.status).toBe(200);
+    expect(listed.body.data.items).toHaveLength(2);
+    expect(listed.body.data.items.map((v: { parkingNumber: string }) => v.parkingNumber)).toEqual(
+      expect.arrayContaining(['TW-14', 'B-3']),
+    );
   });
 });

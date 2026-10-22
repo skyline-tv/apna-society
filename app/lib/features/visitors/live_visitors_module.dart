@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../api/auth/app_role.dart';
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
 import '../../api/models/common.dart';
-import '../../api/models/resident_home_context.dart' show occupancyStatusLabel;
 import '../../api/models/society_models.dart';
 import '../../api/models/visitor_models.dart';
 import '../../api/repositories/live_repositories.dart';
@@ -31,11 +31,13 @@ String visitorErrorMessage(Object error) {
       case 'OTP_MISSING':
         return 'No active entry OTP for this visitor.';
       case 'OTP_EXPIRED':
-        return 'Entry OTP has expired. Ask the resident to approve again.';
+        return 'This OTP has expired. Ask the resident to share a new one.';
       case 'OTP_INVALID':
-        return 'Incorrect OTP. Try again.';
+        return 'Invalid or expired OTP. Try again.';
       case 'OTP_MAX_ATTEMPTS':
         return 'Too many incorrect OTP attempts. Entry is locked.';
+      case 'OTP_NOT_VERIFIED':
+        return 'Verify the visitor OTP before recording entry.';
       case 'ALREADY_ENTERED':
         return 'This visitor has already entered.';
       case 'NOT_ENTERED':
@@ -71,6 +73,9 @@ Widget visitorStatusChips(Visitor v) {
       if (v.hasActiveOtp)
         const StatusBadge('OTP active',
             tone: BadgeTone.info, icon: Icons.key_rounded),
+      if (v.otpVerified)
+        const StatusBadge('OTP verified',
+            tone: BadgeTone.success, icon: Icons.verified_outlined),
     ],
   );
 }
@@ -106,7 +111,7 @@ Color _visitorTone(Visitor v) {
   }
 }
 
-String _flatLabel(Visitor v) => '${v.wingCodeSnapshot}-${v.flatNumberSnapshot}';
+String _flatLabel(Visitor v) => v.flatLabel;
 
 /// Shared visitor list row.
 class _VisitorRow extends StatelessWidget {
@@ -840,8 +845,6 @@ class _FlatPickerSheetState extends State<_FlatPickerSheet> {
                     size: 38,
                     color: selected ? C.blue : C.muted),
                 title: Text(f.label, style: T.bodyStrong),
-                subtitle: Text(occupancyStatusLabel(f.occupancyStatus),
-                    style: T.caption),
                 trailing: selected
                     ? const Icon(Icons.check_circle_rounded, color: C.blue)
                     : null,
@@ -868,194 +871,102 @@ class LiveVerifyVisitorOtpPage extends StatefulWidget {
 }
 
 class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
-  late Future<Paged<Visitor>> _future = _load();
   final _otp = TextEditingController();
   final _otpFocus = FocusNode();
-  Visitor? _selected;
-  bool _verifying = false;
+  Visitor? _verified;
+  bool _busy = false;
   String? _error;
-
-  StreamSubscription<VisitorEventPayload>? _sub;
-
-  Future<Paged<Visitor>> _load({bool force = false}) async {
-    final session = authSession;
-    if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api).visitors.listGuardVisitors(
-          force: force,
-          query: const ListVisitorsQuery(
-            approvalStatus: 'APPROVED',
-            entryStatus: 'NOT_ENTERED',
-            limit: 50,
-          ),
-        );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = VisitorSocket.instance.events.listen((_) {
-      if (mounted) setState(() => _future = _load(force: true));
-    });
-  }
 
   @override
   void dispose() {
-    _sub?.cancel();
     _otp.dispose();
     _otpFocus.dispose();
     super.dispose();
   }
 
-  void reload() => setState(() => _future = _load(force: true));
-
-  void _select(Visitor v) {
+  void _resetToOtp() {
+    _otp.clear();
     setState(() {
-      _selected = _selected?.id == v.id ? null : v;
+      _verified = null;
       _error = null;
     });
-    if (_selected != null) _otpFocus.requestFocus();
+    _otpFocus.requestFocus();
   }
 
   Future<void> _verify() async {
-    if (_verifying) return;
-    final visitor = _selected;
+    if (_busy) return;
     final otp = _otp.text.trim();
-    if (visitor == null) {
-      setState(() => _error = 'Select the visitor first.');
-      return;
-    }
     if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
-      setState(() => _error = 'Enter the 6-digit OTP shown by the visitor.');
+      setState(() => _error = 'Enter the 6-digit OTP shared by the resident.');
       return;
     }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
-      _verifying = true;
+      _busy = true;
+      _error = null;
+      _verified = null;
+    });
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      final visitor = await ensureLiveRepositories(session.api)
+          .visitors
+          .verifyEntryOtpByCode(otp: otp);
+      if (!mounted) return;
+      setState(() => _verified = visitor);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _verified = null;
+        _error = visitorErrorMessage(e);
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _confirmEntry() async {
+    final visitor = _verified;
+    if (_busy || visitor == null) return;
+    setState(() {
+      _busy = true;
       _error = null;
     });
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
-      await ensureLiveRepositories(session.api)
+      final entered = await ensureLiveRepositories(session.api)
           .visitors
-          .verifyEntryOtp(visitor.id, otp: otp);
+          .confirmVisitorEntry(visitor.id);
       if (!mounted) return;
       _otp.clear();
-      setState(() => _selected = null);
-      showSuccessSnack(context, '${visitor.visitorName} entered.');
-      reload();
+      setState(() => _verified = null);
+      showSuccessSnack(context, '${entered.visitorName} entered.');
       widget.onEntered();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = visitorErrorMessage(e));
     } finally {
-      if (mounted) setState(() => _verifying = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Paged<Visitor>>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const SkeletonList(items: 4, showHeader: true);
-        }
-        if (snapshot.hasError) {
-          return LoadFailure(error: snapshot.error!, onRetry: reload);
-        }
-        final items = snapshot.data!.items;
-        final selected = _selected;
-        return Column(children: [
-          Expanded(
-            child: RefreshIndicator(
-              color: C.blue,
-              onRefresh: () async {
-                reload();
-                await _future;
-              },
-              child: ListView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: Sp.pagePadding,
-                children: [
-                  const PageHeader('Allow entry',
-                      subtitle:
-                          'Tap the visitor at the gate → enter their 6-digit OTP → Verify.'),
-                  if (items.isEmpty)
-                    const EmptyState('No approved visitors awaiting entry',
-                        icon: Icons.key_off_outlined,
-                        title: 'Nothing to verify')
-                  else ...[
-                    ResultCount(items.length, 'visitor awaiting entry'),
-                    ...items.map((v) {
-                      final isSel = selected?.id == v.id;
-                      return AppCard(
-                        onTap: _verifying ? null : () => _select(v),
-                        borderColor: isSel ? C.blue : null,
-                        color: isSel ? C.chip : null,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        child: Row(children: [
-                          AppAvatar(
-                            icon: _visitorTypeIcon(v.visitorType),
-                            color: isSel ? C.blue : C.muted,
-                            size: 42,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(v.visitorName, style: T.title),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}'
-                                  '${v.otpExpiresAt == null ? '' : ' · OTP expires ${fmtIsoDateTime(v.otpExpiresAt)}'}',
-                                  style: T.secondary,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            isSel
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_off_rounded,
-                            color: isSel ? C.blue : C.lineStrong,
-                          ),
-                        ]),
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          if (items.isNotEmpty)
-            BottomActionBar(children: [
-              if (selected != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(children: [
-                    const Icon(Icons.person_outline_rounded,
-                        size: 16, color: C.muted),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Verifying ${selected.visitorName} · ${_flatLabel(selected)}',
-                        style: T.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ]),
-                ),
+    final verified = _verified;
+    return Column(children: [
+      Expanded(
+        child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: Sp.pagePadding,
+          children: [
+            const PageHeader('Verify Visitor'),
+            if (verified == null) ...[
               OtpBoxes(
                 controller: _otp,
                 focusNode: _otpFocus,
-                enabled: !_verifying,
+                enabled: !_busy,
+                autofocus: true,
                 onChanged: (_) {
                   if (_error != null) setState(() => _error = null);
                 },
@@ -1063,19 +974,86 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
               ),
               if (_error != null && _error!.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 12),
                   child: InlineError(_error),
                 ),
-              const SizedBox(height: 4),
-              PrimaryButton(
-                label: 'Verify & allow entry',
-                icon: Icons.login_rounded,
-                busy: _verifying,
-                onPressed: selected == null ? null : _verify,
+            ] else ...[
+              _AuthorizedVisitorDetails(visitor: verified),
+              if (_error != null && _error!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: InlineError(_error),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _busy ? null : _resetToOtp,
+                  child: const Text('Verify another OTP'),
+                ),
               ),
-            ]),
-        ]);
-      },
+            ],
+          ],
+        ),
+      ),
+      BottomActionBar(children: [
+        PrimaryButton(
+          label: verified == null ? 'Verify OTP' : 'Confirm Visitor Entry',
+          icon: verified == null
+              ? Icons.pin_outlined
+              : Icons.login_rounded,
+          busy: _busy,
+          onPressed: verified == null ? _verify : _confirmEntry,
+        ),
+      ]),
+    ]);
+  }
+}
+
+class _AuthorizedVisitorDetails extends StatelessWidget {
+  const _AuthorizedVisitorDetails({required this.visitor});
+
+  final Visitor visitor;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = visitor;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DetailHero(
+          title: v.visitorName,
+          subtitle: '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}',
+          leading: AppAvatar(
+            icon: _visitorTypeIcon(v.visitorType),
+            color: C.blue,
+            size: Sz.avatarLg,
+          ),
+          badges: [
+            StatusBadge(v.otpVerified ? 'OTP verified' : 'OTP not verified'),
+            StatusBadge(entryStatusLabel(v.entryStatus)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        DetailCard(title: 'Visitor', children: [
+          DetailRow('Visitor name', v.visitorName),
+          DetailRow('Mobile number', v.visitorPhone),
+          DetailRow('Visitor type', visitorTypeLabel(v.visitorType)),
+          DetailRow('Purpose of visit', v.purpose),
+        ]),
+        DetailCard(title: 'Location', children: [
+          DetailRow('Flat', v.flatLabel),
+          if (v.societyName != null && v.societyName!.trim().isNotEmpty)
+            DetailRow('Society', v.societyName!),
+        ]),
+        DetailCard(title: 'Entry', children: [
+          DetailRow(
+            'OTP status',
+            v.otpVerified ? 'Verified' : 'Not verified',
+          ),
+          if (v.entryAt != null)
+            DetailRow('Entry date and time', fmtIsoDateTime(v.entryAt)),
+        ]),
+      ],
     );
   }
 }
@@ -1506,7 +1484,9 @@ class _VisitorDetailBody extends StatelessWidget {
           DetailRow('Party size',
               '${v.numberOfVisitors} ${v.numberOfVisitors == 1 ? 'person' : 'people'}'),
           if (v.vehicleNumber != null) DetailRow('Vehicle', v.vehicleNumber!),
-          DetailRow('Approver', humanizeStatus(v.assignedResidentRole)),
+          if (authSession?.appRole != AppRole.guard &&
+              v.assignedResidentRole.isNotEmpty)
+            DetailRow('Approver', humanizeStatus(v.assignedResidentRole)),
           if (v.notes != null && v.notes!.trim().isNotEmpty)
             DetailRow('Notes', v.notes!),
         ]),

@@ -187,12 +187,6 @@ class BillingRepository {
     return bill;
   }
 
-  Future<InterestRefreshResult> refreshInterest() async {
-    final result = await _api.refreshInterest();
-    invalidateFinancialCaches();
-    return result;
-  }
-
   Future<PaymentSettlement> recordOfflinePayment({
     required String billId,
     required int amountPaise,

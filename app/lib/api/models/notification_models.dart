@@ -8,6 +8,7 @@ const kNotificationTypes = [
   'VISITOR_REQUEST',
   'VISITOR_APPROVED',
   'VISITOR_REJECTED',
+  'VISITOR_ENTERED',
   'COMPLAINT_ASSIGNED',
   'COMPLAINT_STATUS_CHANGED',
   'FACILITY_BOOKING_APPROVED',
@@ -33,6 +34,8 @@ String notificationTypeLabel(String type) {
       return 'Visitor approved';
     case 'VISITOR_REJECTED':
       return 'Visitor rejected';
+    case 'VISITOR_ENTERED':
+      return 'Visitor entered';
     case 'COMPLAINT_ASSIGNED':
       return 'Complaint assigned';
     case 'COMPLAINT_STATUS_CHANGED':

@@ -14,6 +14,10 @@ import {
   stopFacilityBookingWorker,
 } from './modules/facilities/services/facility-booking-worker.service';
 import {
+  startInterestWorker,
+  stopInterestWorker,
+} from './modules/billing/services/interest-worker.service';
+import {
   startVisitorExpiryWorker,
   stopVisitorExpiryWorker,
 } from './modules/visitors/services/visitor-expiry.service';
@@ -33,6 +37,7 @@ async function bootstrap(): Promise<void> {
   startVisitorExpiryWorker();
   startAnnouncementWorker();
   startFacilityBookingWorker();
+  startInterestWorker();
 
   server.listen(env.PORT, env.HOST, () => {
     logger.info(
@@ -45,6 +50,7 @@ async function bootstrap(): Promise<void> {
           visitorExpiry: env.VISITOR_EXPIRY_WORKER_ENABLED,
           announcements: env.ANNOUNCEMENT_WORKER_ENABLED,
           facilityBookings: env.FACILITY_BOOKING_WORKER_ENABLED,
+          interestAccrual: env.INTEREST_WORKER_ENABLED,
         },
       },
       'HTTP server listening',
@@ -59,6 +65,7 @@ async function bootstrap(): Promise<void> {
     stopVisitorExpiryWorker();
     stopAnnouncementWorker();
     stopFacilityBookingWorker();
+    stopInterestWorker();
     io.close();
     server.close(async () => {
       await disconnectRedis();

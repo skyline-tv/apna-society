@@ -1,5 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { getEnv } from '../../../config/env';
+import { getEnv, isLivePaymentsEnabled } from '../../../config/env';
+import { forbidden } from '../../../shared/errors/app-error';
 import type {
   CreateOrderInput,
   CreateOrderResult,
@@ -16,18 +17,20 @@ function safeEqualHex(a: string, b: string): boolean {
 }
 
 /**
- * Mock Razorpay-compatible provider for development and automated tests.
- * Never used for live charges. Does not fall back to a secret in production.
+ * Mock Razorpay-compatible provider for development, tests, and deployed
+ * environments until live Razorpay is opted in. Never used for live charges.
  */
 export class MockRazorpayProvider implements PaymentProvider {
   readonly name = 'razorpay-mock';
 
   private get secret(): string {
-    const env = getEnv();
-    if (env.NODE_ENV === 'production') {
-      throw new Error('Mock payment provider cannot be used in production');
+    if (isLivePaymentsEnabled()) {
+      throw forbidden(
+        'Mock payment provider cannot be used when live payments are enabled',
+        'DEMO_PAYMENTS_DISABLED',
+      );
     }
-    return env.RAZORPAY_KEY_SECRET || 'test_razorpay_secret';
+    return getEnv().RAZORPAY_KEY_SECRET || 'test_razorpay_secret';
   }
 
   private get webhookSecret(): string {
@@ -37,9 +40,10 @@ export class MockRazorpayProvider implements PaymentProvider {
 
   async createOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
     const env = getEnv();
-    if (env.NODE_ENV === 'production') {
-      throw new Error(
+    if (isLivePaymentsEnabled()) {
+      throw forbidden(
         'Online payment orders are disabled. Enable PAYMENTS_LIVE_ENABLED=true with Razorpay credentials.',
+        'PAYMENTS_LIVE_DISABLED',
       );
     }
     const orderId = `order_${randomUUID().replace(/-/g, '').slice(0, 14)}`;

@@ -1,3 +1,4 @@
+import { formatFlatLabel } from '../../../utils/flat-label';
 import type { VisitorLogDocument } from '../models/visitor-log.model';
 
 type VisitorLean = {
@@ -17,6 +18,7 @@ type VisitorLean = {
   entryStatus: string;
   entryOtpExpiresAt?: Date;
   otpAttempts: number;
+  otpVerifiedAt?: Date;
   approvedAt?: Date;
   rejectedAt?: Date;
   entryAt?: Date;
@@ -35,23 +37,25 @@ type VisitorLean = {
 
 export function serializeVisitor(
   doc: VisitorLean | VisitorLogDocument,
-  options?: { forGuard?: boolean; includeOtpMeta?: boolean },
+  options?: { forGuard?: boolean; includeOtpMeta?: boolean; revealVisitorContact?: boolean },
 ) {
   const forGuard = options?.forGuard ?? false;
+  const revealVisitorContact = options?.revealVisitorContact ?? false;
   return {
     id: String(doc._id),
     societyId: String(doc.societyId),
     flatId: String(doc.flatId),
     visitorName: doc.visitorName,
-    // Guards see masked phone; admins/assigned residents see full.
-    visitorPhone: forGuard ? maskPhone(doc.visitorPhone) : doc.visitorPhone,
+    // Guards see masked phone until OTP succeeds; admins/residents see full.
+    visitorPhone:
+      forGuard && !revealVisitorContact ? maskPhone(doc.visitorPhone) : doc.visitorPhone,
     visitorType: doc.visitorType,
     purpose: doc.purpose,
     vehicleNumber: doc.vehicleNumber,
     numberOfVisitors: doc.numberOfVisitors,
     requestedByGuardId: String(doc.requestedByGuardId),
-    assignedResidentUserId: String(doc.assignedResidentUserId),
-    assignedResidentRole: doc.assignedResidentRole,
+    assignedResidentUserId: forGuard ? undefined : String(doc.assignedResidentUserId),
+    assignedResidentRole: forGuard ? undefined : doc.assignedResidentRole,
     approvalStatus: doc.approvalStatus,
     entryStatus: doc.entryStatus,
     otpExpiresAt:
@@ -59,6 +63,7 @@ export function serializeVisitor(
         ? doc.entryOtpExpiresAt.toISOString()
         : undefined,
     hasActiveOtp: Boolean(doc.entryOtpHash && doc.entryOtpExpiresAt && doc.entryOtpExpiresAt > new Date()),
+    otpVerified: Boolean(doc.otpVerifiedAt),
     otpAttempts: options?.includeOtpMeta ? doc.otpAttempts : undefined,
     approvedAt: doc.approvedAt?.toISOString(),
     rejectedAt: doc.rejectedAt?.toISOString(),
@@ -70,6 +75,7 @@ export function serializeVisitor(
     notes: doc.notes,
     flatNumberSnapshot: doc.flatNumberSnapshot,
     wingCodeSnapshot: doc.wingCodeSnapshot,
+    flatLabel: formatFlatLabel(doc.wingCodeSnapshot, doc.flatNumberSnapshot),
     expiredAt: doc.expiredAt?.toISOString(),
     createdAt: new Date(doc.createdAt).toISOString(),
     updatedAt: new Date(doc.updatedAt).toISOString(),

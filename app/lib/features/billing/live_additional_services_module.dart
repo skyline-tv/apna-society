@@ -36,6 +36,11 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
     if (session == null) throw StateError('Not signed in.');
     final repos = ensureLiveRepositories(session.api);
     final wings = await repos.society.wings(force: force);
+    final flats = await repos.society.listAllFlats(
+      force: force,
+      isActive: true,
+      wingId: wingId,
+    );
     final services = await repos.billing.listAdditionalServices(
       force: force,
       wingId: wingId,
@@ -43,7 +48,7 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
       isActive: activeOnly,
       limit: 200,
     );
-    return _ServicesBundle(wings: wings, services: services);
+    return _ServicesBundle(wings: wings, flats: flats, services: services);
   }
 
   void reload() => setState(() => _future = _load(force: true));
@@ -85,36 +90,31 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
           _openForm();
         }
 
+        final body = _buildBody(
+          context,
+          snap: snap,
+          bundle: bundle,
+          rows: rows,
+          scopedFlatId: scopedFlatId,
+          activeCount: activeForFlat.length,
+          atCap: atCap,
+          onAdd: addService,
+        );
+        if (widget.embedded) return body;
         return Scaffold(
-          appBar: widget.embedded
-              ? null
-              : AppBar(
-                  title: const Text('Additional services'),
-                  actions: [
-                    IconButton(
-                      tooltip: atCap
-                          ? kAdditionalServiceLimitMessage
-                          : 'Add service',
-                      onPressed: atCap ? null : addService,
-                      icon: const Icon(Icons.add_rounded),
-                    ),
-                  ],
-                ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: atCap ? null : addService,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add service'),
+          appBar: AppBar(
+            title: const Text('Additional services'),
+            actions: [
+              IconButton(
+                tooltip: atCap
+                    ? kAdditionalServiceLimitMessage
+                    : 'Add service',
+                onPressed: atCap ? null : addService,
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ],
           ),
-          body: _buildBody(
-            context,
-            snap: snap,
-            bundle: bundle,
-            rows: rows,
-            scopedFlatId: scopedFlatId,
-            activeCount: activeForFlat.length,
-            atCap: atCap,
-            onAdd: addService,
-          ),
+          body: body,
         );
       },
     );
@@ -154,14 +154,21 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
         children: [
           const PageHeader('Additional services',
               subtitle: 'Recurring monthly charges attached to a flat'),
+          PrimaryButton(
+            label: atCap ? 'Add service (10/10)' : 'Add service',
+            icon: Icons.add_rounded,
+            onPressed: atCap ? null : onAdd,
+          ),
+          const SizedBox(height: 12),
           MiniStatStrip(children: [
             MiniStat('Shown', '${rows.length}'),
             MiniStat('Active monthly', moneyPaise(monthlyTotal)),
-            if (scopedFlatId != null)
-              MiniStat(
-                'Active slots',
-                '$activeCount/$kMaxActiveAdditionalServicesPerFlat',
-              ),
+            MiniStat(
+              'Active slots',
+              scopedFlatId == null
+                  ? 'Select a flat'
+                  : '$activeCount/$kMaxActiveAdditionalServicesPerFlat',
+            ),
           ]),
           if (atCap) ...[
             const SizedBox(height: 10),
@@ -174,6 +181,7 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
               selected: wingId == null,
               onSelected: () {
                 wingId = null;
+                flatId = null;
                 reload();
               },
             ),
@@ -183,10 +191,21 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
                 selected: wingId == wing.id,
                 onSelected: () {
                   wingId = wing.id;
+                  flatId = null;
                   reload();
                 },
               ),
           ]),
+          const SizedBox(height: 8),
+          _FlatPicker(
+            flats: loaded.flats,
+            selectedFlatId: widget.initialFlatId ?? flatId,
+            enabled: widget.initialFlatId == null,
+            onChanged: (id) {
+              flatId = id;
+              reload();
+            },
+          ),
           const SizedBox(height: 8),
           FilterBar(children: [
             AppFilterChip(
@@ -224,8 +243,7 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
                 ),
                 title: service.name,
                 subtitle:
-                    '${service.wingCode ?? ''}${service.flatNumber == null ? '' : '-${service.flatNumber}'}'
-                    '${service.quantity > 1 ? ' · Qty ${service.quantity}' : ''}\n'
+                    '${service.flatLabel}${service.quantity > 1 ? ' · Qty ${service.quantity}' : ''}\n'
                     '${fmtIsoDate(service.effectiveFrom)}'
                     '${service.effectiveTo == null ? '' : ' → ${fmtIsoDate(service.effectiveTo!)}'}',
                 badges: [
@@ -247,9 +265,50 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
 }
 
 class _ServicesBundle {
-  const _ServicesBundle({required this.wings, required this.services});
+  const _ServicesBundle({
+    required this.wings,
+    required this.flats,
+    required this.services,
+  });
   final List<WingSummary> wings;
+  final List<FlatSummary> flats;
   final Paged<AdditionalService> services;
+}
+
+class _FlatPicker extends StatelessWidget {
+  const _FlatPicker({
+    required this.flats,
+    required this.selectedFlatId,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final List<FlatSummary> flats;
+  final String? selectedFlatId;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String?>(
+      value: selectedFlatId,
+      decoration: const InputDecoration(labelText: 'Flat'),
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('All flats'),
+        ),
+        for (final flat in flats)
+          DropdownMenuItem<String?>(
+            value: flat.id,
+            child: Text(
+              flat.label,
+            ),
+          ),
+      ],
+      onChanged: enabled ? onChanged : null,
+    );
+  }
 }
 
 class LiveAdditionalServiceFormPage extends StatefulWidget {
@@ -288,10 +347,8 @@ class _LiveAdditionalServiceFormPageState
     if (session == null) throw StateError('Not signed in.');
     final repos = ensureLiveRepositories(session.api);
     final wings = await repos.society.wings();
-    final flats = await repos.society.listFlats(
-      query: const ListFlatsQuery(limit: 200),
-    );
-    return _FormLookups(wings: wings, flats: flats.items);
+    final flats = await repos.society.listAllFlats(isActive: true);
+    return _FormLookups(wings: wings, flats: flats);
   }
 
   @override
@@ -350,8 +407,8 @@ class _LiveAdditionalServiceFormPageState
                 : description.text.trim(),
             monthlyChargePaise: paise,
             quantity: qty,
-            effectiveFrom: effectiveFrom.toUtc().toIso8601String(),
-            effectiveTo: effectiveTo?.toUtc().toIso8601String(),
+            effectiveFrom: civilDateToIso(effectiveFrom),
+            effectiveTo: effectiveTo == null ? null : civilDateToIso(effectiveTo!),
             clearEffectiveTo: effectiveTo == null,
           ),
         );
@@ -377,8 +434,8 @@ class _LiveAdditionalServiceFormPageState
                 : description.text.trim(),
             monthlyChargePaise: paise,
             quantity: qty,
-            effectiveFrom: effectiveFrom.toUtc().toIso8601String(),
-            effectiveTo: effectiveTo?.toUtc().toIso8601String(),
+            effectiveFrom: civilDateToIso(effectiveFrom),
+            effectiveTo: effectiveTo == null ? null : civilDateToIso(effectiveTo!),
           ),
         );
       }
@@ -386,6 +443,27 @@ class _LiveAdditionalServiceFormPageState
       if (!mounted) return;
       showSuccessSnack(
           context, editing ? 'Service updated.' : 'Service added.');
+      Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => error = additionalServiceError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _activate() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    setState(() => busy = true);
+    try {
+      final session = authSession!;
+      await ensureLiveRepositories(session.api).billing.updateAdditionalService(
+            existing.id,
+            const UpdateAdditionalServiceRequest(isActive: true),
+          );
+      ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
+      if (!mounted) return;
+      showSuccessSnack(context, 'Service activated.');
       Navigator.pop(context, true);
     } catch (e) {
       setState(() => error = additionalServiceError(e));
@@ -605,6 +683,14 @@ class _LiveAdditionalServiceFormPageState
                   icon: Icons.block_outlined,
                   destructive: true,
                   onPressed: busy ? null : _deactivate,
+                ),
+              ],
+              if (editing && !widget.existing!.isActive) ...[
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: 'Activate service',
+                  icon: Icons.check_circle_outline,
+                  onPressed: busy ? null : _activate,
                 ),
               ],
               InlineError(error),

@@ -33,11 +33,14 @@ void main() {
         'wingCode': 'V',
         'societyName': 'Apna Society',
         'societyCode': 'APNA',
+        'parkingNumber': 'B-12',
       });
       expect(v.residentName, 'Owner One');
       expect(v.makeModelLabel, 'Honda City');
       expect(v.flatLabel, 'V-101');
       expect(v.societyName, 'Apna Society');
+      expect(v.parkingNumber, 'B-12');
+      expect(v.parkingLabel, 'B-12');
     });
 
     test('vehicle drafts skip blanks and reject invalid plates', () {

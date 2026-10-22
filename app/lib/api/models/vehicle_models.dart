@@ -1,4 +1,5 @@
 import '../http/json_read.dart';
+import 'flat_label.dart';
 
 /// Backend `VEHICLE_TYPES` / slot `parkingType`.
 const kApiVehicleTypes = ['TWO_WHEELER', 'FOUR_WHEELER', 'OTHER'];
@@ -51,6 +52,7 @@ class Vehicle {
     this.deactivatedAt,
     this.deactivationReason,
     this.activeAllocationId,
+    this.parkingNumber,
     this.parkingSlotId,
     this.residentName,
     this.flatNumber,
@@ -68,6 +70,7 @@ class Vehicle {
   final String? make;
   final String? model;
   final String? colour;
+  final String? parkingNumber;
   final bool isActive;
   final String? deactivatedAt;
   final String? deactivationReason;
@@ -89,18 +92,14 @@ class Vehicle {
     return parts.isEmpty ? '—' : parts.join(' ');
   }
 
+  String get parkingLabel {
+    final n = (parkingNumber ?? '').trim();
+    return n.isEmpty ? '—' : n;
+  }
+
   String get flatLabel {
-    final number = (flatNumber ?? '').trim();
-    final wing = (wingCode ?? '').trim();
-    if (number.isEmpty) return flatId;
-    if (wing.isEmpty) return number;
-    final upperNumber = number.toUpperCase();
-    final upperWing = wing.toUpperCase();
-    if (upperNumber.startsWith('$upperWing-') ||
-        upperNumber.startsWith(upperWing)) {
-      return number;
-    }
-    return '$wing-$number';
+    final label = formatFlatLabel(wingCode, flatNumber);
+    return label.isEmpty ? flatId : label;
   }
 
   factory Vehicle.fromJson(Object? data) {
@@ -115,6 +114,7 @@ class Vehicle {
       make: optionalString(json, 'make'),
       model: optionalString(json, 'model'),
       colour: optionalString(json, 'colour'),
+      parkingNumber: optionalString(json, 'parkingNumber'),
       isActive: requireBool(json, 'isActive'),
       deactivatedAt: optionalString(json, 'deactivatedAt'),
       deactivationReason: optionalString(json, 'deactivationReason'),
@@ -151,6 +151,7 @@ class RegisterVehicleRequest {
     this.make,
     this.model,
     this.colour,
+    this.parkingNumber,
   });
 
   final String flatId;
@@ -159,6 +160,7 @@ class RegisterVehicleRequest {
   final String? make;
   final String? model;
   final String? colour;
+  final String? parkingNumber;
 
   Map<String, Object?> toJson() => {
         'flatId': flatId,
@@ -167,6 +169,7 @@ class RegisterVehicleRequest {
         'make': make,
         'model': model,
         'colour': colour,
+        'parkingNumber': parkingNumber,
       };
 }
 
@@ -177,6 +180,7 @@ class VehicleDraftPayload {
     this.make,
     this.model,
     this.colour,
+    this.parkingNumber,
   });
 
   final String vehicleType;
@@ -184,6 +188,7 @@ class VehicleDraftPayload {
   final String? make;
   final String? model;
   final String? colour;
+  final String? parkingNumber;
 
   Map<String, Object?> toJson() => omitNulls({
         'vehicleType': vehicleType,
@@ -191,6 +196,7 @@ class VehicleDraftPayload {
         'make': make,
         'model': model,
         'colour': colour,
+        'parkingNumber': parkingNumber,
       });
 }
 
@@ -203,6 +209,7 @@ class AdminRegisterVehicleRequest {
     this.make,
     this.model,
     this.colour,
+    this.parkingNumber,
   });
 
   final String flatId;
@@ -212,6 +219,7 @@ class AdminRegisterVehicleRequest {
   final String? make;
   final String? model;
   final String? colour;
+  final String? parkingNumber;
 
   Map<String, Object?> toJson() => omitNulls({
         'flatId': flatId,
@@ -221,6 +229,7 @@ class AdminRegisterVehicleRequest {
         'make': make,
         'model': model,
         'colour': colour,
+        'parkingNumber': parkingNumber,
       });
 }
 

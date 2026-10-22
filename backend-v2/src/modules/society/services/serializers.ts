@@ -1,4 +1,5 @@
 import type { FlatType, OccupancyStatus } from '../../../config/constants';
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { DEFAULT_TIMEZONE } from '../../../config/constants';
 import type { FlatSummary, ResidentSummary, SocietySummary, WingSummary } from '../types/society.types';
 
@@ -103,6 +104,7 @@ export function serializeFlat(
     wingCode: extras.wingCode,
     wingName: extras.wingName,
     number: flat.number,
+    label: formatFlatLabel(extras.wingCode, flat.number),
     floor: flat.floor,
     position: flat.position,
     flatType: flat.flatType,

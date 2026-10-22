@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../../middleware/authenticate';
+import { requireRoles } from '../../../middleware/authorize';
 import { validateParams } from '../../../middleware/validate';
 import { asyncHandler } from '../../../utils/async-handler';
 import { flatIdParamSchema } from '../../society/validators/admin.validators';
@@ -19,7 +20,7 @@ import residentVisitorRoutes from '../../visitors/routes/resident-visitor.routes
 
 const router = Router();
 
-router.use(authenticate);
+router.use(authenticate, requireRoles('OWNER', 'TENANT', 'ADMIN'));
 
 router.get('/profile', asyncHandler(residentProfileHandler));
 router.get('/flats', asyncHandler(residentFlatsHandler));

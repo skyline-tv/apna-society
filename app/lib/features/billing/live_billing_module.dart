@@ -32,6 +32,10 @@ String billingErrorMessage(Object error) {
         return 'Cannot cancel a bill that already has payments.';
       case 'PAYMENTS_LIVE_DISABLED':
         return 'Online payments are not enabled on the server yet.';
+      case 'DEMO_PAYMENTS_DISABLED':
+        return 'Payment simulation is not available while live payments are enabled.';
+      case 'DEMO_PROVIDER_REQUIRED':
+        return 'Payment simulation requires the mock payment provider.';
       case 'INVALID_GATEWAY_SIGNATURE':
         return 'Payment could not be verified. Contact the society office if money was deducted.';
       case 'NOT_BILL_OWNER':
@@ -141,7 +145,7 @@ class _BillRow extends StatelessWidget {
           AppAvatar(icon: Icons.receipt_long_outlined, color: tone, size: 42),
       title: _periodLabel(bill),
       subtitle:
-          '${showFlat ? '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot} · ' : ''}'
+          '${showFlat ? '${bill.flatLabel} · ' : ''}'
           '${bill.billNumber}\n'
           '${_isOverdue(bill) ? 'Was due' : 'Due'} ${fmtIsoDate(bill.dueDate)}',
       badges: [StatusBadge(_billStatusLabel(bill.status))],
@@ -151,7 +155,14 @@ class _BillRow extends StatelessWidget {
         children: [
           Text(moneyPaise(settled ? bill.totalAmountPaise : due),
               style: T.money.copyWith(fontSize: 15)),
-          Text(settled ? 'total' : 'due', style: T.caption),
+          Text(
+            settled
+                ? 'total'
+                : bill.interestAccruedPaise > 0
+                    ? 'incl. ${moneyPaise(bill.interestAccruedPaise)} interest'
+                    : 'due',
+            style: T.caption,
+          ),
         ],
       ),
       showChevron: true,
@@ -231,7 +242,6 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
   String? occupancyFilter;
   bool? ownerAssignedFilter;
   int page = 1;
-  bool _refreshingInterest = false;
   late Future<_AdminBillsBundle> _future = _load();
 
   Future<_AdminBillsBundle> _load({bool force = false}) async {
@@ -266,35 +276,6 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
     if (ok == true && mounted) reload(resetPage: true);
   }
 
-  Future<void> _refreshInterest() async {
-    if (_refreshingInterest) return;
-    final ok = await confirmDialog(
-      context,
-      title: 'Refresh late-payment interest?',
-      message:
-          'The server recalculates accrued interest on all open bills as of today.',
-      confirmLabel: 'Refresh',
-      icon: Icons.percent_rounded,
-    );
-    if (!ok || !mounted) return;
-    setState(() => _refreshingInterest = true);
-    try {
-      final session = authSession!;
-      final result =
-          await ensureLiveRepositories(session.api).billing.refreshInterest();
-      ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
-      if (!mounted) return;
-      showSuccessSnack(context,
-          'Updated interest on ${result.updated} ${result.updated == 1 ? 'bill' : 'bills'}');
-      reload();
-    } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, billingErrorMessage(e));
-    } finally {
-      if (mounted) setState(() => _refreshingInterest = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_AdminBillsBundle>(
@@ -325,42 +306,20 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
             padding: Sp.pagePadding,
             children: [
               HeroMoneyCard(
-                label: 'Outstanding principal',
-                amount: moneyPaise(summary.totalOutstandingPrincipalPaise),
+                label: 'Total payable',
+                amount: moneyPaise(billingSummaryPayablePaise(summary)),
                 subtitle:
-                    '${summary.billCount} bills · ${collectedPct.toStringAsFixed(0)}% collected'
-                    '${summary.totalAccruedInterestPaise > 0 ? ' · Interest ${moneyPaise(summary.totalAccruedInterestPaise)}' : ''}',
-                child: Row(children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: C.navy),
-                      onPressed: _generate,
-                      icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                      label: const Text('Generate bills'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        backgroundColor: Colors.transparent,
-                        side: const BorderSide(color: Color(0x66FFFFFF)),
-                      ),
-                      onPressed: _refreshingInterest ? null : _refreshInterest,
-                      icon: _refreshingInterest
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.percent_rounded, size: 18),
-                      label: const Text('Interest'),
-                    ),
-                  ),
-                ]),
+                    'Principal ${moneyPaise(summary.totalOutstandingPrincipalPaise)}'
+                    ' · Interest ${moneyPaise(summary.totalAccruedInterestPaise)}'
+                    ' · ${summary.billCount} bills',
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: C.navy),
+                  onPressed: _generate,
+                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                  label: const Text('Generate bills'),
+                ),
               ),
               const SizedBox(height: 12),
               CollectionBar(
@@ -397,11 +356,21 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                   accent: C.green,
                 ),
                 StatCard(
-                  title: 'Outstanding',
+                  title: 'Outstanding principal',
                   value: moneyPaise(summary.totalOutstandingPrincipalPaise),
                   icon: Icons.account_balance_wallet_outlined,
-                  caption:
-                      'Interest ${moneyPaise(summary.totalAccruedInterestPaise)}',
+                ),
+                StatCard(
+                  title: 'Accrued interest',
+                  value: moneyPaise(summary.totalAccruedInterestPaise),
+                  icon: Icons.percent_rounded,
+                  caption: '24% p.a. simple daily',
+                ),
+                StatCard(
+                  title: 'Total payable',
+                  value: moneyPaise(billingSummaryPayablePaise(summary)),
+                  icon: Icons.payments_outlined,
+                  caption: 'Principal + interest',
                 ),
                 StatCard(
                   title: 'Overdue bills',
@@ -778,7 +747,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                '${rows[i].wingCode}-${rows[i].number}',
+                                rows[i].label,
                                 style: T.bodyStrong,
                               ),
                             ),
@@ -910,7 +879,7 @@ class _LiveEligibleFlatsPageState extends State<LiveEligibleFlatsPage> {
                 final f = rows[i - 1];
                 return ListRow(
                   leading: AppAvatar(text: f.wingCode, square: true),
-                  title: '${f.wingCode}-${f.number}',
+                  title: f.label,
                   subtitle:
                       '${f.flatType} · ${humanizeStatus(f.occupancyStatus)}'
                       '${f.ownerAssigned ? '' : ' · Unassigned'}'
@@ -1040,7 +1009,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
       context,
       title: 'Cancel this bill?',
       message:
-          '${bill.billNumber} for ${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot} will be marked cancelled. This cannot be undone.',
+          '${bill.billNumber} for ${bill.flatLabel} will be marked cancelled. This cannot be undone.',
       label: 'Reason',
       confirmLabel: 'Cancel bill',
       cancelLabel: 'Keep bill',
@@ -1133,11 +1102,17 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                   if (adjustPaise != 0)
                     DetailRow('Adjustment',
                         '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}'),
-                  DetailRow('Total', moneyPaise(bill.totalAmountPaise),
+                  DetailRow('Original bill amount',
+                      moneyPaise(bill.totalAmountPaise),
                       emphasize: true),
                   DetailRow('Paid', moneyPaise(bill.amountPaidPaise)),
                   DetailRow('Outstanding principal',
                       moneyPaise(bill.outstandingPrincipalPaise)),
+                  DetailRow('Accrued interest',
+                      moneyPaise(interest.accruedInterestPaise)),
+                  DetailRow('Total payable',
+                      moneyPaise(billAmountDuePaise(bill)),
+                      emphasize: true),
                 ]),
                 DetailCard(title: 'Late-payment interest', children: [
                   DetailRow('Accrued interest',
@@ -1230,7 +1205,7 @@ class _BillHeader extends StatelessWidget {
   Widget build(BuildContext context) => DetailHero(
         title: _periodLabel(bill),
         subtitle:
-            '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot} · ${bill.billNumber}',
+            '${bill.flatLabel} · ${bill.billNumber}',
         leading: const AppAvatar(
             icon: Icons.receipt_long_outlined, size: Sz.avatarLg, square: true),
         badges: [
@@ -1336,7 +1311,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           title: 'Applying to',
           rows: [
             ('Bill', bill.billNumber),
-            ('Flat', '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot}'),
+            ('Flat', bill.flatLabel),
             ('Period', _periodLabel(bill)),
             (
               'Outstanding principal',
@@ -1848,7 +1823,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                       DetailRow('Period', _periodLabel(bill)),
                       DetailRow('Due date', fmtIsoDate(bill.dueDate)),
                       DetailRow('Flat',
-                          '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot}'),
+                          bill.flatLabel),
                       DetailRow('Bill number', bill.billNumber),
                     ]),
                     DetailCard(title: 'Breakdown', children: [
@@ -1856,12 +1831,18 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                       if (adjustPaise != 0)
                         DetailRow('Adjustment',
                             '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}'),
-                      DetailRow('Total', moneyPaise(bill.totalAmountPaise),
+                      DetailRow('Original bill amount',
+                          moneyPaise(bill.totalAmountPaise),
                           emphasize: true),
                       DetailRow(
                           'Paid so far', moneyPaise(bill.amountPaidPaise)),
                       DetailRow('Outstanding principal',
                           moneyPaise(bill.outstandingPrincipalPaise)),
+                      DetailRow('Accrued interest',
+                          moneyPaise(interest.accruedInterestPaise)),
+                      DetailRow('Total payable',
+                          moneyPaise(billAmountDuePaise(bill)),
+                          emphasize: true),
                     ]),
                     if (open)
                       DetailCard(title: 'Late-payment interest', children: [
@@ -1873,7 +1854,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                             '${interest.annualInterestRatePercent}% p.a.'),
                       ]),
                     const InfoNote(
-                      'Interest is calculated by the society server as simple daily interest. '
+                      'Interest accrues automatically after the due date. '
+                      'The society server calculates simple daily interest. '
                       'This app never recalculates interest locally.',
                     ),
                     const SizedBox(height: 12),
@@ -2097,7 +2079,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
                     DetailRow('Paid at', fmtIsoDateTime(r.paidAt)),
                     DetailRow('Method', _paymentMethodLabel(r.paymentMethod)),
                     DetailRow('Flat',
-                        '${r.wingCodeSnapshot}-${r.flatNumberSnapshot}'),
+                        r.flatLabel),
                     DetailRow('Owner', r.ownerNameSnapshot),
                     if (r.transactionReference != null)
                       DetailRow('Reference', r.transactionReference!),

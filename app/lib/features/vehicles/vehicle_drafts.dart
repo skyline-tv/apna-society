@@ -1,8 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../api/http/api_exception.dart';
 import '../../api/models/vehicle_models.dart';
 import '../../ui/components.dart';
+
+String vehicleErrorMessage(Object error) {
+  if (error is ApiException) {
+    switch (error.code) {
+      case 'DUPLICATE_VEHICLE':
+        return 'This registration number is already registered in the society.';
+      case 'INVALID_REGISTRATION_NUMBER':
+        return 'Invalid Indian registration number format.';
+      case 'VEHICLE_INACTIVE':
+        return 'This vehicle is inactive.';
+      case 'VEHICLE_FLAT_MISMATCH':
+        return 'Vehicle does not belong to the selected flat.';
+      case 'SLOT_INACTIVE':
+        return 'This parking slot is inactive.';
+      case 'INCOMPATIBLE_SLOT_TYPE':
+        return 'Slot type does not match the vehicle type.';
+      case 'DUPLICATE_SLOT':
+        return 'A parking slot with this number already exists.';
+      case 'DUPLICATE_ALLOCATION':
+        return 'Vehicle or slot already has an active allocation.';
+      case 'VEHICLE_HAS_ALLOCATION':
+        return 'This vehicle still has a parking allocation. Refresh and try again.';
+      case 'SLOT_OCCUPIED':
+        return 'Release the allocation before deactivating this slot.';
+      case 'ALLOCATION_CONFLICT':
+        return 'Allocation conflict. Refresh and try again.';
+      case 'DUPLICATE_ACTIVE_ENTRY':
+        return 'This plate is already marked inside.';
+      case 'EXIT_CONFLICT':
+        return 'Exit conflict. Refresh and try again.';
+      case 'VEHICLE_TYPE_REQUIRED':
+        return 'Vehicle type is required for unregistered plates.';
+      case 'REGISTRATION_MISMATCH':
+        return 'Registration number does not match the selected vehicle.';
+      case 'RESIDENTIAL_ACCESS_DENIED':
+        return 'Residential vehicle access is not available for this flat.';
+      case 'RESIDENT_VEHICLE_READ_ONLY':
+        return 'Vehicles are managed by the society admin. You can view your registered vehicles here.';
+      case 'NOT_FLAT_OCCUPANT':
+        return 'This resident is not the active owner or tenant of that flat.';
+      case 'FORBIDDEN_ROLE':
+        return 'You do not have access to this action.';
+      default:
+        return error.message;
+    }
+  }
+  if (error is StateError) return error.message;
+  return '$error';
+}
 
 class VehicleDraftControllers {
   VehicleDraftControllers({
@@ -10,31 +60,39 @@ class VehicleDraftControllers {
     String registration = '',
     String make = '',
     String model = '',
+    String parkingNumber = '',
   })  : registration = TextEditingController(text: registration),
         make = TextEditingController(text: make),
-        model = TextEditingController(text: model);
+        model = TextEditingController(text: model),
+        parkingNumber = TextEditingController(text: parkingNumber);
 
   String vehicleType;
   final TextEditingController registration;
   final TextEditingController make;
   final TextEditingController model;
+  final TextEditingController parkingNumber;
 
   void dispose() {
     registration.dispose();
     make.dispose();
     model.dispose();
+    parkingNumber.dispose();
   }
 
   VehicleDraftPayload? toPayloadOrNull() {
     final plate = normalizeRegistrationNumber(registration.text);
     final makeText = make.text.trim();
     final modelText = model.text.trim();
-    if (plate.isEmpty && makeText.isEmpty && modelText.isEmpty) return null;
+    final parking = parkingNumber.text.trim();
+    if (plate.isEmpty && makeText.isEmpty && modelText.isEmpty && parking.isEmpty) {
+      return null;
+    }
     return VehicleDraftPayload(
       vehicleType: vehicleType,
       registrationNumber: plate,
       make: makeText.isEmpty ? null : makeText,
       model: modelText.isEmpty ? null : modelText,
+      parkingNumber: parking.isEmpty ? null : parking,
     );
   }
 }
@@ -208,6 +266,17 @@ class _VehicleDraftCard extends StatelessWidget {
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
               labelText: 'Model',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: draft.parkingNumber,
+            enabled: enabled,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'Parking number',
+              helperText: 'Bay or slot label, for example B-12',
               border: OutlineInputBorder(),
             ),
           ),

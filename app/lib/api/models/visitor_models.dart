@@ -1,4 +1,5 @@
 import '../http/json_read.dart';
+import 'flat_label.dart';
 
 /// Backend `VISITOR_TYPES`.
 const kVisitorTypes = [
@@ -94,6 +95,9 @@ class Visitor {
     this.vehicleNumber,
     this.otpExpiresAt,
     this.otpAttempts,
+    this.otpVerified = false,
+    this.residentName,
+    this.societyName,
     this.approvedAt,
     this.rejectedAt,
     this.entryAt,
@@ -121,7 +125,10 @@ class Visitor {
   final String entryStatus;
   final String? otpExpiresAt;
   final bool hasActiveOtp;
+  final bool otpVerified;
   final int? otpAttempts;
+  final String? residentName;
+  final String? societyName;
   final String? approvedAt;
   final String? rejectedAt;
   final String? entryAt;
@@ -132,6 +139,8 @@ class Visitor {
   final String? notes;
   final String flatNumberSnapshot;
   final String wingCodeSnapshot;
+  String get flatLabel =>
+      formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
   final String? expiredAt;
   final String createdAt;
   final String updatedAt;
@@ -149,13 +158,17 @@ class Visitor {
       vehicleNumber: optionalString(json, 'vehicleNumber'),
       numberOfVisitors: requireInt(json, 'numberOfVisitors'),
       requestedByGuardId: requireString(json, 'requestedByGuardId'),
-      assignedResidentUserId: requireString(json, 'assignedResidentUserId'),
-      assignedResidentRole: requireString(json, 'assignedResidentRole'),
+      assignedResidentUserId:
+          optionalString(json, 'assignedResidentUserId') ?? '',
+      assignedResidentRole: optionalString(json, 'assignedResidentRole') ?? '',
       approvalStatus: requireString(json, 'approvalStatus'),
       entryStatus: requireString(json, 'entryStatus'),
       otpExpiresAt: optionalString(json, 'otpExpiresAt'),
       hasActiveOtp: requireBool(json, 'hasActiveOtp'),
+      otpVerified: optionalBool(json, 'otpVerified') ?? false,
       otpAttempts: optionalInt(json, 'otpAttempts'),
+      residentName: optionalString(json, 'residentName'),
+      societyName: optionalString(json, 'societyName'),
       approvedAt: optionalString(json, 'approvedAt'),
       rejectedAt: optionalString(json, 'rejectedAt'),
       entryAt: optionalString(json, 'entryAt'),
@@ -324,7 +337,7 @@ class VisitorEventPayload {
     required this.visitorType,
     required this.approvalStatus,
     required this.entryStatus,
-    required this.assignedResidentUserId,
+    this.assignedResidentUserId,
   });
 
   final String visitorId;
@@ -336,7 +349,7 @@ class VisitorEventPayload {
   final String visitorType;
   final String approvalStatus;
   final String entryStatus;
-  final String assignedResidentUserId;
+  final String? assignedResidentUserId;
 
   factory VisitorEventPayload.fromJson(Object? data) {
     final json = requireMap(data, 'visitor event');
@@ -350,7 +363,8 @@ class VisitorEventPayload {
       visitorType: requireString(json, 'visitorType'),
       approvalStatus: requireString(json, 'approvalStatus'),
       entryStatus: requireString(json, 'entryStatus'),
-      assignedResidentUserId: requireString(json, 'assignedResidentUserId'),
+      assignedResidentUserId:
+          optionalString(json, 'assignedResidentUserId') ?? '',
     );
   }
 }

@@ -1,5 +1,6 @@
 import '../http/api_exception.dart';
 import '../http/json_read.dart';
+import 'flat_label.dart';
 
 class ResidentSummary {
   const ResidentSummary({
@@ -196,6 +197,8 @@ class FlatSummary {
   final String createdAt;
   final String updatedAt;
 
+  String get label => formatFlatLabel(wingCode, number);
+
   factory FlatSummary.fromJson(Object? data) {
     final json = requireMap(data, 'flat');
     final parking = json['parking'];
@@ -387,21 +390,20 @@ class SocietyFlatPick {
     required this.id,
     required this.wingId,
     required this.number,
-    required this.occupancyStatus,
     this.wingCode,
+    this.apiLabel,
   });
 
   final String id;
   final String wingId;
   final String number;
-  final String occupancyStatus;
   final String? wingCode;
+  final String? apiLabel;
 
-  String get label {
-    final wing = wingCode ?? '?';
-    final vacant = occupancyStatus == 'VACANT' ? ' (vacant)' : '';
-    return '$wing-$number$vacant';
-  }
+  String get label =>
+      (apiLabel != null && apiLabel!.trim().isNotEmpty)
+          ? apiLabel!
+          : formatFlatLabel(wingCode, number);
 
   factory SocietyFlatPick.fromLeanJson(
     Object? data, {
@@ -418,12 +420,14 @@ class SocietyFlatPick {
     final wingId = wingRaw is String
         ? wingRaw
         : (wingRaw?.toString() ?? '');
+    final wingCode =
+        optionalString(json, 'wingCode') ?? wingCodesById[wingId];
     return SocietyFlatPick(
       id: id,
       wingId: wingId,
       number: requireString(json, 'number'),
-      occupancyStatus: optionalString(json, 'occupancyStatus') ?? 'VACANT',
-      wingCode: wingCodesById[wingId],
+      wingCode: wingCode,
+      apiLabel: optionalString(json, 'label'),
     );
   }
 }

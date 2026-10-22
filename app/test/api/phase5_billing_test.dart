@@ -138,6 +138,43 @@ void main() {
       expect(page.items.first.lineItems.last.name, 'Additional car parking');
     });
 
+    test('total payable is principal plus accrued interest', () {
+      final bill = Bill.fromJson({
+        ..._bill(billId, flatId),
+        'interestAccruedPaise': 1200,
+        'totalPayablePaise': 401200,
+      });
+      expect(billAmountDuePaise(bill), 401200);
+      expect(
+        billingSummaryPayablePaise(
+          BillingSummary(
+            totalBilledPaise: 400000,
+            totalCollectedPaise: 0,
+            totalOutstandingPrincipalPaise: 400000,
+            totalAccruedInterestPaise: 1200,
+            paidBills: 0,
+            partiallyPaidBills: 0,
+            overdueBills: 1,
+            issuedBills: 0,
+            cancelledBills: 0,
+            vacantOrUnassignedFlatsSkipped: 0,
+            collectionPercentage: 0,
+            billCount: 1,
+            wingWise: const [],
+            paymentsByStatus: const {},
+          ),
+        ),
+        401200,
+      );
+    });
+
+    test('civilDateToIso uses IST midnight not UTC shift', () {
+      expect(
+        civilDateToIso(DateTime(2026, 4, 15)),
+        '2026-04-15T00:00:00.000+05:30',
+      );
+    });
+
     test('enforces a 10-active-services-per-flat cap in models and API', () {
       AdditionalService serviceAt(int i, {bool active = true}) {
         return AdditionalService.fromJson({

@@ -195,6 +195,7 @@ class VehicleRepository {
     String? colour,
     String? vehicleType,
     String? registrationNumber,
+    String? parkingNumber,
   }) {
     return _locked(() async {
       final v = await _api.adminUpdate(
@@ -204,6 +205,7 @@ class VehicleRepository {
         colour: colour,
         vehicleType: vehicleType,
         registrationNumber: registrationNumber,
+        parkingNumber: parkingNumber,
       );
       invalidateCaches(vehicleId: vehicleId);
       _vehicles[v.id] = v;

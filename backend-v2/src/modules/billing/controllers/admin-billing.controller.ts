@@ -9,7 +9,7 @@ import {
   listEligibleFlats,
 } from '../services/bill-generation.service';
 import { getBillingSummary } from '../services/billing-summary.service';
-import { getBillInterest, refreshSocietyInterestSummaries } from '../services/interest.service';
+import { getBillInterest } from '../services/interest.service';
 import {
   getPayment,
   getReceipt,
@@ -70,11 +70,6 @@ export async function billInterestHandler(req: Request, res: Response): Promise<
     String(req.params.billId),
     asOf,
   );
-  res.json({ success: true, data });
-}
-
-export async function refreshInterestHandler(req: Request, res: Response): Promise<void> {
-  const data = await refreshSocietyInterestSummaries(getRequestSocietyId(req));
   res.json({ success: true, data });
 }
 

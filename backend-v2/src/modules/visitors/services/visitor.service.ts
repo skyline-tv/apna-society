@@ -11,10 +11,11 @@ import { parseObjectId } from '../../../utils/object-id';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { DEV_BYPASS_OTP } from '../../auth/providers/otp-dev-bypass';
 import { FlatModel } from '../../society/models/flat.model';
+import { SocietyModel } from '../../society/models/society.model';
 import { WingModel } from '../../society/models/wing.model';
 import { MembershipModel } from '../../users/models/membership.model';
 import { UserModel } from '../../users/models/user.model';
-import { VisitorLogModel } from '../models/visitor-log.model';
+import { VisitorLogModel, type VisitorLogDocument } from '../models/visitor-log.model';
 import { normalizeEmail } from '../../../utils/crypto';
 import { notifyBusinessEvent } from '../../notifications/services/business-notify.service';
 import { deliverVisitorEntryOtp } from '../providers/visitor-otp-email.provider';
@@ -22,6 +23,7 @@ import {
   emitVisitorEvent,
   visitorEventPayloadFromDoc,
 } from './visitor-events.service';
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { serializeVisitor } from './visitor.serializers';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
@@ -174,7 +176,7 @@ export async function createVisitorRequest(
     recipientUserId: String(visitor.assignedResidentUserId),
     type: 'VISITOR_REQUEST',
     title: 'Visitor approval requested',
-    body: `${visitor.visitorName} is waiting at the gate for ${visitor.wingCodeSnapshot}-${visitor.flatNumberSnapshot}`,
+    body: `${visitor.visitorName} is waiting at the gate for ${formatFlatLabel(visitor.wingCodeSnapshot, visitor.flatNumberSnapshot)}`,
     relatedEntityType: 'VisitorLog',
     relatedEntityId: String(visitor._id),
     idempotencyKey: `VISITOR_REQUEST:${String(visitor._id)}`,
@@ -385,7 +387,7 @@ export async function approveVisitor(
     return claimed;
   });
 
-  const flatLabel = `${updated.wingCodeSnapshot}-${updated.flatNumberSnapshot}`;
+  const flatLabel = formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot);
   if (otpDevBypass) {
     // Fixed OTP 123456 — skip email/MSG91 while SMS_OTP_DEV_BYPASS is on.
   } else {
@@ -404,7 +406,7 @@ export async function approveVisitor(
     recipientUserId: String(updated.assignedResidentUserId),
     type: 'VISITOR_APPROVED',
     title: 'Visitor approved',
-    body: `${updated.visitorName} was approved for ${updated.wingCodeSnapshot}-${updated.flatNumberSnapshot}`,
+    body: `${updated.visitorName} was approved for ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
     relatedEntityType: 'VisitorLog',
     relatedEntityId: String(updated._id),
     idempotencyKey: `VISITOR_APPROVED:${String(updated._id)}`,
@@ -477,7 +479,7 @@ export async function rejectVisitor(
     recipientUserId: String(updated.assignedResidentUserId),
     type: 'VISITOR_REJECTED',
     title: 'Visitor rejected',
-    body: `${updated.visitorName} was rejected for ${updated.wingCodeSnapshot}-${updated.flatNumberSnapshot}`,
+    body: `${updated.visitorName} was rejected for ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
     relatedEntityType: 'VisitorLog',
     relatedEntityId: String(updated._id),
     idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}`,
@@ -543,20 +545,72 @@ export async function cancelVisitor(
   return serializeVisitor(updated);
 }
 
-export async function verifyEntryOtp(
-  societyId: string,
-  visitorId: string,
-  otp: string,
-  guardUserId: string,
+async function serializeAuthorizedVisitor(doc: VisitorLogDocument) {
+  const society = await SocietyModel.findById(doc.societyId).select('name').lean();
+  return {
+    ...serializeVisitor(doc, {
+      includeOtpMeta: true,
+      forGuard: true,
+      revealVisitorContact: true,
+    }),
+    societyName: society?.name,
+    otpVerified: Boolean(doc.otpVerifiedAt),
+  };
+}
+
+async function markOtpVerified(
+  visitor: {
+    _id: { toString(): string };
+    societyId: { toString(): string };
+    entryOtpHash?: string;
+  },
   actor: Actor,
 ) {
-  const env = getEnv();
-  const visitor = await VisitorLogModel.findOne({
-    _id: parseObjectId(visitorId, 'visitorId'),
-    societyId: parseObjectId(societyId, 'societyId'),
-  });
-  if (!visitor) throw notFound('Visitor record not found');
+  const updated = await withTransaction(async (session) => {
+    const claimed = await VisitorLogModel.findOneAndUpdate(
+      {
+        _id: visitor._id,
+        approvalStatus: 'APPROVED',
+        entryStatus: 'NOT_ENTERED',
+        entryOtpHash: visitor.entryOtpHash,
+      },
+      {
+        $set: { otpVerifiedAt: new Date() },
+        $unset: { entryOtpHash: 1, entryOtpExpiresAt: 1 },
+      },
+      { session, new: true },
+    );
+    if (!claimed) {
+      throw conflict('Visitor OTP was already used or entry was recorded', 'ALREADY_ENTERED');
+    }
 
+    await writeAuditLog(
+      {
+        action: 'VISITOR_OTP_VERIFIED',
+        actorUserId: actor.userId,
+        societyId: String(visitor.societyId),
+        targetType: 'VisitorLog',
+        targetId: String(visitor._id),
+        metadata: { success: true },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+    return claimed;
+  });
+
+  return serializeAuthorizedVisitor(updated);
+}
+
+function assertOtpStillUsable(visitor: {
+  approvalStatus: string;
+  entryStatus: string;
+  entryOtpHash?: string;
+  entryOtpExpiresAt?: Date;
+  otpAttempts: number;
+}) {
+  const env = getEnv();
   if (visitor.approvalStatus !== 'APPROVED') {
     throw badRequest('Visitor is not approved for entry', 'NOT_APPROVED');
   }
@@ -572,9 +626,42 @@ export async function verifyEntryOtp(
   if (visitor.otpAttempts >= env.VISITOR_OTP_MAX_ATTEMPTS) {
     throw forbidden('Maximum OTP attempts exceeded', 'OTP_MAX_ATTEMPTS');
   }
+}
+
+/** OTP-only verification. Does not record physical entry. */
+export async function verifyEntryOtpByCode(societyId: string, otp: string, actor: Actor) {
+  const providedHash = hashToken(otp.trim());
+  const matches = await VisitorLogModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    approvalStatus: 'APPROVED',
+    entryStatus: 'NOT_ENTERED',
+    entryOtpHash: providedHash,
+  });
+  if (matches.length !== 1) {
+    throw forbidden('Invalid or expired entry OTP', 'OTP_INVALID');
+  }
+  const visitor = matches[0];
+  assertOtpStillUsable(visitor);
+  return markOtpVerified(visitor, actor);
+}
+
+export async function verifyEntryOtp(
+  societyId: string,
+  visitorId: string,
+  otp: string,
+  _guardUserId: string,
+  actor: Actor,
+) {
+  const visitor = await VisitorLogModel.findOne({
+    _id: parseObjectId(visitorId, 'visitorId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!visitor) throw notFound('Visitor record not found');
+
+  assertOtpStillUsable(visitor);
 
   const providedHash = hashToken(otp.trim());
-  if (!safeEqualHex(providedHash, visitor.entryOtpHash)) {
+  if (!safeEqualHex(providedHash, visitor.entryOtpHash!)) {
     visitor.otpAttempts += 1;
     await visitor.save();
     await writeAuditLog({
@@ -590,13 +677,37 @@ export async function verifyEntryOtp(
     throw forbidden('Invalid entry OTP', 'OTP_INVALID');
   }
 
+  return markOtpVerified(visitor, actor);
+}
+
+export async function confirmVisitorEntry(
+  societyId: string,
+  visitorId: string,
+  guardUserId: string,
+  actor: Actor,
+) {
+  const visitor = await VisitorLogModel.findOne({
+    _id: parseObjectId(visitorId, 'visitorId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!visitor) throw notFound('Visitor record not found');
+  if (visitor.approvalStatus !== 'APPROVED') {
+    throw badRequest('Visitor is not approved for entry', 'NOT_APPROVED');
+  }
+  if (visitor.entryStatus === 'ENTERED' || visitor.entryStatus === 'EXITED') {
+    throw conflict('Visitor entry was already recorded', 'ALREADY_ENTERED');
+  }
+  if (!visitor.otpVerifiedAt) {
+    throw forbidden('Verify the visitor OTP before recording entry', 'OTP_NOT_VERIFIED');
+  }
+
   const updated = await withTransaction(async (session) => {
     const claimed = await VisitorLogModel.findOneAndUpdate(
       {
         _id: visitor._id,
         approvalStatus: 'APPROVED',
         entryStatus: 'NOT_ENTERED',
-        entryOtpHash: visitor.entryOtpHash,
+        otpVerifiedAt: { $exists: true, $ne: null },
       },
       {
         $set: {
@@ -604,7 +715,6 @@ export async function verifyEntryOtp(
           entryAt: new Date(),
           checkedInBy: guardUserId,
         },
-        $unset: { entryOtpHash: 1, entryOtpExpiresAt: 1 },
       },
       { session, new: true },
     );
@@ -612,19 +722,6 @@ export async function verifyEntryOtp(
       throw conflict('Visitor entry was already recorded', 'ALREADY_ENTERED');
     }
 
-    await writeAuditLog(
-      {
-        action: 'VISITOR_OTP_VERIFIED',
-        actorUserId: actor.userId,
-        societyId,
-        targetType: 'VisitorLog',
-        targetId: visitorId,
-        metadata: { success: true },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent,
-      },
-      session,
-    );
     await writeAuditLog(
       {
         action: 'VISITOR_ENTERED',
@@ -646,7 +743,18 @@ export async function verifyEntryOtp(
   });
 
   emitVisitorEvent('visitor:entered', visitorEventPayloadFromDoc(updated));
-  return serializeVisitor(updated, { forGuard: true, includeOtpMeta: true });
+  await notifyBusinessEvent({
+    societyId,
+    recipientUserId: String(updated.assignedResidentUserId),
+    type: 'VISITOR_ENTERED',
+    title: 'Visitor entered',
+    body: `${updated.visitorName} entered ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
+    relatedEntityType: 'VisitorLog',
+    relatedEntityId: String(updated._id),
+    idempotencyKey: `VISITOR_ENTERED:${String(updated._id)}`,
+  });
+
+  return serializeAuthorizedVisitor(updated);
 }
 
 export async function checkoutVisitor(

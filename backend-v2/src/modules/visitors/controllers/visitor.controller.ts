@@ -10,7 +10,9 @@ import {
   getVisitor,
   listVisitorsForSociety,
   rejectVisitor,
+  confirmVisitorEntry,
   verifyEntryOtp,
+  verifyEntryOtpByCode,
 } from '../services/visitor.service';
 import type { CreateVisitorInput, ListVisitorsQuery } from '../validators/visitor.validators';
 
@@ -51,11 +53,30 @@ export async function guardGetVisitorHandler(req: Request, res: Response): Promi
   res.json({ success: true, data });
 }
 
+export async function guardVerifyOtpByCodeHandler(req: Request, res: Response): Promise<void> {
+  const data = await verifyEntryOtpByCode(
+    societyId(req),
+    String((req.body as { otp: string }).otp),
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
 export async function guardVerifyOtpHandler(req: Request, res: Response): Promise<void> {
   const data = await verifyEntryOtp(
     societyId(req),
     String(req.params.visitorId),
     String((req.body as { otp: string }).otp),
+    req.user!.id,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function guardConfirmEntryHandler(req: Request, res: Response): Promise<void> {
+  const data = await confirmVisitorEntry(
+    societyId(req),
+    String(req.params.visitorId),
     req.user!.id,
     actorFrom(req),
   );

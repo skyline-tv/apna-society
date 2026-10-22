@@ -15,7 +15,6 @@ import {
   listBillsHandler,
   listPaymentsHandler,
   offlinePaymentHandler,
-  refreshInterestHandler,
   refundPaymentHandler,
 } from '../controllers/admin-billing.controller';
 import {
@@ -85,7 +84,6 @@ router.get(
   asyncHandler(billingSummaryHandler),
 );
 router.get('/billing/eligible-flats', asyncHandler(eligibleFlatsHandler));
-router.post('/billing/interest/refresh', asyncHandler(refreshInterestHandler));
 
 router.post(
   '/billing/additional-services',

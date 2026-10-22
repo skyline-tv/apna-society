@@ -863,7 +863,7 @@ class _LiveCreateBookingPageState extends State<LiveCreateBookingPage> {
     final flats = authSession?.residentFlats ?? const [];
     for (final fl in flats) {
       if (fl.flat.id == flatId) {
-        return '${fl.flat.wingCode ?? '?'}-${fl.flat.number}';
+        return fl.flat.label;
       }
     }
     return null;
@@ -951,7 +951,7 @@ class _LiveCreateBookingPageState extends State<LiveCreateBookingPage> {
                 DropdownMenuItem(
                   value: fl.flat.id,
                   child:
-                      Text('${fl.flat.wingCode ?? '?'}-${fl.flat.number}'),
+                      Text(fl.flat.label),
                 ),
             ],
             onChanged: _submitting
@@ -1820,7 +1820,7 @@ class _AdminBookingsBundle {
   final Map<String, String> flatLabels;
 }
 
-String _flatSummaryLabel(FlatSummary f) => '${f.wingCode ?? '?'}-${f.number}';
+String _flatSummaryLabel(FlatSummary f) => f.label;
 
 class LiveAdminFacilityBookingsPage extends StatefulWidget {
   const LiveAdminFacilityBookingsPage({super.key});

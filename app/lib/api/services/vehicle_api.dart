@@ -130,6 +130,7 @@ class VehicleApi {
     String? colour,
     String? vehicleType,
     String? registrationNumber,
+    String? parkingNumber,
     String? societyId,
   }) {
     return _client.patch(
@@ -140,6 +141,7 @@ class VehicleApi {
         'colour': colour,
         'vehicleType': vehicleType,
         'registrationNumber': registrationNumber,
+        'parkingNumber': parkingNumber,
       }),
       societyId: societyId,
       decode: Vehicle.fromJson,

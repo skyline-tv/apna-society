@@ -11,7 +11,6 @@ import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/issued_credentials_dialog.dart';
 import '../../ui/load_failure.dart';
-import '../vehicles/live_vehicles_module.dart' show vehicleErrorMessage;
 import '../vehicles/vehicle_drafts.dart';
 
 String _userPhone(AdminUser user) {
@@ -367,11 +366,8 @@ class _AdminProvisionResidentPageState
         .toList();
   }
 
-  String _flatLabel(FlatSummary flat) {
-    final wing = (flat.wingCode ?? '').trim();
-    final label = wing.isEmpty ? flat.number : '$wing-${flat.number}';
-    return '$label · ${humanizeStatus(flat.occupancyStatus)}';
-  }
+  String _flatLabel(FlatSummary flat) =>
+      '${flat.label} · ${humanizeStatus(flat.occupancyStatus)}';
 
   @override
   void dispose() {
@@ -918,6 +914,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
             registrationNumber: payload.registrationNumber,
             make: payload.make,
             model: payload.model,
+            parkingNumber: payload.parkingNumber,
           ),
         );
         repos.invalidateAfterResidentMutation(flatId: selectedFlatId);
@@ -948,6 +945,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
           registrationNumber: payload.registrationNumber,
           make: payload.make,
           model: payload.model,
+          parkingNumber: payload.parkingNumber,
         );
         repos.invalidateAfterResidentMutation(flatId: vehicle.flatId);
         if (!mounted) return;
@@ -1494,6 +1492,7 @@ class _VehicleEditorDialogState extends State<_VehicleEditorDialog> {
     registration: widget.existing?.registrationNumber ?? '',
     make: widget.existing?.make ?? '',
     model: widget.existing?.model ?? '',
+    parkingNumber: widget.existing?.parkingNumber ?? '',
   );
 
   @override
@@ -1570,6 +1569,16 @@ class _VehicleEditorDialogState extends State<_VehicleEditorDialog> {
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
                   labelText: 'Model',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: draft.parkingNumber,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Parking number',
+                  helperText: 'Bay or slot label, for example B-12',
                   border: OutlineInputBorder(),
                 ),
               ),

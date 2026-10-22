@@ -69,22 +69,21 @@ void main() {
     });
 
     test('live assign site uses invalidateAfterResidentMutation', () {
-      final src = File('lib/main.dart').readAsStringSync();
+      final assignSrc =
+          File('lib/features/residents/admin_residents_module.dart')
+              .readAsStringSync();
+      final saveBlock = assignSrc
+          .split('class AssignOccupancyPage')
+          .last
+          .split('Future<void> _save()')
+          .last
+          .split('if (!mounted) return;')
+          .first;
+      expect(saveBlock.contains('repos.resident.clear();'), isFalse);
       expect(
-        src.contains(
+        saveBlock.contains(
           'repos.invalidateAfterResidentMutation(flatId: widget.flatId)',
         ),
-        isTrue,
-      );
-      // Partial-only clear after assign must not remain.
-      final assignBlock = src
-          .split('Future<void> _assign(String role)')
-          .last
-          .split('Future<void> _end')
-          .first;
-      expect(assignBlock.contains('repos.resident.clear();'), isFalse);
-      expect(
-        assignBlock.contains('invalidateAfterResidentMutation'),
         isTrue,
       );
     });
@@ -351,7 +350,6 @@ void main() {
       for (final path in [
         'lib/features/complaints/live_complaints_module.dart',
         'lib/features/facilities/live_facilities_module.dart',
-        'lib/features/vehicles/live_vehicles_module.dart',
       ]) {
         final src = File(path).readAsStringSync();
         expect(src.contains('selectedResidentFlatId'), isTrue, reason: path);

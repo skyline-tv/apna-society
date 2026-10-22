@@ -125,14 +125,6 @@ class BillingApi {
     );
   }
 
-  Future<InterestRefreshResult> refreshInterest({String? societyId}) {
-    return _client.post(
-      '$_admin/billing/interest/refresh',
-      societyId: societyId,
-      decode: InterestRefreshResult.fromJson,
-    );
-  }
-
   Future<PaymentSummary> refundPayment(
     String paymentId, {
     required String reason,
@@ -364,7 +356,7 @@ class BillingApi {
       query: omitNulls({
         'flatId': flatId,
         'wingId': wingId,
-        'isActive': isActive,
+        'isActive': isActive == null ? null : (isActive ? 'true' : 'false'),
         'page': page,
         'limit': limit,
       }),

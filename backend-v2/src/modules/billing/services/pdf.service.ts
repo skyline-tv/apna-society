@@ -1,3 +1,4 @@
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { paiseToRupeesDisplay } from '../utils/money';
 
 /**
@@ -19,7 +20,7 @@ export function buildReceiptPdf(input: {
     'Apna Society — Payment Receipt',
     `Society: ${input.societyName}`,
     `Receipt: ${input.receiptNumber}`,
-    `Flat: ${input.wingCode}-${input.flatNumber}`,
+    `Flat: ${formatFlatLabel(input.wingCode, input.flatNumber)}`,
     `Owner: ${input.ownerName}`,
     `Amount: INR ${paiseToRupeesDisplay(input.amountPaise)}`,
     `Method: ${input.paymentMethod}`,

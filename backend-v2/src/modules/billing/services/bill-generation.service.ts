@@ -2,6 +2,7 @@ import type { ClientSession } from 'mongoose';
 import { withTransaction } from '../../../database/connection';
 import { badRequest, notFound } from '../../../shared/errors/app-error';
 import { isDuplicateKeyError, isTransientTransactionError } from '../../../utils/mongo-errors';
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { parseObjectId } from '../../../utils/object-id';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { notifyBusinessEvent } from '../../notifications/services/business-notify.service';
@@ -23,6 +24,8 @@ import {
 } from '../utils/billing-calendar';
 import { billComputedTotalPaise } from '../utils/bill-totals';
 import { multiplyPaise, rupeesIntegerToPaise } from '../utils/money';
+import { getBillInterest } from './interest.service';
+import { ensureSocietyInterestCurrent } from './interest-worker.service';
 import { chargeAdditionalServiceForPeriod } from '../utils/additional-service-proration';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
@@ -115,11 +118,13 @@ function serializeBill(bill: {
     totalAmountPaise: bill.totalAmountPaise,
     outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
     interestAccruedPaise: bill.interestAccruedPaise,
+    totalPayablePaise: bill.outstandingPrincipalPaise + bill.interestAccruedPaise,
     amountPaidPaise: bill.amountPaidPaise,
     dueDate: bill.dueDate.toISOString(),
     status: bill.status,
     flatNumberSnapshot: bill.flatNumberSnapshot,
     wingCodeSnapshot: bill.wingCodeSnapshot,
+    flatLabel: formatFlatLabel(bill.wingCodeSnapshot, bill.flatNumberSnapshot),
     flatTypeSnapshot: bill.flatTypeSnapshot,
     occupancyStatusSnapshot: bill.occupancyStatusSnapshot,
     floorSnapshot: bill.floorSnapshot,
@@ -409,7 +414,7 @@ export async function generateBills(
           recipientUserId: String(bill.ownerUserId),
           type: 'BILL_GENERATED',
           title: 'Maintenance bill generated',
-          body: `Bill ${serialized.billNumber} for ${serialized.wingCodeSnapshot}-${serialized.flatNumberSnapshot}`,
+          body: `Bill ${serialized.billNumber} for ${formatFlatLabel(serialized.wingCodeSnapshot, serialized.flatNumberSnapshot)}`,
           relatedEntityType: 'Bill',
           relatedEntityId: String(bill._id),
           idempotencyKey: `BILL_GENERATED:${String(bill._id)}`,
@@ -545,6 +550,7 @@ export async function attachUnassignedBillsToOwner(
 }
 
 export async function getBill(societyId: string, billId: string) {
+  await getBillInterest(societyId, billId);
   const bill = await BillModel.findOne({
     _id: parseObjectId(billId, 'billId'),
     societyId: parseObjectId(societyId, 'societyId'),
@@ -570,6 +576,7 @@ export async function listBills(
     limit?: number;
   },
 ) {
+  await ensureSocietyInterestCurrent(societyId);
   const page = query.page ?? 1;
   const limit = query.limit ?? 20;
   const filter: Record<string, unknown> = {

@@ -574,7 +574,7 @@ class _LiveCreateComplaintPageState extends State<LiveCreateComplaintPage> {
     if (id == null) return 'Not selected';
     for (final f in flats) {
       if (f.flat.id == id) {
-        return '${f.flat.wingCode ?? '?'}-${f.flat.number}';
+        return f.flat.label;
       }
     }
     return id;
@@ -752,7 +752,7 @@ class _LiveCreateComplaintPageState extends State<LiveCreateComplaintPage> {
                         (f) => DropdownMenuItem(
                           value: f.flat.id,
                           child: Text(
-                            '${f.flat.wingCode ?? '?'}-${f.flat.number}',
+                            f.flat.label,
                           ),
                         ),
                       )

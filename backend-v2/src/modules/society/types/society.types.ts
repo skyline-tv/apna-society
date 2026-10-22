@@ -72,6 +72,7 @@ export interface FlatSummary {
   wingCode?: string;
   wingName?: string;
   number: string;
+  label: string;
   floor: number;
   position: number;
   flatType: FlatType;

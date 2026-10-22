@@ -22,6 +22,7 @@ void main() {
       expect(v.approvalStatus, 'PENDING');
       expect(v.entryStatus, 'NOT_ENTERED');
       expect(v.hasActiveOtp, isFalse);
+      expect(v.otpVerified, isFalse);
       expect(v.otpAttempts, isNull);
     });
 
@@ -129,7 +130,11 @@ void main() {
         if (call == 1) {
           return jsonBody(200, {
             'success': true,
-            'data': _visitor(approval: 'APPROVED', entry: 'ENTERED'),
+            'data': _visitor(
+              approval: 'APPROVED',
+              otpVerified: true,
+              societyName: 'Apna Heights',
+            ),
           });
         }
         return jsonBody(403, {
@@ -138,12 +143,50 @@ void main() {
         });
       });
       final repo = VisitorRepository(_api(adapter).visitors);
-      final ok = await repo.verifyEntryOtp(visitorId, otp: '123456');
-      expect(ok.entryStatus, 'ENTERED');
+      final ok = await repo.verifyEntryOtpByCode(otp: '123456');
+      expect(ok.entryStatus, 'NOT_ENTERED');
+      expect(ok.otpVerified, isTrue);
+      expect(ok.residentName, isNull);
+      expect(ok.societyName, 'Apna Heights');
       await expectLater(
-        repo.verifyEntryOtp(visitorId, otp: '123456'),
+        repo.verifyEntryOtpByCode(otp: '123456'),
         throwsA(
           isA<ApiException>().having((e) => e.code, 'code', 'OTP_INVALID'),
+        ),
+      );
+    });
+
+    test('confirm visitor entry after OTP and reject duplicates', () async {
+      var calls = 0;
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.path.endsWith('/confirm-entry'), isTrue);
+        calls++;
+        if (calls == 1) {
+          return jsonBody(200, {
+            'success': true,
+            'data': _visitor(
+              approval: 'APPROVED',
+              entry: 'ENTERED',
+              otpVerified: true,
+            ),
+          });
+        }
+        return jsonBody(409, {
+          'success': false,
+          'error': {
+            'code': 'ALREADY_ENTERED',
+            'message': 'Visitor entry was already recorded',
+          },
+        });
+      });
+      final repo = VisitorRepository(_api(adapter).visitors);
+      final entered = await repo.confirmVisitorEntry(visitorId);
+      expect(entered.entryStatus, 'ENTERED');
+      expect(entered.otpVerified, isTrue);
+      await expectLater(
+        repo.confirmVisitorEntry(visitorId),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'ALREADY_ENTERED'),
         ),
       );
     });
@@ -157,7 +200,7 @@ void main() {
       });
       final repo = VisitorRepository(_api(adapter).visitors);
       await expectLater(
-        repo.verifyEntryOtp(visitorId, otp: '123456'),
+        repo.verifyEntryOtpByCode(otp: '123456'),
         throwsA(
           isA<ApiException>().having((e) => e.code, 'code', 'OTP_EXPIRED'),
         ),
@@ -176,11 +219,11 @@ void main() {
         });
       });
       final repo = VisitorRepository(_api(adapter).visitors);
-      final first = repo.verifyEntryOtp(visitorId, otp: '123456');
+      final first = repo.verifyEntryOtpByCode(otp: '123456');
       await enteredHandler.future;
       expect(repo.mutationLocked, isTrue);
       await expectLater(
-        repo.verifyEntryOtp(visitorId, otp: '123456'),
+        repo.verifyEntryOtpByCode(otp: '123456'),
         throwsA(isA<StateError>()),
       );
       release.complete();
@@ -434,6 +477,9 @@ Map<String, Object?> _visitor({
   String entry = 'NOT_ENTERED',
   String assignedRole = 'OWNER',
   bool hasOtp = false,
+  bool otpVerified = false,
+  String? residentName,
+  String? societyName,
 }) =>
     {
       'id': visitorId,
@@ -450,7 +496,10 @@ Map<String, Object?> _visitor({
       'approvalStatus': approval,
       'entryStatus': entry,
       'hasActiveOtp': hasOtp,
+      'otpVerified': otpVerified,
       'otpExpiresAt': hasOtp ? '2026-10-20T12:00:00.000Z' : null,
+      'residentName': residentName,
+      'societyName': societyName,
       'flatNumberSnapshot': '101',
       'wingCodeSnapshot': 'A',
       'createdAt': '2026-10-20T10:00:00.000Z',

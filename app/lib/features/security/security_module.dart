@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/auth/home_resolver.dart';
+import '../../api/models/flat_label.dart';
 import '../../app_core.dart';
 import '../../data/local_database.dart' show InviteCreateResult;
 import '../../services/occupancy_access.dart';
@@ -75,7 +76,7 @@ class _GuardHomeState extends State<GuardHome> {
   int tab = 0;
   int get guardId => widget.guard.read<int>('id');
 
-  static const _titles = ['Gate desk', 'Verify', 'Inside', 'Account'];
+  static const _titles = ['Gate desk', 'Verify Visitor', 'Inside', 'Account'];
 
   void refresh() {
     if (mounted) setState(() {});
@@ -524,11 +525,7 @@ class _VerifyVisitorOtpPageState extends State<VerifyVisitorOtpPage> {
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const SectionTitle('Verify visitor OTP'),
-          const SizedBox(height: 8),
-          const InfoNote(
-            'Enter the 6-digit OTP generated in the flat owner’s app when they invited the visitor. This is not an SMS OTP.',
-          ),
+          const SectionTitle('Verify Visitor'),
           const SizedBox(height: 18),
           TextField(
             controller: otp,
@@ -557,7 +554,7 @@ class _VerifyVisitorOtpPageState extends State<VerifyVisitorOtpPage> {
                     height: 22,
                     child: CircularProgressIndicator(
                         strokeWidth: 2.4, color: Colors.white))
-                : const Text('Verify'),
+                : const Text('Verify OTP'),
           ),
           if (error != null) ...[
             const SizedBox(height: 14),
@@ -581,10 +578,12 @@ class _VerifyVisitorOtpPageState extends State<VerifyVisitorOtpPage> {
                         'Visitor', invitation.read<String>('visitor_name')),
                     billDetailLine(
                         'Category', invitation.read<String>('category')),
-                    billDetailLine('Flat',
-                        '${invitation.read<String>('building')} · ${invitation.read<String>('flat_number')}'),
                     billDetailLine(
-                        'Owner', invitation.read<String>('owner_name')),
+                        'Flat',
+                        formatFlatLabel(
+                          invitation.read<String>('building'),
+                          invitation.read<String>('flat_number'),
+                        )),
                     billDetailLine(
                         'Purpose', invitation.read<String>('purpose')),
                     billDetailLine('Expected',
@@ -599,7 +598,7 @@ class _VerifyVisitorOtpPageState extends State<VerifyVisitorOtpPage> {
                       width: double.infinity,
                       child: FilledButton(
                           onPressed: busy ? null : confirmEntry,
-                          child: const Text('Confirm Entry')),
+                          child: const Text('Confirm Visitor Entry')),
                     ),
                   ]),
             ),
