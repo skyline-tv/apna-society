@@ -241,98 +241,210 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
             reload();
             await _future;
           },
-            child: ListView(
-            padding: Sp.pagePadding,
+          child: ListView(
+            padding: EdgeInsets.zero,
             children: [
-              PageHeader('Hello, $first',
-                  subtitle: 'Register, verify, then let them in'),
-              PrimaryButton(
-                label: 'Register visitor',
-                icon: Icons.person_add_alt_1_outlined,
-                onPressed: _register,
-              ),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(
-                  child: SecondaryButton(
-                    label: 'Verify OTP',
-                    icon: Icons.pin_outlined,
-                    onPressed: () => widget.onNavigate(1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SecondaryButton(
-                    label: 'Visitor exit',
-                    icon: Icons.logout_rounded,
-                    onPressed: () => widget.onNavigate(2),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              MetricBand(items: [
-                MetricItem('Inside', '${d.currentlyInside}',
-                    valueColor: C.green,
-                    onTap: () => widget.onNavigate(2)),
-                MetricItem('Pending', '${d.pendingApprovals}',
-                    valueColor: d.pendingApprovals > 0 ? C.amber : C.navy,
-                    onTap: widget.onOpenQueue),
-                MetricItem('Awaiting OTP', '${d.awaitingEntry}',
-                    onTap: () => widget.onNavigate(1)),
-                MetricItem('Entered today', '${d.enteredToday}',
-                    onTap: widget.onOpenQueue),
-              ]),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: widget.onOpenQueue,
-                  icon: const Icon(Icons.fact_check_outlined, size: 18),
-                  label: Text(
-                    'Gate queue · ${d.exitedToday} exited today',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ToolDirectory(links: [
-                ToolLink(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Vehicle gate',
-                  subtitle: 'Log vehicle entry and exit',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const LiveGuardVehiclesPage(),
-                    ),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              SectionTitle('Recent',
-                  action: TextButton(
-                      onPressed: widget.onOpenQueue,
-                      child: const Text('Queue'))),
-              if (d.recent.isEmpty)
-                const EmptyState('No recent visitors',
-                    icon: Icons.groups_outlined, compact: true)
-              else
-                ...d.recent.map(
-                  (v) => _VisitorRow(
-                    visitor: v,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            LiveGuardVisitorDetailPage(visitorId: v.id),
+              ColoredBox(
+                color: C.blueDark,
+                child: SafeArea(
+                  bottom: false,
+                  child: PineHeader(
+                    color: C.blueDark,
+                    eyebrow: 'On duty',
+                    title: first,
+                    subtitle: 'Register, verify, then let them in',
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: C.blue,
+                        borderRadius: BorderRadius.circular(Rd.pill),
                       ),
+                      child:
+                          const Row(mainAxisSize: MainAxisSize.min, children: [
+                        _PulseDot(),
+                        SizedBox(width: 6),
+                        Text('Active',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                      ]),
                     ),
+                    child: Row(children: [
+                      Expanded(
+                        child: _GuardKpi(
+                          label: 'Pending',
+                          value: '${d.pendingApprovals}',
+                          color: C.amber,
+                          fill: C.amberSoft,
+                          onTap: widget.onOpenQueue,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _GuardKpi(
+                          label: 'Inside',
+                          value: '${d.currentlyInside}',
+                          color: C.green,
+                          fill: C.greenSoft,
+                          onTap: () => widget.onNavigate(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _GuardKpi(
+                          label: 'Entered',
+                          value: '${d.enteredToday}',
+                          color: C.muted,
+                          fill: C.neutralSoft,
+                          onTap: widget.onOpenQueue,
+                        ),
+                      ),
+                    ]),
                   ),
                 ),
+              ),
+              Padding(
+                padding: Sp.pagePadding,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      PrimaryButton(
+                        label: 'Verify visitor OTP',
+                        icon: Icons.key_rounded,
+                        onPressed: () => widget.onNavigate(1),
+                      ),
+                      const SizedBox(height: 8),
+                      SecondaryButton(
+                        label: 'Register visitor',
+                        icon: Icons.person_add_alt_1_outlined,
+                        onPressed: _register,
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: widget.onOpenQueue,
+                          icon: const Icon(Icons.fact_check_outlined, size: 18),
+                          label: Text(
+                            'Gate queue · ${d.exitedToday} exited today',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ToolDirectory(links: [
+                        ToolLink(
+                          icon: Icons.directions_car_outlined,
+                          label: 'Vehicle gate',
+                          subtitle: 'Log vehicle entry and exit',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LiveGuardVehiclesPage(),
+                            ),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 16),
+                      SectionTitle('Recent',
+                          action: TextButton(
+                              onPressed: widget.onOpenQueue,
+                              child: const Text('Queue'))),
+                      if (d.recent.isEmpty)
+                        const EmptyState('No recent visitors',
+                            icon: Icons.groups_outlined, compact: true)
+                      else
+                        ...d.recent.map(
+                          (v) => _VisitorRow(
+                            visitor: v,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    LiveGuardVisitorDetailPage(visitorId: v.id),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ]),
+              ),
             ],
           ),
         );
       },
     );
+  }
+}
+
+class _PulseDot extends StatefulWidget {
+  const _PulseDot();
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+        child: Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+            color: Color(0xFF4ADE80),
+            shape: BoxShape.circle,
+          ),
+        ),
+      );
+}
+
+class _GuardKpi extends StatelessWidget {
+  const _GuardKpi({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.fill,
+    this.onTap,
+  });
+  final String label;
+  final String value;
+  final Color color;
+  final Color fill;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(Rd.lg),
+      ),
+      child: Column(children: [
+        Text(value,
+            style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1.1)),
+        const SizedBox(height: 2),
+        Text(label.toUpperCase(),
+            style: T.label.copyWith(color: color, letterSpacing: 0.6)),
+      ]),
+    );
+    if (onTap == null) return child;
+    return GestureDetector(onTap: onTap, child: child);
   }
 }
 
@@ -613,8 +725,7 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                     .map((t) => DropdownMenuItem(
                           value: t,
                           child: Row(children: [
-                            Icon(_visitorTypeIcon(t),
-                                size: 18, color: C.muted),
+                            Icon(_visitorTypeIcon(t), size: 18, color: C.muted),
                             const SizedBox(width: 10),
                             Text(visitorTypeLabel(t)),
                           ]),
@@ -630,9 +741,8 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                 value: _count,
                 min: 1,
                 max: 50,
-                onChanged: _submitting
-                    ? (_) {}
-                    : (v) => setState(() => _count = v),
+                onChanged:
+                    _submitting ? (_) {} : (v) => setState(() => _count = v),
               ),
               const SizedBox(height: 20),
               const FormSectionLabel('Optional'),
@@ -790,7 +900,6 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
   final _otpFocus = FocusNode();
   Visitor? _selected;
   bool _verifying = false;
-  bool _showOtp = false;
   String? _error;
 
   StreamSubscription<VisitorEventPayload>? _sub;
@@ -970,38 +1079,20 @@ class _LiveVerifyVisitorOtpPageState extends State<LiveVerifyVisitorOtpPage> {
                     ),
                   ]),
                 ),
-              TextField(
+              OtpBoxes(
                 controller: _otp,
                 focusNode: _otpFocus,
                 enabled: !_verifying,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _verify(),
                 onChanged: (_) {
                   if (_error != null) setState(() => _error = null);
                 },
-                maxLength: 6,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                obscureText: !_showOtp,
-                style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 6,
-                    color: C.navy),
-                decoration: InputDecoration(
-                  labelText: '6-digit OTP',
-                  counterText: '',
-                  errorText: _error,
-                  prefixIcon: const Icon(Icons.pin_outlined),
-                  suffixIcon: IconButton(
-                    tooltip: _showOtp ? 'Hide OTP' : 'Show OTP',
-                    onPressed: () => setState(() => _showOtp = !_showOtp),
-                    icon: Icon(_showOtp
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined),
-                  ),
-                ),
+                onSubmitted: (_) => _verify(),
               ),
+              if (_error != null && _error!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: InlineError(_error),
+                ),
               const SizedBox(height: 4),
               PrimaryButton(
                 label: 'Verify & allow entry',
@@ -1041,8 +1132,7 @@ class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
           query: ListVisitorsQuery(
             approvalStatus: approvalFilter,
             entryStatus: entryFilter,
-            visitorName:
-                _nameQuery.trim().isEmpty ? null : _nameQuery.trim(),
+            visitorName: _nameQuery.trim().isEmpty ? null : _nameQuery.trim(),
             limit: 50,
           ),
         );
@@ -1116,8 +1206,7 @@ class _LiveGateVisitorBoardPageState extends State<LiveGateVisitorBoardPage> {
             label: const Text('Register'),
           ),
           body: Column(children: [
-            if (refreshing)
-              const LinearProgressIndicator(minHeight: 2),
+            if (refreshing) const LinearProgressIndicator(minHeight: 2),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
               child: SearchField(
@@ -1471,8 +1560,7 @@ class _VisitorDetailBody extends StatelessWidget {
             v.rejectionReason != null)
           DetailCard(title: 'Entry', children: [
             if (v.hasActiveOtp)
-              const DetailRow(
-                  'OTP', 'Active · code is emailed to the visitor'),
+              const DetailRow('OTP', 'Active · code is emailed to the visitor'),
             if (v.otpExpiresAt != null)
               DetailRow('OTP expires', fmtIsoDateTime(v.otpExpiresAt)),
             if (v.otpAttempts != null && v.otpAttempts! > 0)

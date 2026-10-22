@@ -138,6 +138,7 @@ class _AnnouncementRow extends StatelessWidget {
     final urgent = a.priority.toUpperCase() == 'URGENT';
     return ListRow(
       onTap: onTap,
+      unread: unread,
       leading: AppAvatar(
         icon: _categoryIcon(a.category),
         square: true,
@@ -493,10 +494,10 @@ class _LiveResidentAnnouncementDetailPageState
                             icon: _mimeIcon(a.attachments[i].mimeType),
                             square: true,
                             size: 36,
-                            color: a.attachments[i].mimeType ==
-                                    'application/pdf'
-                                ? C.error
-                                : C.blue),
+                            color:
+                                a.attachments[i].mimeType == 'application/pdf'
+                                    ? C.error
+                                    : C.blue),
                         title: a.attachments[i].originalFilename,
                         subtitle: _fileSize(a.attachments[i].sizeBytes),
                         showChevron: false,
@@ -504,8 +505,8 @@ class _LiveResidentAnnouncementDetailPageState
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2.2))
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2.2))
                             : const Icon(Icons.open_in_full_rounded,
                                 size: 18, color: C.muted),
                         onTap: _busyAttachment != null
@@ -1038,18 +1039,17 @@ class _LiveAdminAnnouncementDetailPageState
                               icon: _mimeIcon(a.attachments[i].mimeType),
                               square: true,
                               size: 36,
-                              color: a.attachments[i].mimeType ==
-                                      'application/pdf'
-                                  ? C.error
-                                  : C.blue),
+                              color:
+                                  a.attachments[i].mimeType == 'application/pdf'
+                                      ? C.error
+                                      : C.blue),
                           title: a.attachments[i].originalFilename,
                           subtitle: _fileSize(a.attachments[i].sizeBytes),
                           showChevron: false,
                           trailing: editable
                               ? IconButton(
                                   tooltip: 'Remove',
-                                  icon: const Icon(
-                                      Icons.delete_outline_rounded,
+                                  icon: const Icon(Icons.delete_outline_rounded,
                                       color: C.error),
                                   onPressed: _busy
                                       ? null

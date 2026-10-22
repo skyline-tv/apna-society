@@ -153,7 +153,10 @@ String _linkLabel(String type) {
 
 /// App-bar bell for OWNER/TENANT (and optionally ADMIN) using live API.
 class LiveNotificationBellButton extends StatefulWidget {
-  const LiveNotificationBellButton({super.key});
+  const LiveNotificationBellButton({super.key, this.onPine = false});
+
+  /// White icon + well for use on a [PineHeader].
+  final bool onPine;
 
   @override
   State<LiveNotificationBellButton> createState() =>
@@ -200,7 +203,13 @@ class _LiveNotificationBellButtonState
       future: _unread,
       builder: (context, snap) {
         final count = snap.data ?? 0;
-        return IconButton(
+        final icon = Icon(
+          count > 0
+              ? Icons.notifications_active_outlined
+              : Icons.notifications_outlined,
+          color: widget.onPine ? Colors.white : C.navy,
+        );
+        final button = IconButton(
           tooltip: count > 0 ? '$count unread notifications' : 'Notifications',
           onPressed: () async {
             await Navigator.push<void>(
@@ -214,10 +223,18 @@ class _LiveNotificationBellButtonState
           icon: Badge(
             isLabelVisible: count > 0,
             label: Text(count > 99 ? '99+' : '$count'),
-            child: Icon(count > 0
-                ? Icons.notifications_active_outlined
-                : Icons.notifications_outlined),
+            child: icon,
           ),
+        );
+        if (!widget.onPine) return button;
+        return Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(Rd.lg),
+          ),
+          child: button,
         );
       },
     );

@@ -21,7 +21,7 @@ class C {
   static const charcoal = Color(0xFF44403C);
 
   // Neutrals
-  static const bg = Color(0xFFF3F1EC);
+  static const bg = Color(0xFFF4F0EA);
   static const surface = Color(0xFFFFFCF8);
   static const surfaceAlt = Color(0xFFF7F4EE);
   static const line = Color(0xFFE6E1D6);
@@ -63,10 +63,10 @@ class Sp {
 class Rd {
   Rd._();
   static const double sm = 6;
-  static const double md = 8; // inputs, buttons, chips
-  static const double lg = 12; // cards
-  static const double xl = 16; // dialogs, hero cards
-  static const double xxl = 20; // bottom sheets
+  static const double md = 8; // dense chips
+  static const double lg = 12; // inputs, buttons
+  static const double xl = 16; // cards, dialogs, hero
+  static const double xxl = 20; // bottom sheets, splash mark
   static const double pill = 999;
 }
 
@@ -86,9 +86,17 @@ class Sz {
 class T {
   T._();
   static const display = TextStyle(
-      fontSize: 28, fontWeight: FontWeight.w700, color: C.navy, height: 1.15, letterSpacing: -0.4);
+      fontSize: 28,
+      fontWeight: FontWeight.w700,
+      color: C.navy,
+      height: 1.15,
+      letterSpacing: -0.4);
   static const h1 = TextStyle(
-      fontSize: 22, fontWeight: FontWeight.w700, color: C.navy, height: 1.2, letterSpacing: -0.2);
+      fontSize: 22,
+      fontWeight: FontWeight.w700,
+      color: C.navy,
+      height: 1.2,
+      letterSpacing: -0.2);
   static const h2 = TextStyle(
       fontSize: 18, fontWeight: FontWeight.w700, color: C.navy, height: 1.25);
   static const h3 = TextStyle(
@@ -96,7 +104,10 @@ class T {
   static const title = TextStyle(
       fontSize: 15, fontWeight: FontWeight.w600, color: C.navy, height: 1.3);
   static const body = TextStyle(
-      fontSize: 14, fontWeight: FontWeight.w500, color: C.charcoal, height: 1.45);
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+      color: C.charcoal,
+      height: 1.45);
   static const bodyStrong = TextStyle(
       fontSize: 14, fontWeight: FontWeight.w700, color: C.navy, height: 1.4);
   static const secondary = TextStyle(
@@ -122,9 +133,26 @@ class T {
 
 OutlineInputBorder _inputBorder(Color color, [double width = 1]) =>
     OutlineInputBorder(
-      borderRadius: BorderRadius.circular(Rd.md),
+      borderRadius: BorderRadius.circular(Rd.lg),
       borderSide: BorderSide(color: color, width: width),
     );
+
+/// Time-of-day greeting used on role dashboards.
+String dayGreeting([DateTime? now]) {
+  final hour = (now ?? DateTime.now()).hour;
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/// Soft fill that sits behind an [IconWell] for a given accent colour.
+Color wellFill(Color color) {
+  if (color == C.amber) return C.amberSoft;
+  if (color == C.error) return C.errorSoft;
+  if (color == C.green) return C.greenSoft;
+  if (color == C.muted || color == C.faint) return C.neutralSoft;
+  return C.chip;
+}
 
 ThemeData buildAppTheme() {
   final base =
@@ -143,9 +171,9 @@ ThemeData buildAppTheme() {
     surfaceContainerLow: C.surfaceAlt,
   );
   const shape12 = RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(Radius.circular(Rd.md)));
+      borderRadius: BorderRadius.all(Radius.circular(Rd.lg)));
 
-  final textTheme = const TextTheme(
+  const textTheme = TextTheme(
     displaySmall: T.display,
     headlineMedium: T.h1,
     headlineSmall: T.h2,
@@ -195,15 +223,15 @@ ThemeData buildAppTheme() {
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return TextStyle(
-          fontSize: 11,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-          color: selected ? C.blue : C.muted,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: selected ? C.blue : C.faint,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
-            color: selected ? C.blue : C.muted, size: Sz.iconLg);
+            color: selected ? C.blue : C.faint, size: Sz.iconLg);
       }),
       height: 64,
       elevation: 0,
@@ -215,8 +243,7 @@ ThemeData buildAppTheme() {
       indicatorColor: C.blue,
       indicatorSize: TabBarIndicatorSize.label,
       dividerColor: C.line,
-      labelStyle:
-          const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+      labelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
       unselectedLabelStyle:
           const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
       overlayColor: WidgetStateProperty.all(C.chip.withValues(alpha: 0.6)),
@@ -270,9 +297,9 @@ ThemeData buildAppTheme() {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: C.navy,
+        foregroundColor: C.blue,
         backgroundColor: C.surface,
-        side: const BorderSide(color: C.lineStrong),
+        side: const BorderSide(color: C.blue),
         minimumSize: const Size(Sz.control, Sz.control),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         shape: shape12,
@@ -520,8 +547,8 @@ BadgeTone toneForStatus(String status) {
     'expires',
     'correction',
   ];
-  bool hit(List<String> keys) => keys.any(
-      (k) => RegExp('\\b${RegExp.escape(k)}\\b').hasMatch(s));
+  bool hit(List<String> keys) =>
+      keys.any((k) => RegExp('\\b${RegExp.escape(k)}\\b').hasMatch(s));
   if (hit(const ['partial', 'partially', 'unpaid'])) return BadgeTone.warning;
   if (hit(success)) return BadgeTone.success;
   if (hit(danger)) return BadgeTone.danger;
@@ -553,9 +580,8 @@ String humanizeStatus(String raw) {
   final words = t.toLowerCase().split(RegExp(r'[_\s]+'));
   final first = words.first;
   final rest = words.skip(1).join(' ');
-  final cap = first.isEmpty
-      ? ''
-      : '${first[0].toUpperCase()}${first.substring(1)}';
+  final cap =
+      first.isEmpty ? '' : '${first[0].toUpperCase()}${first.substring(1)}';
   return rest.isEmpty ? cap : '$cap $rest';
 }
 
@@ -602,7 +628,8 @@ class DotLabel extends StatelessWidget {
   final String label;
   final Color color;
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+  Widget build(BuildContext context) =>
+      Row(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: 8,
           height: 8,
@@ -629,7 +656,8 @@ class AppCard extends StatelessWidget {
     this.onLongPress,
     this.color,
     this.borderColor,
-    this.radius = Rd.lg,
+    this.radius = Rd.xl,
+    this.accent = false,
   });
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -639,12 +667,24 @@ class AppCard extends StatelessWidget {
   final Color? color;
   final Color? borderColor;
   final double radius;
+  final bool accent;
 
   @override
   Widget build(BuildContext context) {
     final shape = BorderRadius.circular(radius);
-    final content =
+    Widget content =
         padding == null ? child : Padding(padding: padding!, child: child);
+    if (accent) {
+      content = Stack(children: [
+        content,
+        const Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: ColoredBox(color: C.blue, child: SizedBox(width: 4)),
+        ),
+      ]);
+    }
     return Container(
       margin: margin ?? const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -693,7 +733,7 @@ class AppAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         shape: square ? BoxShape.rectangle : BoxShape.circle,
-        borderRadius: square ? BorderRadius.circular(Rd.md) : null,
+        borderRadius: square ? BorderRadius.circular(Rd.lg) : null,
       ),
       child: icon != null
           ? Icon(icon, color: color, size: size * 0.5)
@@ -713,11 +753,8 @@ class AppAvatar extends StatelessWidget {
 
 /// Initials for an avatar: "Priya Sharma" → "PS".
 String initialsOf(String name) {
-  final parts = name
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((p) => p.isNotEmpty)
-      .toList();
+  final parts =
+      name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
   if (parts.isEmpty) return '?';
   if (parts.length == 1) return parts.first[0].toUpperCase();
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
@@ -739,6 +776,7 @@ class ListRow extends StatelessWidget {
     this.showChevron,
     this.dense = false,
     this.margin,
+    this.unread = false,
   });
 
   final String title;
@@ -752,6 +790,7 @@ class ListRow extends StatelessWidget {
   final bool? showChevron;
   final bool dense;
   final EdgeInsetsGeometry? margin;
+  final bool unread;
 
   @override
   Widget build(BuildContext context) {
@@ -760,8 +799,8 @@ class ListRow extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       margin: margin,
-      padding: EdgeInsets.symmetric(
-          horizontal: 14, vertical: dense ? 10 : 14),
+      accent: unread,
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: dense ? 10 : 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           if (leading != null) ...[leading!, const SizedBox(width: 12)],
@@ -825,33 +864,38 @@ class StatCard extends StatelessWidget {
     return AppCard(
       onTap: onTap,
       margin: EdgeInsets.zero,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        AppAvatar(icon: icon, color: tint, size: 32, square: true),
-        const SizedBox(width: 10),
+      padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title.toUpperCase(),
+                style: T.label.copyWith(color: C.faint, letterSpacing: 0.8),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(value,
                   style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
                       color: C.navy,
                       height: 1.1,
                       fontFeatures: [FontFeature.tabularFigures()])),
             ),
-            const SizedBox(height: 2),
-            Text(title,
-                style: T.caption, maxLines: 2, overflow: TextOverflow.ellipsis),
-            if (caption != null)
+            if (caption != null) ...[
+              const SizedBox(height: 4),
               Text(caption!,
                   style: T.caption.copyWith(color: C.faint),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
+            ],
           ]),
         ),
+        const SizedBox(width: 8),
+        IconWell(icon: icon, color: tint, size: 36),
       ]),
     );
   }
@@ -885,6 +929,345 @@ class StatGrid extends StatelessWidget {
   }
 }
 
+/// Tinted rounded square used next to metrics, list rows and quick actions.
+class IconWell extends StatelessWidget {
+  const IconWell({
+    super.key,
+    required this.icon,
+    this.color = C.blue,
+    this.size = 36,
+    this.iconSize,
+    this.fill,
+  });
+
+  final IconData icon;
+  final Color color;
+  final double size;
+  final double? iconSize;
+  final Color? fill;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: fill ?? wellFill(color),
+          borderRadius: BorderRadius.circular(Rd.lg),
+        ),
+        child: Icon(icon, color: color, size: iconSize ?? size * 0.5),
+      );
+}
+
+/// Coloured greeting band used on owner, tenant and guard homes.
+class PineHeader extends StatelessWidget {
+  const PineHeader({
+    super.key,
+    this.eyebrow,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.child,
+    this.color = C.blue,
+    this.bottomPadding = 20,
+  });
+
+  final String? eyebrow;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget? child;
+  final Color color;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final onPine = color.computeLuminance() < 0.45;
+    final titleColor = onPine ? Colors.white : C.navy;
+    final mute = onPine ? Colors.white.withValues(alpha: 0.62) : C.muted;
+    return Container(
+      width: double.infinity,
+      color: color,
+      padding: EdgeInsets.fromLTRB(20, 16, 16, bottomPadding),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (eyebrow != null && eyebrow!.isNotEmpty) ...[
+                Text(eyebrow!,
+                    style: T.caption
+                        .copyWith(color: mute, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+              ],
+              Text(title,
+                  style: T.h1.copyWith(color: titleColor, fontSize: 20),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(subtitle!,
+                    style: T.secondary.copyWith(color: mute),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ]),
+          ),
+          if (trailing != null) trailing!,
+        ]),
+        if (child != null) ...[const SizedBox(height: 14), child!],
+      ]),
+    );
+  }
+}
+
+/// Stacks [hero] over the bottom of [header] (banking-style overlap).
+class OverlapHero extends StatelessWidget {
+  const OverlapHero({
+    super.key,
+    required this.header,
+    required this.hero,
+    this.overlap = 36,
+    this.sidePadding = 20,
+  });
+
+  final Widget header;
+  final Widget hero;
+  final double overlap;
+  final double sidePadding;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              header,
+              Positioned(
+                left: sidePadding,
+                right: sidePadding,
+                bottom: -overlap,
+                child: hero,
+              ),
+            ],
+          ),
+          SizedBox(height: overlap + 12),
+        ],
+      );
+}
+
+/// One destination in a [QuickAccessGrid].
+class QuickAccessItem {
+  const QuickAccessItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = C.blue,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+}
+
+/// Four-up (or two-up on a 320-width phone) quick-action tiles.
+class QuickAccessGrid extends StatelessWidget {
+  const QuickAccessGrid({super.key, required this.items});
+
+  final List<QuickAccessItem> items;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
+        final columns = c.maxWidth >= 360 ? 4 : 2;
+        final rows = <Widget>[];
+        for (var i = 0; i < items.length; i += columns) {
+          final end = i + columns > items.length ? items.length : i + columns;
+          final slice = items.sublist(i, end);
+          rows.add(Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var j = 0; j < columns; j++) ...[
+                if (j > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: j < slice.length
+                      ? _QuickAccessTile(item: slice[j])
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ));
+          if (end < items.length) rows.add(const SizedBox(height: 8));
+        }
+        return Column(children: rows);
+      });
+}
+
+class _QuickAccessTile extends StatelessWidget {
+  const _QuickAccessTile({required this.item});
+  final QuickAccessItem item;
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+        onTap: item.onTap,
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Column(children: [
+          IconWell(icon: item.icon, color: item.color, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            item.label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: T.caption.copyWith(color: C.navy, height: 1.2),
+          ),
+        ]),
+      );
+}
+
+/// Labelled progress used on the admin dashboard (collections / occupancy).
+class CollectionBar extends StatelessWidget {
+  const CollectionBar({
+    super.key,
+    required this.title,
+    required this.progress,
+    this.valueLabel,
+    this.caption,
+  });
+
+  final String title;
+  final double progress;
+  final String? valueLabel;
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = progress.isNaN ? 0.0 : progress.clamp(0.0, 1.0);
+    return AppCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(title, style: T.title)),
+          if (valueLabel != null)
+            Text(valueLabel!, style: T.bodyStrong.copyWith(color: C.blue)),
+        ]),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(Rd.pill),
+          child: LinearProgressIndicator(
+            value: clamped,
+            minHeight: 8,
+            color: C.blue,
+            backgroundColor: C.neutralSoft,
+          ),
+        ),
+        if (caption != null) ...[
+          const SizedBox(height: 10),
+          Text(caption!, style: T.caption),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Six-box OTP chrome around a text controller. Digits stay live/API-backed.
+class OtpBoxes extends StatelessWidget {
+  const OtpBoxes({
+    super.key,
+    required this.controller,
+    this.length = 6,
+    this.onChanged,
+    this.enabled = true,
+    this.autofocus = false,
+    this.focusNode,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final int length;
+  final ValueChanged<String>? onChanged;
+  final bool enabled;
+  final bool autofocus;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final digits = value.text;
+        return Column(children: [
+          Row(
+            children: [
+              for (var i = 0; i < length; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: _OtpCell(
+                    filled: i < digits.length,
+                    char: i < digits.length ? digits[i] : '',
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: controller,
+            focusNode: focusNode,
+            enabled: enabled,
+            autofocus: autofocus,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            textAlign: TextAlign.center,
+            maxLength: length,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(length),
+            ],
+            onChanged: onChanged,
+            onSubmitted: onSubmitted,
+            decoration: const InputDecoration(
+              hintText: 'Enter OTP',
+              counterText: '',
+            ),
+          ),
+        ]);
+      },
+    );
+  }
+}
+
+class _OtpCell extends StatelessWidget {
+  const _OtpCell({required this.filled, required this.char});
+  final bool filled;
+  final String char;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 54,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: C.surface,
+          borderRadius: BorderRadius.circular(Rd.lg),
+          border: Border.all(
+            color: filled ? C.blue : C.line,
+            width: filled ? 2 : 1.4,
+          ),
+        ),
+        child: Text(
+          filled ? char : '·',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: filled ? C.blue : C.faint,
+          ),
+        ),
+      );
+}
+
 /// Compact inline statistic (value over label) for summary strips.
 class MiniStat extends StatelessWidget {
   const MiniStat(this.label, this.value, {super.key, this.tone, this.onTap});
@@ -909,7 +1292,8 @@ class MiniStat extends StatelessWidget {
                 height: 1.1,
                 fontFeatures: const [FontFeature.tabularFigures()])),
         const SizedBox(height: 3),
-        Text(label, style: T.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(label,
+            style: T.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
       ]),
     );
   }
@@ -948,7 +1332,7 @@ class HeroMoneyCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         decoration: BoxDecoration(
           color: C.navy,
-          borderRadius: BorderRadius.circular(Rd.lg),
+          borderRadius: BorderRadius.circular(Rd.xl),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -1004,15 +1388,14 @@ class PageHeader extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 14),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: T.h3),
-                  if (subtitle != null && subtitle!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(subtitle!, style: T.secondary),
-                  ],
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: T.h3),
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(subtitle!, style: T.secondary),
+              ],
+            ]),
           ),
           if (trailing != null) ...[const SizedBox(width: 12), trailing!],
         ]),
@@ -1031,15 +1414,14 @@ class SectionTitle extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: T.h3),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle!, style: T.caption),
-                  ],
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: T.h3),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle!, style: T.caption),
+              ],
+            ]),
           ),
           if (action != null) action!,
         ]),
@@ -1091,7 +1473,8 @@ class DetailRow extends StatelessWidget {
 
 /// Grouped detail rows inside a card with optional heading.
 class DetailCard extends StatelessWidget {
-  const DetailCard({super.key, this.title, required this.children, this.margin});
+  const DetailCard(
+      {super.key, this.title, required this.children, this.margin});
   final String? title;
   final List<Widget> children;
   final EdgeInsetsGeometry? margin;
@@ -1136,21 +1519,22 @@ class KeyValueTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 12)]
-          else if (icon != null) ...[
+          if (leading != null) ...[
+            leading!,
+            const SizedBox(width: 12)
+          ] else if (icon != null) ...[
             AppAvatar(icon: icon, size: 36, square: true),
             const SizedBox(width: 12),
           ],
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: T.caption),
-                  if (value != null) ...[
-                    const SizedBox(height: 2),
-                    Text(value!.isEmpty ? '—' : value!, style: T.bodyStrong),
-                  ],
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: T.caption),
+              if (value != null) ...[
+                const SizedBox(height: 2),
+                Text(value!.isEmpty ? '—' : value!, style: T.bodyStrong),
+              ],
+            ]),
           ),
           if (trailing != null) ...[const SizedBox(width: 10), trailing!],
           if (onTap != null && trailing == null)
@@ -1178,8 +1562,7 @@ class SettingsGroup extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 14),
             child: Column(children: [
               for (var i = 0; i < children.length; i++) ...[
-                if (i > 0)
-                  const Divider(height: 1, indent: 16, endIndent: 16),
+                if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
                 children[i],
               ],
             ]),
@@ -1217,7 +1600,8 @@ class SettingsRow extends StatelessWidget {
           const SizedBox(width: 12),
         ],
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: T.bodyStrong.copyWith(color: fg)),
             if (value != null && value!.isNotEmpty) ...[
               const SizedBox(height: 2),
@@ -1259,8 +1643,8 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: 32, vertical: compact ? 20 : 40),
+          padding:
+              EdgeInsets.symmetric(horizontal: 32, vertical: compact ? 20 : 40),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: compact ? 48 : 64,
@@ -1329,8 +1713,8 @@ class _SkeletonBoxState extends State<SkeletonBox>
 
   @override
   Widget build(BuildContext context) => FadeTransition(
-        opacity: Tween(begin: 0.45, end: 1.0).animate(
-            CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+        opacity: Tween(begin: 0.45, end: 1.0)
+            .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
         child: Container(
           width: widget.width,
           height: widget.height,
@@ -1382,7 +1766,8 @@ enum NoteTone { info, warning, success, danger }
 
 /// Low-emphasis contextual note.
 class InfoNote extends StatelessWidget {
-  const InfoNote(this.message, {super.key, this.tone = NoteTone.info, this.icon});
+  const InfoNote(this.message,
+      {super.key, this.tone = NoteTone.info, this.icon});
   final String message;
   final NoteTone tone;
   final IconData? icon;
@@ -1397,8 +1782,8 @@ class InfoNote extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 11, 14, 11),
-      decoration: BoxDecoration(
-          color: bg, borderRadius: BorderRadius.circular(Rd.md)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Rd.lg)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(icon ?? ic, color: fg, size: 18),
         const SizedBox(width: 10),
@@ -1553,7 +1938,8 @@ class ToolDirectory extends StatelessWidget {
             InkWell(
               onTap: links[i].onTap,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 child: Row(children: [
                   AppAvatar(icon: links[i].icon, size: 32, square: true),
                   const SizedBox(width: 12),
@@ -1681,7 +2067,9 @@ class DetailHero extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: T.h1, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      style: T.h1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
                   if (subtitle != null && subtitle!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(subtitle!,
@@ -1758,7 +2146,8 @@ class FormScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = (padding ?? Sp.pagePadding).resolve(Directionality.of(context));
+    final base =
+        (padding ?? Sp.pagePadding).resolve(Directionality.of(context));
     // Leave room to scroll the last field above the sticky bar (button +
     // bar padding + home-indicator zone). Keyboard inset is handled by the
     // Scaffold shrinking the body when the IME opens.
@@ -1892,8 +2281,8 @@ class PrimaryButton extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             Flexible(
-                child: Text(label,
-                    overflow: TextOverflow.ellipsis, maxLines: 1)),
+                child:
+                    Text(label, overflow: TextOverflow.ellipsis, maxLines: 1)),
           ]);
     final button = FilledButton(
       onPressed: busy ? null : onPressed,
@@ -1928,7 +2317,7 @@ class SecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = destructive ? C.error : C.navy;
+    final fg = destructive ? C.error : C.blue;
     final child = busy
         ? SizedBox(
             width: 20,
@@ -1940,8 +2329,8 @@ class SecondaryButton extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             Flexible(
-                child: Text(label,
-                    overflow: TextOverflow.ellipsis, maxLines: 1)),
+                child:
+                    Text(label, overflow: TextOverflow.ellipsis, maxLines: 1)),
           ]);
     final button = OutlinedButton(
       onPressed: busy ? null : onPressed,
@@ -2030,7 +2419,8 @@ class AppFilterChip extends StatelessWidget {
           color: selected ? C.blue : C.navy,
           fontSize: 12.5,
         ),
-        side: BorderSide(color: selected ? C.blue.withValues(alpha: 0.35) : C.line),
+        side: BorderSide(
+            color: selected ? C.blue.withValues(alpha: 0.35) : C.line),
       );
 }
 
@@ -2171,7 +2561,7 @@ class PickerField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(Rd.md),
+        borderRadius: BorderRadius.circular(Rd.lg),
         child: InputDecorator(
           isEmpty: value == null || value!.isEmpty,
           decoration: InputDecoration(
@@ -2220,7 +2610,8 @@ class TimeField extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<TextEditingValue>(
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
         builder: (context, v, _) => PickerField(
           label: label,
@@ -2461,8 +2852,7 @@ Future<String?> promptTextDialog(
                 return;
               }
               if (t.isNotEmpty && t.length < minLength) {
-                setLocal(() =>
-                    error = 'Enter at least $minLength characters.');
+                setLocal(() => error = 'Enter at least $minLength characters.');
                 return;
               }
               Navigator.pop(ctx, t);
@@ -2512,8 +2902,18 @@ Future<R?> showAppSheet<R>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _kShortMonths = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// `12 Mar 2026`

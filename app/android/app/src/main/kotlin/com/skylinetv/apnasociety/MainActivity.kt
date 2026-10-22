@@ -1,4 +1,4 @@
-package com.example.apna_society
+package com.skylinetv.apnasociety
 
 import io.flutter.embedding.android.FlutterActivity
 

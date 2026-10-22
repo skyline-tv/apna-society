@@ -132,6 +132,61 @@ void main() {
     expect(find.text('Visitors'), findsOneWidget);
   });
 
+  testWidgets('QuickAccessGrid and PineHeader tolerate narrow width',
+      (tester) async {
+    const size = Size(320, 700);
+    await tester.binding.setSurfaceSize(size);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: size),
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: ListView(
+              children: [
+                const PineHeader(
+                  eyebrow: 'Good morning',
+                  title: 'Admin',
+                  subtitle: 'Monarch Solitaire',
+                ),
+                Padding(
+                  padding: Sp.pagePadding,
+                  child: QuickAccessGrid(items: [
+                    QuickAccessItem(
+                      icon: Icons.person_add_alt_1_outlined,
+                      label: 'Residents',
+                      onTap: () {},
+                    ),
+                    QuickAccessItem(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Create bill',
+                      onTap: () {},
+                    ),
+                    QuickAccessItem(
+                      icon: Icons.campaign_outlined,
+                      label: 'Notice',
+                      onTap: () {},
+                    ),
+                    QuickAccessItem(
+                      icon: Icons.assessment_outlined,
+                      label: 'Reports',
+                      onTap: () {},
+                    ),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Residents'), findsOneWidget);
+  });
+
   testWidgets('MetricBand and ToolDirectory tolerate narrow width',
       (tester) async {
     const size = Size(320, 700);

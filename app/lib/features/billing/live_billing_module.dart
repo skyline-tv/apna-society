@@ -340,6 +340,14 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                 ]),
               ),
               const SizedBox(height: 12),
+              CollectionBar(
+                title: 'Collections',
+                progress: collectedPct / 100,
+                valueLabel: '${collectedPct.toStringAsFixed(0)}%',
+                caption:
+                    '${moneyPaise(summary.totalCollectedPaise)} collected of ${moneyPaise(summary.totalBilledPaise)} billed',
+              ),
+              const SizedBox(height: 12),
               StatGrid(children: [
                 StatCard(
                   title: 'Billed',
@@ -597,9 +605,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
           : null,
       bottom: PrimaryButton(
         label: reviewing ? 'Create bills on server' : 'Preview eligible flats',
-        icon: reviewing
-            ? Icons.auto_awesome_outlined
-            : Icons.preview_outlined,
+        icon: reviewing ? Icons.auto_awesome_outlined : Icons.preview_outlined,
         busy: busy || _loadingEligible,
         onPressed: reviewing
             ? (rows == null || rows.isEmpty || _loadingEligible
@@ -1059,10 +1065,8 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                 const SizedBox(height: 16),
                 const SectionTitle('Collect & manage'),
                 if (!open && bill.amountPaidPaise > 0)
-                  const EmptyState(
-                      'This bill is settled. No further actions.',
-                      icon: Icons.lock_outline_rounded,
-                      compact: true)
+                  const EmptyState('This bill is settled. No further actions.',
+                      icon: Icons.lock_outline_rounded, compact: true)
                 else
                   ActionRail(
                     busy: busy,
@@ -1070,8 +1074,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                         ? ToolLink(
                             icon: Icons.payments_outlined,
                             label: 'Record offline payment',
-                            subtitle:
-                                'Cash, cheque or bank transfer received',
+                            subtitle: 'Cash, cheque or bank transfer received',
                             onTap: () => _offline(bill),
                           )
                         : null,
@@ -1111,9 +1114,7 @@ class _BillHeader extends StatelessWidget {
         subtitle:
             '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot} · ${bill.billNumber}',
         leading: const AppAvatar(
-            icon: Icons.receipt_long_outlined,
-            size: Sz.avatarLg,
-            square: true),
+            icon: Icons.receipt_long_outlined, size: Sz.avatarLg, square: true),
         badges: [
           StatusBadge(_billStatusLabel(bill.status)),
           if (_isOverdue(bill) && bill.status != 'OVERDUE')
@@ -1217,10 +1218,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           title: 'Applying to',
           rows: [
             ('Bill', bill.billNumber),
-            (
-              'Flat',
-              '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot}'
-            ),
+            ('Flat', '${bill.wingCodeSnapshot}-${bill.flatNumberSnapshot}'),
             ('Period', _periodLabel(bill)),
             (
               'Outstanding principal',
@@ -1233,8 +1231,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
         TextFormField(
           controller: amount,
           enabled: !busy,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
           ],
@@ -1501,6 +1498,14 @@ class _LiveOwnerBillsPageState extends State<LiveOwnerBillsPage> {
           child: ListView(
             padding: Sp.pagePadding,
             children: [
+              if (open.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: InfoNote(
+                    'No prepaid balance. Pay 3 months in advance if your society offers a discount.',
+                    tone: NoteTone.success,
+                  ),
+                ),
               HeroMoneyCard(
                 label: 'Total outstanding',
                 amount: moneyPaise(duePaise),

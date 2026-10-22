@@ -8,7 +8,8 @@ import 'api/auth/auth_messages.dart';
 import 'api/auth/auth_session.dart';
 import 'api/auth/home_resolver.dart';
 import 'api/socket/visitor_socket.dart';
-import 'api/models/billing_models.dart' show Bill, ListBillsQuery, billAmountDuePaise;
+import 'api/models/billing_models.dart'
+    show Bill, ListBillsQuery, billAmountDuePaise;
 import 'api/models/common.dart' show Paged;
 import 'api/models/resident_home_context.dart';
 import 'api/models/resident_models.dart';
@@ -142,8 +143,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
             return _SplashScreen(
               label: 'Could not start the app',
               error: '${snapshot.error}',
-              onRetry: () =>
-                  setState(() => _init = _initializeLocalDatabase()),
+              onRetry: () => setState(() => _init = _initializeLocalDatabase()),
             );
           }
           return const AuthGate();
@@ -159,45 +159,81 @@ class _SplashScreen extends StatelessWidget {
   final VoidCallback? onRetry;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: C.bg,
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 380),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const BrandLogo(size: 84, radius: 22),
-                  const SizedBox(height: 18),
-                  const Text(kSocietyName,
-                      textAlign: TextAlign.center, style: T.h2),
-                  const SizedBox(height: 4),
-                  Text(kAppTagline,
-                      textAlign: TextAlign.center,
-                      style: T.secondary.copyWith(
-                          color: C.blue, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 32),
-                  if (error == null) ...[
-                    const SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(strokeWidth: 2.6)),
-                    const SizedBox(height: 14),
-                    Text(label, style: T.caption),
-                  ] else ...[
-                    Text(label, textAlign: TextAlign.center, style: T.h3),
-                    const SizedBox(height: 8),
-                    Text(error!,
-                        textAlign: TextAlign.center, style: T.secondary),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: onRetry,
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Try again'),
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          backgroundColor: C.blue,
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 380),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(Rd.xxl),
+                      ),
+                      child: const BrandLogo(size: 52, radius: 16),
                     ),
-                  ],
-                ]),
+                    const SizedBox(height: 20),
+                    const Text(kAppName,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                        )),
+                    const SizedBox(height: 6),
+                    Text(kSocietyName,
+                        textAlign: TextAlign.center,
+                        style: T.secondary.copyWith(
+                            color: Colors.white.withValues(alpha: 0.72))),
+                    const SizedBox(height: 4),
+                    Text(kAppTagline,
+                        textAlign: TextAlign.center,
+                        style: T.caption.copyWith(
+                            color: Colors.white.withValues(alpha: 0.55))),
+                    const SizedBox(height: 32),
+                    if (error == null) ...[
+                      const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            color: Colors.white,
+                          )),
+                      const SizedBox(height: 14),
+                      Text(label,
+                          style: T.caption.copyWith(
+                              color: Colors.white.withValues(alpha: 0.8))),
+                    ] else ...[
+                      Text(label,
+                          textAlign: TextAlign.center,
+                          style: T.h3.copyWith(color: Colors.white)),
+                      const SizedBox(height: 8),
+                      Text(error!,
+                          textAlign: TextAlign.center,
+                          style: T.secondary.copyWith(
+                              color: Colors.white.withValues(alpha: 0.78))),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: onRetry,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: C.blue,
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Try again'),
+                      ),
+                    ],
+                  ]),
+                ),
               ),
             ),
           ),
@@ -308,8 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadRemembered() async {
-    final remembered =
-        await ensureAuthSession().readRememberedUsername();
+    final remembered = await ensureAuthSession().readRememberedUsername();
     if (!mounted || remembered == null || remembered.isEmpty) return;
     setState(() {
       username.text = remembered;
@@ -401,6 +436,25 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  void _showForgotPassword() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_reset_rounded, color: C.blue),
+        title: const Text('Forgot password?'),
+        content: const Text(
+          'Password reset is handled by your society admin. Ask them to issue a temporary password, then change it on first sign-in.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: C.bg,
@@ -417,23 +471,30 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Align(
+                      Align(
                         alignment: Alignment.centerLeft,
-                        child: BrandLogo(size: 52, radius: 12),
+                        child: Container(
+                          width: 52,
+                          height: 52,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: C.blue,
+                            borderRadius: BorderRadius.circular(Rd.xl),
+                          ),
+                          child: const Icon(Icons.apartment_rounded,
+                              color: Colors.white, size: 26),
+                        ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
+                      const Text('Welcome back', style: T.h1),
+                      const SizedBox(height: 4),
                       const Text(
                         'Monarch Solitaire A to E',
-                        style: T.h1,
+                        style: T.bodyStrong,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       const Text(kAppTagline, style: T.secondary),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Sign in with the username and password from your society admin.',
-                        style: T.body,
-                      ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 22),
                       const Text('Login As', style: T.title),
                       const SizedBox(height: 4),
                       const Text(
@@ -497,20 +558,37 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      CheckboxListTile(
-                        value: rememberMe,
-                        onChanged: busy
-                            ? null
-                            : (value) =>
-                                setState(() => rememberMe = value ?? false),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: const Text('Remember me', style: T.body),
-                        subtitle: const Text(
-                          'Saves your username on this device. Session uses the secure refresh token.',
-                          style: T.caption,
-                        ),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          InkWell(
+                            onTap: busy
+                                ? null
+                                : () =>
+                                    setState(() => rememberMe = !rememberMe),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Checkbox(
+                                value: rememberMe,
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onChanged: busy
+                                    ? null
+                                    : (value) => setState(
+                                          () => rememberMe = value ?? false,
+                                        ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text('Remember me', style: T.body),
+                            ]),
+                          ),
+                          TextButton(
+                            onPressed: busy ? null : _showForgotPassword,
+                            child: const Text('Forgot password?'),
+                          ),
+                        ],
                       ),
                       InlineError(error),
                       const SizedBox(height: 16),
@@ -520,9 +598,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         busy: busy,
                         onPressed: submitLogin,
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Having trouble? Contact your society admin.',
+                        textAlign: TextAlign.center,
+                        style: T.caption.copyWith(color: C.faint),
+                      ),
+                      const SizedBox(height: 12),
                       Text(
                         'Username & password · SkyLine Tech Ventures',
+                        textAlign: TextAlign.center,
                         style: T.caption.copyWith(color: C.faint),
                       ),
                     ],
@@ -610,8 +695,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         return;
       }
       if (!isValidPasswordStrength(newPassword.text)) {
-        setState(() =>
-            error = 'New password needs 10+ characters with a letter and a number.');
+        setState(() => error =
+            'New password needs 10+ characters with a letter and a number.');
         return;
       }
       if (newPassword.text != confirmPassword.text) {
@@ -661,8 +746,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (widget.forced) ...[
-                        const BrandLogo(size: 48, radius: 12),
-                        const SizedBox(height: 20),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            width: 52,
+                            height: 52,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: C.blue,
+                              borderRadius: BorderRadius.circular(Rd.xl),
+                            ),
+                            child: const Icon(Icons.lock_reset_rounded,
+                                color: Colors.white, size: 26),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
                         const Text('Set a new password', style: T.h1),
                         const SizedBox(height: 8),
                         const Text(
@@ -783,23 +881,29 @@ class _RoleChoice extends StatelessWidget {
     return Material(
       color: selected ? C.chip : C.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Rd.md),
-        side: BorderSide(color: selected ? C.blue : C.line, width: selected ? 1.4 : 1),
+        borderRadius: BorderRadius.circular(Rd.xl),
+        side: BorderSide(
+            color: selected ? C.blue : C.line, width: selected ? 1.4 : 1),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Rd.md),
+        borderRadius: BorderRadius.circular(Rd.xl),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(children: [
-              Icon(icon, size: 18, color: selected ? C.blue : C.muted),
+              IconWell(
+                icon: icon,
+                color: selected ? C.blue : C.muted,
+                size: 28,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
-                  style: T.bodyStrong.copyWith(color: selected ? C.blue : C.navy),
+                  style:
+                      T.bodyStrong.copyWith(color: selected ? C.blue : C.navy),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -829,7 +933,8 @@ class _ResidentDest {
 }
 
 const _kResidentDests = <String, _ResidentDest>{
-  'home': _ResidentDest('home', 'Home', Icons.home_outlined, Icons.home_rounded),
+  'home':
+      _ResidentDest('home', 'Home', Icons.home_outlined, Icons.home_rounded),
   'bills': _ResidentDest('bills', 'Bills', Icons.receipt_long_outlined,
       Icons.receipt_long_rounded),
   'payments': _ResidentDest(
@@ -909,8 +1014,7 @@ class _OwnerHomeState extends State<OwnerHome> {
       flats: flats,
       preferOwner: preferOwner,
     );
-    final resolved =
-        match.isEmpty ? next : next.copyWithSelected(match.first);
+    final resolved = match.isEmpty ? next : next.copyWithSelected(match.first);
     if (mounted) setState(() => home = resolved);
     return ResidentProfileBundle(context: resolved);
   }
@@ -1085,57 +1189,66 @@ class _OwnerHomeState extends State<OwnerHome> {
       });
     }
     final inSubPage = layout.primary[safeTab] == 'more' && _morePage != null;
-    return PopScope(
-      canPop: !_canPopInternally,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _popInternally();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: inSubPage
-              ? IconButton(
-                  tooltip: 'Back',
-                  onPressed: _popInternally,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                )
-              : null,
-          title: inSubPage
-              ? Text(_titleForBar)
-              : brandAppBarTitle(title: _titleForBar, subtitle: kSocietyName),
-          actions: [
-            if (access.canResidential) const LiveNotificationBellButton(),
-            if (layout.more.contains('profile'))
-              IconButton(
-                tooltip: 'Profile',
-                onPressed: () => _open('profile'),
-                icon: const Icon(Icons.account_circle_outlined),
-              ),
-            IconButton(
-              tooltip: 'Logout',
-              onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded),
-            ),
-          ],
-        ),
-        body: IndexedStack(
-          index: safeTab,
-          children: [for (final key in layout.primary) _pageFor(key)],
-        ),
-        bottomNavigationBar: AppBottomNav(
-          selectedIndex: safeTab,
-          onDestinationSelected: (v) => setState(() {
-            if (v == tab && layout.primary[v] == 'more') _morePage = null;
-            tab = v;
-            if (layout.primary[v] != 'more') _morePage = null;
-          }),
-          destinations: [
-            for (final key in layout.primary)
-              NavigationDestination(
-                icon: Icon(_kResidentDests[key]!.icon),
-                selectedIcon: Icon(_kResidentDests[key]!.selectedIcon),
-                label: _kResidentDests[key]!.label,
-              ),
-          ],
+    final homeChrome = safeTab == 0 && !inSubPage;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value:
+          homeChrome ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: PopScope(
+        canPop: !_canPopInternally,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _popInternally();
+        },
+        child: Scaffold(
+          appBar: homeChrome
+              ? null
+              : AppBar(
+                  leading: inSubPage
+                      ? IconButton(
+                          tooltip: 'Back',
+                          onPressed: _popInternally,
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        )
+                      : null,
+                  title: inSubPage
+                      ? Text(_titleForBar)
+                      : brandAppBarTitle(
+                          title: _titleForBar, subtitle: kSocietyName),
+                  actions: [
+                    if (access.canResidential)
+                      const LiveNotificationBellButton(),
+                    if (layout.more.contains('profile'))
+                      IconButton(
+                        tooltip: 'Profile',
+                        onPressed: () => _open('profile'),
+                        icon: const Icon(Icons.account_circle_outlined),
+                      ),
+                    IconButton(
+                      tooltip: 'Logout',
+                      onPressed: _confirmLogout,
+                      icon: const Icon(Icons.logout_rounded),
+                    ),
+                  ],
+                ),
+          body: IndexedStack(
+            index: safeTab,
+            children: [for (final key in layout.primary) _pageFor(key)],
+          ),
+          bottomNavigationBar: AppBottomNav(
+            selectedIndex: safeTab,
+            onDestinationSelected: (v) => setState(() {
+              if (v == tab && layout.primary[v] == 'more') _morePage = null;
+              tab = v;
+              if (layout.primary[v] != 'more') _morePage = null;
+            }),
+            destinations: [
+              for (final key in layout.primary)
+                NavigationDestination(
+                  icon: Icon(_kResidentDests[key]!.icon),
+                  selectedIcon: Icon(_kResidentDests[key]!.selectedIcon),
+                  label: _kResidentDests[key]!.label,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1165,6 +1278,36 @@ class _OwnerHomeState extends State<OwnerHome> {
             if (k != 'home' && k != 'more' && k != 'profile') k,
         ];
 
+        final quick = <QuickAccessItem>[
+          if (ctx.access.canFinance)
+            QuickAccessItem(
+              icon: Icons.receipt_long_outlined,
+              label: 'Pay bill',
+              onTap: () => _open('bills'),
+            ),
+          if (ctx.access.canResidential)
+            QuickAccessItem(
+              icon: Icons.groups_outlined,
+              label: 'Visitors',
+              color: C.softBlue,
+              onTap: () => _open('visitors'),
+            ),
+          if (ctx.access.canResidential)
+            QuickAccessItem(
+              icon: Icons.report_problem_outlined,
+              label: 'Complaint',
+              color: C.amber,
+              onTap: () => _open('complaints'),
+            ),
+          if (ctx.access.canResidential)
+            QuickAccessItem(
+              icon: Icons.meeting_room_outlined,
+              label: 'Facilities',
+              color: C.blueDark,
+              onTap: () => _open('facilities'),
+            ),
+        ];
+
         return RefreshIndicator(
           color: C.blue,
           onRefresh: () async {
@@ -1172,102 +1315,124 @@ class _OwnerHomeState extends State<OwnerHome> {
             await _profileFuture;
           },
           child: ListView(
-            padding: Sp.pagePadding,
+            padding: EdgeInsets.zero,
             children: [
-              // Greeting
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                AppAvatar(text: initialsOf(name), size: Sz.avatarLg),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Hello, ${name.split(' ').first}',
-                            style: T.h1,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text('${ctx.wingLabel} · Flat ${ctx.flatNumber}',
-                            style: T.secondary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ]),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: [
-                StatusBadge(roleLabel, tone: BadgeTone.info),
-                StatusBadge(ctx.occupancyLabel, tone: BadgeTone.neutral),
-              ]),
-              if (ctx.hasMultipleFlats) ...[
-                const SizedBox(height: 16),
-                PickerField(
-                  label: 'Active flat',
-                  icon: Icons.apartment_outlined,
-                  value: _flatOptionLabel(ctx.selectedFlat),
-                  onTap: () => _showFlatPicker(ctx),
-                ),
-              ],
-              const SizedBox(height: 20),
-              if (ctx.access.canFinance && !ctx.access.canResidential)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 14),
-                  child: InfoNote(
-                      'This flat is tenant occupied. Your account has financial access only — visitor and residential features are with the active tenant.'),
-                ),
-              if (!ctx.access.canFinance && ctx.access.canResidential)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 14),
-                  child: InfoNote(
-                    'You manage day-to-day residential features for this flat. Maintenance bills and payments stay with the owner.',
+              OverlapHero(
+                header: ColoredBox(
+                  color: C.blue,
+                  child: SafeArea(
+                    bottom: false,
+                    child: PineHeader(
+                      eyebrow: '${dayGreeting()} · $roleLabel',
+                      title: name.split(' ').first,
+                      subtitle: kSocietyName,
+                      trailing: access.canResidential
+                          ? const LiveNotificationBellButton(onPine: true)
+                          : null,
+                      bottomPadding: 52,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(Rd.xl),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.apartment_rounded,
+                              color: Colors.white, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Flat ${ctx.flatNumber} · ${ctx.wingLabel}',
+                                    style: T.bodyStrong
+                                        .copyWith(color: Colors.white),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    'Floor ${flat.floor} · ${ctx.occupancyLabel}',
+                                    style: T.caption.copyWith(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.7)),
+                                  ),
+                                ]),
+                          ),
+                        ]),
+                      ),
+                    ),
                   ),
                 ),
-              if (ctx.access.canFinance) _duesHero(flat) else _flatCard(ctx),
-              if (!ctx.access.canFinance) ...[
-                const SizedBox(height: 16),
-                PrimaryButton(
-                  label: 'Visitor requests',
-                  icon: Icons.groups_outlined,
-                  onPressed: () => _open('visitors'),
-                ),
-                const SizedBox(height: 8),
-                SecondaryButton(
-                  label: 'Raise a complaint',
-                  icon: Icons.report_problem_outlined,
-                  onPressed: () => _open('complaints'),
-                ),
-              ],
-              const SizedBox(height: 22),
-              ToolDirectory(
-                title: 'Also for this flat',
-                links: [
-                  for (final key in services)
-                    if (_showOnHome(key))
-                      ToolLink(
-                        icon: _kResidentDests[key]!.icon,
-                        label: _kResidentDests[key]!.label,
-                        subtitle: _residentToolHint(key),
-                        onTap: () => _open(key),
-                      ),
-                ],
+                hero: ctx.access.canFinance ? _duesHero(flat) : _flatCard(ctx),
               ),
-              const SizedBox(height: 22),
-              const SectionTitle('Your flat'),
-              DetailCard(children: [
-                DetailRow('Flat', ctx.flatNumber),
-                DetailRow('Wing', ctx.wingLabel),
-                DetailRow('Floor', '${flat.floor}'),
-                DetailRow('Type', flatTypeLabel(flat.flatType)),
-                DetailRow('Occupancy', ctx.occupancyLabel),
-                DetailRow('Status', '',
-                    valueWidget: Align(
-                      alignment: Alignment.centerLeft,
-                      child: StatusBadge(flat.isActive ? 'Active' : 'Inactive'),
-                    )),
-                if (ctx.access.canFinance)
-                  DetailRow('Monthly maintenance', money(flat.maintenanceRate),
-                      emphasize: true),
-              ]),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (ctx.hasMultipleFlats) ...[
+                        PickerField(
+                          label: 'Active flat',
+                          icon: Icons.apartment_outlined,
+                          value: _flatOptionLabel(ctx.selectedFlat),
+                          onTap: () => _showFlatPicker(ctx),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      if (ctx.access.canFinance && !ctx.access.canResidential)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 14),
+                          child: InfoNote(
+                              'This flat is tenant occupied. Your account has financial access only — visitor and residential features are with the active tenant.'),
+                        ),
+                      if (!ctx.access.canFinance && ctx.access.canResidential)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 14),
+                          child: InfoNote(
+                            'You manage day-to-day residential features for this flat. Maintenance bills and payments stay with the owner.',
+                          ),
+                        ),
+                      if (quick.isNotEmpty) ...[
+                        const SectionTitle('Quick access'),
+                        QuickAccessGrid(items: quick),
+                        const SizedBox(height: 22),
+                      ],
+                      ToolDirectory(
+                        title: 'Also for this flat',
+                        links: [
+                          for (final key in services)
+                            if (_showOnHome(key))
+                              ToolLink(
+                                icon: _kResidentDests[key]!.icon,
+                                label: _kResidentDests[key]!.label,
+                                subtitle: _residentToolHint(key),
+                                onTap: () => _open(key),
+                              ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      const SectionTitle('Your flat'),
+                      DetailCard(children: [
+                        DetailRow('Flat', ctx.flatNumber),
+                        DetailRow('Wing', ctx.wingLabel),
+                        DetailRow('Floor', '${flat.floor}'),
+                        DetailRow('Type', flatTypeLabel(flat.flatType)),
+                        DetailRow('Occupancy', ctx.occupancyLabel),
+                        DetailRow('Status', '',
+                            valueWidget: Align(
+                              alignment: Alignment.centerLeft,
+                              child: StatusBadge(
+                                  flat.isActive ? 'Active' : 'Inactive'),
+                            )),
+                        if (ctx.access.canFinance)
+                          DetailRow('Monthly maintenance',
+                              money(flat.maintenanceRate),
+                              emphasize: true),
+                      ]),
+                    ]),
+              ),
             ],
           ),
         );
@@ -1317,21 +1482,24 @@ class _OwnerHomeState extends State<OwnerHome> {
         final loading =
             snap.connectionState == ConnectionState.waiting && !snap.hasData;
         if (snap.hasError) {
-          return HeroMoneyCard(
-            label: 'Monthly maintenance',
-            amount: money(flat.maintenanceRate),
-            subtitle: 'Outstanding dues could not be loaded.',
-            child: Row(children: [
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: Colors.transparent,
-                  side: const BorderSide(color: Color(0x66FFFFFF)),
-                ),
+          return AppCard(
+            margin: EdgeInsets.zero,
+            padding: const EdgeInsets.all(16),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('MAINTENANCE DUE',
+                  style: T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
+              const SizedBox(height: 6),
+              Text(money(flat.maintenanceRate), style: T.display),
+              const SizedBox(height: 6),
+              const Text('Outstanding dues could not be loaded.',
+                  style: T.secondary),
+              const SizedBox(height: 14),
+              SecondaryButton(
+                label: 'Retry',
+                icon: Icons.refresh_rounded,
                 onPressed: () =>
                     setState(() => _duesFuture = _loadDues(force: true)),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Retry'),
               ),
             ]),
           );
@@ -1343,45 +1511,57 @@ class _OwnerHomeState extends State<OwnerHome> {
           final due = DateTime.tryParse(b.dueDate);
           return due != null && due.isBefore(DateTime.now());
         }).length;
-        return HeroMoneyCard(
-          label: 'Outstanding dues',
-          amount: loading ? '—' : moneyPaise(duePaise),
-          subtitle: loading
-              ? 'Checking your bills…'
-              : bills.isEmpty
-                  ? 'No pending bills. Monthly maintenance ${money(flat.maintenanceRate)}.'
-                  : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
-                      '${overdue > 0 ? ' · $overdue overdue' : ''}'
-                      ' · Maintenance ${money(flat.maintenanceRate)}/mo',
-          trailing: loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white70))
-              : null,
-          child: Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white, foregroundColor: C.navy),
-                onPressed: () => _open('bills'),
-                icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                label: Text(bills.isEmpty ? 'View bills' : 'View & pay'),
+        final due = duePaise > 0;
+        return AppCard(
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text('MAINTENANCE DUE',
+                    style:
+                        T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
+              ),
+              if (loading)
+                const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                StatusBadge(
+                  bills.isEmpty
+                      ? 'Settled'
+                      : (overdue > 0 ? 'Overdue' : 'Pending'),
+                  tone: bills.isEmpty
+                      ? BadgeTone.success
+                      : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              loading ? '—' : moneyPaise(duePaise),
+              style: T.display.copyWith(
+                color: due ? C.error : C.navy,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: Colors.transparent,
-                  side: const BorderSide(color: Color(0x66FFFFFF)),
-                ),
-                onPressed: () => _open('payments'),
-                icon: const Icon(Icons.history_rounded, size: 18),
-                label: const Text('Payments'),
-              ),
+            const SizedBox(height: 4),
+            Text(
+              loading
+                  ? 'Checking your bills…'
+                  : bills.isEmpty
+                      ? 'No pending bills. Monthly ${money(flat.maintenanceRate)}.'
+                      : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
+                          '${overdue > 0 ? ' · $overdue overdue' : ''}'
+                          ' · ${money(flat.maintenanceRate)}/mo',
+              style: T.caption,
+            ),
+            const SizedBox(height: 14),
+            PrimaryButton(
+              label: bills.isEmpty ? 'View bills' : 'Pay now',
+              icon: Icons.payments_outlined,
+              onPressed: () => _open('bills'),
             ),
           ]),
         );
@@ -1393,19 +1573,19 @@ class _OwnerHomeState extends State<OwnerHome> {
         margin: EdgeInsets.zero,
         padding: const EdgeInsets.all(16),
         child: Row(children: [
-          const AppAvatar(icon: Icons.apartment_outlined, size: 48, square: true),
+          const AppAvatar(
+              icon: Icons.apartment_outlined, size: 48, square: true),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Flat ${ctx.flatNumber}', style: T.h3),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${ctx.wingLabel} · Floor ${ctx.flat.floor} · ${flatTypeLabel(ctx.flat.flatType)}',
-                    style: T.secondary,
-                  ),
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Flat ${ctx.flatNumber}', style: T.h3),
+              const SizedBox(height: 2),
+              Text(
+                '${ctx.wingLabel} · Floor ${ctx.flat.floor} · ${flatTypeLabel(ctx.flat.flatType)}',
+                style: T.secondary,
+              ),
+            ]),
           ),
           StatusBadge(ctx.flat.isActive ? 'Active' : 'Inactive'),
         ]),
@@ -1451,7 +1631,7 @@ class _OwnerHomeState extends State<OwnerHome> {
     final ok = await confirmDialog(
       context,
       title: 'Log out?',
-      message: 'You will need an SMS OTP to sign in again.',
+      message: 'You will need your username and password to sign in again.',
       confirmLabel: 'Log out',
       icon: Icons.logout_rounded,
     );
@@ -1591,12 +1771,13 @@ class ResidentProfilePage extends StatelessWidget {
           SettingsRow(
             icon: Icons.logout_rounded,
             title: 'Log out',
-            value: 'Requires SMS OTP to sign in again',
+            value: 'Requires username and password to sign in again',
             onTap: () async {
               final ok = await confirmDialog(
                 context,
                 title: 'Log out?',
-                message: 'You will need an SMS OTP to sign in again.',
+                message:
+                    'You will need your username and password to sign in again.',
                 confirmLabel: 'Log out',
                 icon: Icons.logout_rounded,
               );
@@ -1747,8 +1928,11 @@ class _AdminHomeState extends State<AdminHome> {
       [
         ('complaints', 'Complaints', Icons.report_problem_outlined),
         ('facilities', 'Facilities', Icons.meeting_room_outlined),
-        ('facility-bookings', 'Facility bookings',
-            Icons.event_available_outlined),
+        (
+          'facility-bookings',
+          'Facility bookings',
+          Icons.event_available_outlined
+        ),
         ('announcements', 'Announcements', Icons.campaign_outlined),
       ]
     ),
@@ -1808,7 +1992,7 @@ class _AdminHomeState extends State<AdminHome> {
     final ok = await confirmDialog(
       context,
       title: 'Log out?',
-      message: 'You will need an SMS OTP to sign in again.',
+      message: 'You will need your username and password to sign in again.',
       confirmLabel: 'Log out',
       icon: Icons.logout_rounded,
     );
@@ -2036,66 +2220,81 @@ class _AdminHomeState extends State<AdminHome> {
             child: ListView(
               padding: Sp.pagePadding,
               children: [
+                Text('${dayGreeting()}, Admin',
+                    style: T.caption.copyWith(color: C.faint)),
+                const SizedBox(height: 4),
                 Text(society.name,
-                    style: T.h2,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
+                    style: T.h1, maxLines: 2, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
                 Text(
-                    '${society.code} · ${monthName(DateTime.now())} · ${totals.wings} wings',
+                    '${monthName(DateTime.now())} · ${totals.wings} wings · ${society.code}',
                     style: T.secondary),
-                const SizedBox(height: 16),
-                MetricBand(items: [
-                  MetricItem('Active flats', '${totals.activeFlats}',
-                      onTap: () => setState(() => tab = 1)),
-                  MetricItem('Vacant', '${totals.vacantFlats}',
-                      valueColor: totals.vacantFlats > 0 ? C.amber : C.navy,
-                      onTap: () => setState(() => tab = 1)),
-                  MetricItem('Occupied', '$occRate%',
-                      valueColor: C.green),
-                  MetricItem(
-                    'Monthly maintenance',
-                    money(totals.monthlyMaintenanceTotal),
+                const SizedBox(height: 18),
+                StatGrid(children: [
+                  StatCard(
+                    title: 'Total flats',
+                    value: '${totals.flats}',
+                    icon: Icons.apartment_outlined,
+                    caption: '${totals.wings} wings',
+                    onTap: () => setState(() => tab = 1),
+                  ),
+                  StatCard(
+                    title: 'Occupied',
+                    value: '$occupied',
+                    icon: Icons.groups_outlined,
+                    caption: '${totals.vacantFlats} vacant',
+                    onTap: () => setState(() => tab = 1),
+                  ),
+                  StatCard(
+                    title: 'This month',
+                    value: money(totals.monthlyMaintenanceTotal),
+                    icon: Icons.payments_outlined,
+                    caption: 'Maintenance',
                     onTap: () => setState(() => tab = 2),
+                  ),
+                  StatCard(
+                    title: 'Occupancy',
+                    value: '$occRate%',
+                    icon: Icons.pie_chart_outline_rounded,
+                    accent: C.green,
+                    caption: '${totals.activeFlats} active',
                   ),
                 ]),
                 const SizedBox(height: 12),
-                AppCard(
-                  margin: EdgeInsets.zero,
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Occupancy', style: T.title),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(Rd.sm),
-                          child: LinearProgressIndicator(
-                            value: totals.flats == 0
-                                ? 0
-                                : occupied / totals.flats,
-                            minHeight: 6,
-                            color: C.green,
-                            backgroundColor: C.neutralSoft,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(spacing: 14, runSpacing: 6, children: [
-                          DotLabel('${totals.ownerOccupiedFlats} owner',
-                              color: C.green),
-                          DotLabel('${totals.tenantOccupiedFlats} tenant',
-                              color: C.softBlue),
-                          DotLabel('${totals.vacantFlats} vacant',
-                              color: C.amber),
-                          DotLabel('${totals.inactiveFlats} inactive',
-                              color: C.faint),
-                        ]),
-                        const SizedBox(height: 6),
-                        Text(
-                            '${totals.twoBhkCount} × 2 BHK · ${totals.threeBhkCount} × 3 BHK',
-                            style: T.caption),
-                      ]),
+                CollectionBar(
+                  title: 'Occupancy',
+                  progress: totals.flats == 0 ? 0 : occupied / totals.flats,
+                  valueLabel: '$occRate%',
+                  caption:
+                      '${totals.ownerOccupiedFlats} owner · ${totals.tenantOccupiedFlats} tenant · ${totals.vacantFlats} vacant · ${totals.twoBhkCount} × 2 BHK · ${totals.threeBhkCount} × 3 BHK',
                 ),
+                const SizedBox(height: 20),
+                const SectionTitle('Quick actions'),
+                QuickAccessGrid(items: [
+                  QuickAccessItem(
+                    icon: Icons.person_add_alt_1_outlined,
+                    label: 'Residents',
+                    onTap: () => _openMore('residents'),
+                  ),
+                  QuickAccessItem(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Create bill',
+                    color: C.amber,
+                    onTap: () => setState(() => tab = 2),
+                  ),
+                  QuickAccessItem(
+                    icon: Icons.campaign_outlined,
+                    label: 'Notice',
+                    color: C.softBlue,
+                    onTap: () => _openMore('announcements'),
+                  ),
+                  QuickAccessItem(
+                    icon: Icons.assessment_outlined,
+                    label: 'Reports',
+                    color: C.blueDark,
+                    onTap: () => _openMore('reports'),
+                  ),
+                ]),
                 const SizedBox(height: 22),
                 ToolDirectory(
                   title: 'Operate',
@@ -2582,7 +2781,8 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
       body: FutureBuilder<_FlatDetailBundle>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
             return const LoadingView(label: 'Loading flat…');
           }
           if (snap.hasError) {
@@ -2657,8 +2857,7 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
                 ),
                 const SizedBox(height: 12),
                 const SectionTitle('Next occupancy step',
-                    subtitle:
-                        'Vacant → owner → tenant → owner → vacant'),
+                    subtitle: 'Vacant → owner → tenant → owner → vacant'),
                 if (!hasActions)
                   const EmptyState(
                       'No occupancy change is available in this state',
@@ -2686,8 +2885,7 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
                                 ? ToolLink(
                                     icon: Icons.person_remove_outlined,
                                     label: 'End tenant occupancy',
-                                    subtitle:
-                                        'Flat returns to owner occupied',
+                                    subtitle: 'Flat returns to owner occupied',
                                     onTap: () => _end(owner: false),
                                   )
                                 : canEndOwner
@@ -2748,14 +2946,17 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
                                         style: T.caption,
                                       ),
                                       const SizedBox(height: 6),
-                                      Wrap(spacing: 6, runSpacing: 4, children: [
-                                        StatusBadge(
-                                            item.role == 'OWNER'
-                                                ? 'Owner'
-                                                : 'Tenant',
-                                            tone: BadgeTone.info),
-                                        StatusBadge(item.status),
-                                      ]),
+                                      Wrap(
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: [
+                                            StatusBadge(
+                                                item.role == 'OWNER'
+                                                    ? 'Owner'
+                                                    : 'Tenant',
+                                                tone: BadgeTone.info),
+                                            StatusBadge(item.status),
+                                          ]),
                                     ],
                                   ),
                                 ),
@@ -2807,7 +3008,8 @@ class _ResidentCard extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title.toUpperCase(), style: T.label),
             const SizedBox(height: 3),
             Text(r == null ? emptyText : r.name,
@@ -4891,8 +5093,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
               MetricBand(items: [
                 MetricItem('Flats', '${totals.flats}'),
                 MetricItem('Wings', '${totals.wings}'),
-                MetricItem(
-                    'Monthly maintenance', money(totals.monthlyMaintenanceTotal)),
+                MetricItem('Monthly maintenance',
+                    money(totals.monthlyMaintenanceTotal)),
               ]),
               const SizedBox(height: 16),
               SettingsGroup(title: 'Society', children: [

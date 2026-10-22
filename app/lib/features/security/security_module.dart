@@ -85,7 +85,7 @@ class _GuardHomeState extends State<GuardHome> {
     final ok = await confirmDialog(
       context,
       title: 'Log out?',
-      message: 'You will need an SMS OTP to sign in again.',
+      message: 'You will need your username and password to sign in again.',
       confirmLabel: 'Log out',
       icon: Icons.logout_rounded,
     );
@@ -136,46 +136,50 @@ class _GuardHomeState extends State<GuardHome> {
       GuardProfilePage(
           guard: widget.guard, onLogout: _confirmLogout, guardId: guardId),
     ];
-    return PopScope(
-      canPop: tab == 0,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(() => tab = 0);
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: brandAppBarTitle(
-              title: tab == 0 ? '$kAppName Security' : _titles[tab],
-              subtitle: kSocietyName),
-          actions: [
-            IconButton(
-              tooltip: 'Logout',
-              onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded),
-            ),
-          ],
-        ),
-        body: IndexedStack(index: tab, children: pages),
-        bottomNavigationBar: AppBottomNav(
-          selectedIndex: tab,
-          onDestinationSelected: (v) => setState(() => tab = v),
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.sensor_door_outlined),
-                selectedIcon: Icon(Icons.sensor_door_rounded),
-                label: 'Desk'),
-            NavigationDestination(
-                icon: Icon(Icons.pin_outlined),
-                selectedIcon: Icon(Icons.pin_rounded),
-                label: 'Verify'),
-            NavigationDestination(
-                icon: Icon(Icons.meeting_room_outlined),
-                selectedIcon: Icon(Icons.meeting_room_rounded),
-                label: 'Inside'),
-            NavigationDestination(
-                icon: Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded),
-                label: 'Account'),
-          ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: tab == 0 ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: PopScope(
+        canPop: tab == 0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => tab = 0);
+        },
+        child: Scaffold(
+          appBar: tab == 0
+              ? null
+              : AppBar(
+                  title: brandAppBarTitle(
+                      title: _titles[tab], subtitle: kSocietyName),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Logout',
+                      onPressed: _confirmLogout,
+                      icon: const Icon(Icons.logout_rounded),
+                    ),
+                  ],
+                ),
+          body: IndexedStack(index: tab, children: pages),
+          bottomNavigationBar: AppBottomNav(
+            selectedIndex: tab,
+            onDestinationSelected: (v) => setState(() => tab = v),
+            destinations: const [
+              NavigationDestination(
+                  icon: Icon(Icons.sensor_door_outlined),
+                  selectedIcon: Icon(Icons.sensor_door_rounded),
+                  label: 'Desk'),
+              NavigationDestination(
+                  icon: Icon(Icons.pin_outlined),
+                  selectedIcon: Icon(Icons.pin_rounded),
+                  label: 'Verify'),
+              NavigationDestination(
+                  icon: Icon(Icons.meeting_room_outlined),
+                  selectedIcon: Icon(Icons.meeting_room_rounded),
+                  label: 'Inside'),
+              NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded),
+                  label: 'Account'),
+            ],
+          ),
         ),
       ),
     );
@@ -441,7 +445,7 @@ class GuardProfilePage extends StatelessWidget {
           SettingsRow(
             icon: Icons.logout_rounded,
             title: 'Log out',
-            value: 'Requires SMS OTP to sign in again',
+            value: 'Requires username and password to sign in again',
             onTap: onLogout,
           ),
         ]),
