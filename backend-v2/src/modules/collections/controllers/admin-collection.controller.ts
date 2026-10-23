@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { getRequestSocietyId } from '../../../middleware/admin-society';
 import {
+  addCollectionFlats,
   adjustCollectionCharge,
   cancelCollection,
   closeCollection,
@@ -11,6 +12,7 @@ import {
   listChargeAdjustments,
   listCollectionCharges,
   listCollections,
+  previewAddCollectionFlats,
   previewCollection,
   updateCollection,
 } from '../services/collection.service';
@@ -21,6 +23,7 @@ import {
   recordOfflineCollectionPayment,
 } from '../services/collection-payment.service';
 import type {
+  AddCollectionFlatsInput,
   AdjustChargeInput,
   CancelCollectionInput,
   CreateCollectionInput,
@@ -75,6 +78,25 @@ export async function updateCollectionHandler(req: Request, res: Response): Prom
     getRequestSocietyId(req),
     String(req.params.collectionId),
     req.body as UpdateCollectionInput,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function previewAddCollectionFlatsHandler(req: Request, res: Response): Promise<void> {
+  const data = await previewAddCollectionFlats(
+    getRequestSocietyId(req),
+    String(req.params.collectionId),
+    req.body as AddCollectionFlatsInput,
+  );
+  res.json({ success: true, data });
+}
+
+export async function addCollectionFlatsHandler(req: Request, res: Response): Promise<void> {
+  const data = await addCollectionFlats(
+    getRequestSocietyId(req),
+    String(req.params.collectionId),
+    req.body as AddCollectionFlatsInput,
     actorFrom(req),
   );
   res.json({ success: true, data });

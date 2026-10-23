@@ -74,6 +74,28 @@ class CollectionApi {
     );
   }
 
+  Future<CollectionPreview> previewAddFlats(
+    String collectionId,
+    AddCollectionFlatsRequest request,
+  ) {
+    return _client.post(
+      '$_admin/collections/$collectionId/flats/preview',
+      body: request.toJson(),
+      decode: CollectionPreview.fromJson,
+    );
+  }
+
+  Future<CollectionSummary> addFlats(
+    String collectionId,
+    AddCollectionFlatsRequest request,
+  ) {
+    return _client.post(
+      '$_admin/collections/$collectionId/flats',
+      body: request.toJson(),
+      decode: CollectionSummary.fromJson,
+    );
+  }
+
   Future<CollectionSummary> close(String collectionId) {
     return _client.post(
       '$_admin/collections/$collectionId/close',

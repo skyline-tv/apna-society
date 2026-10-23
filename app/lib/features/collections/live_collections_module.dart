@@ -41,6 +41,8 @@ String collectionErrorMessage(Object error) {
         return 'A flat cannot be assigned twice to the same collection.';
       case 'NO_FLATS_ASSIGNED':
         return 'No configured flats matched this assignment.';
+      case 'MISSING_FLAT_AMOUNT':
+        return 'Enter an amount for the flats you are adding.';
       case 'RECEIPT_NOT_AVAILABLE':
         return 'A receipt is only available after the payment is confirmed.';
       case 'RECEIPT_ACCESS_DENIED':
@@ -856,18 +858,128 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
       TextEditingController(text: widget.collection.description);
   late final instructions =
       TextEditingController(text: widget.collection.paymentInstructions ?? '');
+  late final addAmount = TextEditingController(
+    text: widget.collection.amountPaise > 0
+        ? paiseToRupeeInput(widget.collection.amountPaise)
+        : '',
+  );
   late DateTime dueDate =
       DateTime.tryParse(widget.collection.dueDate) ?? DateTime.now();
   late bool allowPartial = widget.collection.allowPartialPayment;
   bool busy = false;
+  bool addingFlats = false;
   String? error;
+  bool includeRemaining = false;
+  final selectedWingIds = <String>{};
+  final selectedFlatIds = <String>{};
+  CollectionPreview? addPreview;
+  late Future<_EditLookups> _lookups = _loadLookups();
+
+  Future<_EditLookups> _loadLookups() async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final repos = ensureLiveRepositories(session.api);
+    final wings = await repos.society.wings();
+    final flats = await repos.society.listAllFlats(isActive: true);
+    final assigned = await repos.collections.listCharges(
+      widget.collection.id,
+      query: const CollectionChargeQuery(limit: 200),
+    );
+    return _EditLookups(
+      wings: wings,
+      flats: flats,
+      assignedFlatIds: assigned.items.map((row) => row.flatId).toSet(),
+    );
+  }
 
   @override
   void dispose() {
     title.dispose();
     description.dispose();
     instructions.dispose();
+    addAmount.dispose();
     super.dispose();
+  }
+
+  AddCollectionFlatsRequest? _addRequest() {
+    if (includeRemaining) {
+      return AddCollectionFlatsRequest(
+        includeRemaining: true,
+        amountPaise: parseRupeesToPaise(addAmount.text),
+      );
+    }
+    if (selectedWingIds.isEmpty && selectedFlatIds.isEmpty) {
+      setState(() => error = 'Select flats or wings to add.');
+      return null;
+    }
+    final paise = parseRupeesToPaise(addAmount.text);
+    if (paise == null || paise <= 0) {
+      setState(() => error = 'Enter an amount for the new flats.');
+      return null;
+    }
+    return AddCollectionFlatsRequest(
+      wingIds: selectedWingIds.isEmpty ? null : selectedWingIds.toList(),
+      flatIds: selectedFlatIds.isEmpty ? null : selectedFlatIds.toList(),
+      amountPaise: paise,
+    );
+  }
+
+  Future<void> _previewAdd() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final request = _addRequest();
+    if (request == null) return;
+    setState(() {
+      addingFlats = true;
+      error = null;
+    });
+    try {
+      final preview = await ensureLiveRepositories(authSession!.api)
+          .collections
+          .previewAddFlats(widget.collection.id, request);
+      if (!mounted) return;
+      setState(() => addPreview = preview);
+    } catch (e) {
+      setState(() => error = collectionErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => addingFlats = false);
+    }
+  }
+
+  Future<void> _confirmAdd() async {
+    final request = _addRequest();
+    if (request == null) return;
+    setState(() {
+      addingFlats = true;
+      error = null;
+    });
+    try {
+      final session = authSession!;
+      final repos = ensureLiveRepositories(session.api);
+      if (_form.currentState?.validate() ?? false) {
+        await repos.collections.update(
+          widget.collection.id,
+          title: title.text.trim(),
+          description: description.text.trim(),
+          dueDate: civilDateToIso(dueDate),
+          paymentInstructions: instructions.text.trim(),
+          allowPartialPayment: allowPartial,
+        );
+      }
+      await repos.collections.addFlats(widget.collection.id, request);
+      repos.invalidateAfterFinancialMutation();
+      if (!mounted) return;
+      showSuccessSnack(
+        context,
+        addPreview == null
+            ? 'Flats added to the collection.'
+            : '${addPreview!.assignedFlatCount} flats added.',
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => error = collectionErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => addingFlats = false);
+    }
   }
 
   Future<void> _save() async {
@@ -896,71 +1008,295 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return FormScaffold(
-      title: 'Edit collection',
-      formKey: _form,
-      bottom: PrimaryButton(
-        label: 'Save changes',
-        icon: Icons.check_rounded,
-        busy: busy,
-        onPressed: _save,
-      ),
-      children: [
-        const InfoNote(
-          'Assignment and original amounts stay frozen. Correct a flat amount with an auditable adjustment instead of editing history.',
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: title,
-          enabled: !busy,
-          decoration: const InputDecoration(labelText: 'Title *'),
-          validator: (v) =>
-              (v ?? '').trim().length < 3 ? 'Enter a title.' : null,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: description,
-          enabled: !busy,
-          maxLines: 3,
-          decoration: const InputDecoration(labelText: 'Description *'),
-          validator: (v) =>
-              (v ?? '').trim().length < 3 ? 'Enter a description.' : null,
-        ),
-        const SizedBox(height: 12),
-        PickerField(
-          label: 'Due date',
-          icon: Icons.event_outlined,
-          value: fmtIsoDate(civilDateToIso(dueDate)),
-          enabled: !busy,
-          onTap: () async {
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: dueDate,
-              firstDate: DateTime(2020),
-              lastDate: DateTime(2100),
+  Future<void> _pickFlats(List<FlatSummary> available) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        var query = '';
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final filtered = available
+                .where((f) =>
+                    query.isEmpty ||
+                    f.label.toLowerCase().contains(query.toLowerCase()) ||
+                    f.number.toLowerCase().contains(query.toLowerCase()))
+                .toList();
+            return SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.75,
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SearchField(
+                    hint: 'Search unassigned flats',
+                    onChanged: (v) => setSheet(() => query = v.trim()),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final flat = filtered[i];
+                      final selected = selectedFlatIds.contains(flat.id);
+                      return CheckboxListTile(
+                        value: selected,
+                        title: Text(flat.label),
+                        subtitle: Text(
+                          '${humanizeStatus(flat.occupancyStatus)} · ${flat.activeOwner?.name ?? 'Unassigned'}',
+                        ),
+                        onChanged: (on) {
+                          setSheet(() {
+                            if (on == true) {
+                              selectedFlatIds.add(flat.id);
+                            } else {
+                              selectedFlatIds.remove(flat.id);
+                            }
+                          });
+                          setState(() => addPreview = null);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ]),
             );
-            if (picked != null) setState(() => dueDate = picked);
           },
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: instructions,
-          enabled: !busy,
-          maxLines: 2,
-          decoration: const InputDecoration(labelText: 'Payment instructions'),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Allow partial payments'),
-          value: allowPartial,
-          onChanged: busy ? null : (v) => setState(() => allowPartial = v),
-        ),
-        InlineError(error),
-      ],
+        );
+      },
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_EditLookups>(
+      future: _lookups,
+      builder: (context, snap) {
+        final lookups = snap.data;
+        final available = lookups == null
+            ? const <FlatSummary>[]
+            : lookups.flats
+                .where((flat) => !lookups.assignedFlatIds.contains(flat.id))
+                .toList();
+        return FormScaffold(
+          title: 'Edit collection',
+          formKey: _form,
+          bottom: PrimaryButton(
+            label: 'Save changes',
+            icon: Icons.check_rounded,
+            busy: busy,
+            onPressed: busy || addingFlats ? null : _save,
+          ),
+          children: [
+            const InfoNote(
+              'Existing flat amounts stay unchanged. Add more flats below, or correct one assigned amount with an adjustment.',
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: title,
+              enabled: !busy,
+              decoration: const InputDecoration(labelText: 'Title *'),
+              validator: (v) =>
+                  (v ?? '').trim().length < 3 ? 'Enter a title.' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: description,
+              enabled: !busy,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Description *'),
+              validator: (v) =>
+                  (v ?? '').trim().length < 3 ? 'Enter a description.' : null,
+            ),
+            const SizedBox(height: 12),
+            PickerField(
+              label: 'Due date',
+              icon: Icons.event_outlined,
+              value: fmtIsoDate(civilDateToIso(dueDate)),
+              enabled: !busy,
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dueDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) setState(() => dueDate = picked);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: instructions,
+              enabled: !busy,
+              maxLines: 2,
+              decoration:
+                  const InputDecoration(labelText: 'Payment instructions'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Allow partial payments'),
+              value: allowPartial,
+              onChanged: busy ? null : (v) => setState(() => allowPartial = v),
+            ),
+            const SizedBox(height: 8),
+            const SectionTitle('Add more flats'),
+            if (snap.hasError)
+              LoadFailure(
+                error: snap.error!,
+                title: 'Could not load flats',
+                compact: true,
+                onRetry: () => setState(() => _lookups = _loadLookups()),
+              )
+            else if (lookups == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: LoadingView(label: 'Loading flats…'),
+              )
+            else if (available.isEmpty)
+              const InfoNote(
+                'Every configured flat is already on this collection.',
+              )
+            else ...[
+              Text(
+                '${lookups.assignedFlatIds.length} flats already assigned · ${available.length} can still be added',
+                style: T.caption,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Add all remaining society flats'),
+                subtitle: const Text(
+                    'Includes vacant and unassigned flats that are not already on this collection'),
+                value: includeRemaining,
+                onChanged: addingFlats
+                    ? null
+                    : (v) => setState(() {
+                          includeRemaining = v;
+                          addPreview = null;
+                        }),
+              ),
+              if (!includeRemaining) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final wing in lookups.wings)
+                      FilterChip(
+                        label: Text('Wing ${wing.code}'),
+                        selected: selectedWingIds.contains(wing.id),
+                        onSelected: addingFlats
+                            ? null
+                            : (on) => setState(() {
+                                  if (on) {
+                                    selectedWingIds.add(wing.id);
+                                  } else {
+                                    selectedWingIds.remove(wing.id);
+                                  }
+                                  addPreview = null;
+                                }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                PickerField(
+                  label: 'Additional flats',
+                  icon: Icons.apartment_outlined,
+                  value: selectedFlatIds.isEmpty
+                      ? 'Select flats'
+                      : '${selectedFlatIds.length} selected',
+                  enabled: !addingFlats,
+                  onTap: () => _pickFlats(available),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: addAmount,
+                enabled: !addingFlats,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Amount for new flats (₹)',
+                  prefixText: '₹ ',
+                ),
+                onChanged: (_) => setState(() => addPreview = null),
+              ),
+              const SizedBox(height: 12),
+              if (addPreview == null)
+                SecondaryButton(
+                  label: 'Preview new flats',
+                  icon: Icons.preview_outlined,
+                  busy: addingFlats,
+                  onPressed: addingFlats ? null : _previewAdd,
+                )
+              else ...[
+                DetailCard(children: [
+                  DetailRow('New flats', '${addPreview!.assignedFlatCount}'),
+                  DetailRow(
+                    'Amount per flat',
+                    addPreview!.defaultAmountPaise > 0
+                        ? moneyPaise(addPreview!.defaultAmountPaise)
+                        : 'Varies',
+                  ),
+                  DetailRow(
+                    'Added expected total',
+                    moneyPaise(addPreview!.expectedTotalPaise),
+                    emphasize: true,
+                  ),
+                  if (addPreview!.skippedAssignedCount > 0)
+                    DetailRow(
+                      'Already assigned (skipped)',
+                      '${addPreview!.skippedAssignedCount}',
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                ...addPreview!.allocations.take(12).map(
+                      (row) => DetailRow(
+                        row.flatLabel,
+                        '${moneyPaise(row.amountPaise)} · ${humanizeStatus(row.occupancyStatus)}',
+                      ),
+                    ),
+                if (addPreview!.allocations.length > 12)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 8),
+                    child: Text(
+                      '+ ${addPreview!.allocations.length - 12} more flats',
+                      style: T.caption,
+                    ),
+                  ),
+                PrimaryButton(
+                  label: 'Add ${addPreview!.assignedFlatCount} flats',
+                  icon: Icons.add_rounded,
+                  busy: addingFlats,
+                  onPressed: addingFlats ? null : _confirmAdd,
+                ),
+                const SizedBox(height: 8),
+                SecondaryButton(
+                  label: 'Change selection',
+                  onPressed: addingFlats
+                      ? null
+                      : () => setState(() => addPreview = null),
+                ),
+              ],
+            ],
+            InlineError(error),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _EditLookups {
+  const _EditLookups({
+    required this.wings,
+    required this.flats,
+    required this.assignedFlatIds,
+  });
+  final List<WingSummary> wings;
+  final List<FlatSummary> flats;
+  final Set<String> assignedFlatIds;
 }
 
 class LiveAdminCollectionDetailPage extends StatefulWidget {

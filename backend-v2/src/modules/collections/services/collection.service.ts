@@ -13,6 +13,7 @@ import {
 } from '../models/collection-charge.model';
 import { CollectionModel, type CollectionDocument } from '../models/collection.model';
 import type {
+  AddCollectionFlatsInput,
   AdjustChargeInput,
   CancelCollectionInput,
   CreateCollectionInput,
@@ -266,6 +267,170 @@ export async function updateCollection(
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent,
   });
+  return serializeCollection(collection);
+}
+
+async function resolveNewCollectionAllocations(
+  societyId: string,
+  collection: CollectionDocument,
+  input: AddCollectionFlatsInput,
+) {
+  const existing = await CollectionChargeModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    collectionId: collection._id,
+  })
+    .select('flatId')
+    .lean();
+  const assigned = new Set(existing.map((row) => String(row.flatId)));
+
+  const customAmounts = input.flatAmounts ?? [];
+  const amountPaise =
+    input.amountPaise ??
+    (collection.amountMode === 'PER_FLAT' && collection.amountPaise > 0
+      ? collection.amountPaise
+      : undefined);
+  const amountMode = customAmounts.length ? 'CUSTOM' : 'PER_FLAT';
+  if (amountMode !== 'CUSTOM' && !(amountPaise && amountPaise > 0)) {
+    throw badRequest(
+      'Enter an amount for the flats you are adding',
+      'MISSING_FLAT_AMOUNT',
+    );
+  }
+
+  let assignmentType: CreateCollectionInput['assignmentType'] = 'SELECTED_FLATS';
+  let flatIds = [
+    ...new Set([...(input.flatIds ?? []), ...customAmounts.map((row) => row.flatId)]),
+  ];
+  if (input.includeRemaining) {
+    assignmentType = 'ALL_FLATS';
+    flatIds = [];
+  } else if (input.wingIds?.length && flatIds.length === 0) {
+    assignmentType = 'WINGS';
+  } else if (input.wingIds?.length && flatIds.length > 0) {
+    const wingPreview = await resolveCollectionAssignments(societyId, {
+      title: collection.title,
+      description: collection.description,
+      amountMode: 'PER_FLAT',
+      assignmentType: 'WINGS',
+      amountPaise: amountPaise ?? 1,
+      wingIds: input.wingIds,
+      dueDate: collection.dueDate,
+      allowPartialPayment: false,
+    });
+    flatIds = [...new Set([...flatIds, ...wingPreview.allocations.map((row) => row.flatId)])];
+  }
+
+  const preview = await resolveCollectionAssignments(societyId, {
+    title: collection.title,
+    description: collection.description,
+    amountMode,
+    assignmentType,
+    amountPaise: amountMode === 'CUSTOM' ? undefined : amountPaise,
+    wingIds: assignmentType === 'WINGS' ? input.wingIds : undefined,
+    flatIds: assignmentType === 'SELECTED_FLATS' ? flatIds : undefined,
+    flatAmounts: amountMode === 'CUSTOM' ? customAmounts : undefined,
+    dueDate: collection.dueDate,
+    allowPartialPayment: false,
+  });
+
+  const allocations = preview.allocations.filter((row) => !assigned.has(row.flatId));
+  if (allocations.length === 0) {
+    throw conflict(
+      'Those flats are already assigned to this collection',
+      'DUPLICATE_FLAT_ASSIGNMENT',
+    );
+  }
+
+  const typicalAmount = allocations[0]?.amountPaise ?? 0;
+  const uniform = allocations.every((row) => row.amountPaise === typicalAmount);
+  return {
+    assignedFlatCount: allocations.length,
+    amountMode,
+    assignmentType: assignmentType === 'ALL_FLATS' ? 'ALL_FLATS' : 'SELECTED_FLATS',
+    defaultAmountPaise: uniform ? typicalAmount : 0,
+    expectedTotalPaise: allocations.reduce((sum, row) => sum + row.amountPaise, 0),
+    allocations,
+    skippedAssignedCount: preview.allocations.length - allocations.length,
+  };
+}
+
+export async function previewAddCollectionFlats(
+  societyId: string,
+  collectionId: string,
+  input: AddCollectionFlatsInput,
+) {
+  const collection = await CollectionModel.findOne({
+    _id: parseObjectId(collectionId, 'collectionId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!collection) throw notFound('Collection not found');
+  if (collection.status !== 'ACTIVE') {
+    throw badRequest('Only active collections can be edited', 'COLLECTION_NOT_EDITABLE');
+  }
+  return resolveNewCollectionAllocations(societyId, collection, input);
+}
+
+export async function addCollectionFlats(
+  societyId: string,
+  collectionId: string,
+  input: AddCollectionFlatsInput,
+  actor: Actor,
+) {
+  const collection = await CollectionModel.findOne({
+    _id: parseObjectId(collectionId, 'collectionId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!collection) throw notFound('Collection not found');
+  if (collection.status !== 'ACTIVE') {
+    throw badRequest('Only active collections can be edited', 'COLLECTION_NOT_EDITABLE');
+  }
+  const preview = await resolveNewCollectionAllocations(societyId, collection, input);
+
+  await withTransaction(async (session) => {
+    await CollectionChargeModel.insertMany(
+      preview.allocations.map((row) => ({
+        societyId,
+        collectionId: collection._id,
+        flatId: row.flatId,
+        ownerUserId: row.ownerUserId,
+        amountPaise: row.amountPaise,
+        adjustmentsPaise: 0,
+        amountPaidPaise: 0,
+        outstandingPaise: row.amountPaise,
+        status: 'PENDING' as const,
+        dueDate: collection.dueDate,
+        wingCodeSnapshot: row.wingCode,
+        flatNumberSnapshot: row.flatNumber,
+        occupancyStatusSnapshot: row.occupancyStatus,
+        ownerNameSnapshot: row.ownerName,
+      })),
+      { session, ordered: true },
+    );
+
+    collection.expectedTotalPaise += preview.expectedTotalPaise;
+    collection.assignedFlatCount += preview.assignedFlatCount;
+    collection.updatedBy = parseObjectId(actor.userId, 'userId');
+    await collection.save({ session });
+
+    await writeAuditLog(
+      {
+        action: 'COLLECTION_FLATS_ADDED',
+        actorUserId: actor.userId,
+        societyId,
+        targetType: 'SpecialCollection',
+        targetId: String(collection._id),
+        metadata: {
+          addedFlatCount: preview.assignedFlatCount,
+          addedTotalPaise: preview.expectedTotalPaise,
+          flatIds: preview.allocations.map((row) => row.flatId),
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+  });
+
   return serializeCollection(collection);
 }
 

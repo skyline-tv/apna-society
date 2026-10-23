@@ -257,6 +257,7 @@ class CollectionPreview {
     required this.defaultAmountPaise,
     required this.expectedTotalPaise,
     required this.allocations,
+    this.skippedAssignedCount = 0,
   });
 
   final int assignedFlatCount;
@@ -265,6 +266,7 @@ class CollectionPreview {
   final int defaultAmountPaise;
   final int expectedTotalPaise;
   final List<CollectionAllocation> allocations;
+  final int skippedAssignedCount;
 
   factory CollectionPreview.fromJson(Object? data) {
     final json = requireMap(data, 'collection preview');
@@ -277,8 +279,33 @@ class CollectionPreview {
       allocations: requireMapList(json, 'allocations')
           .map(CollectionAllocation.fromJson)
           .toList(),
+      skippedAssignedCount: optionalInt(json, 'skippedAssignedCount') ?? 0,
     );
   }
+}
+
+class AddCollectionFlatsRequest {
+  const AddCollectionFlatsRequest({
+    this.includeRemaining = false,
+    this.wingIds,
+    this.flatIds,
+    this.flatAmounts,
+    this.amountPaise,
+  });
+
+  final bool includeRemaining;
+  final List<String>? wingIds;
+  final List<String>? flatIds;
+  final List<Map<String, Object?>>? flatAmounts;
+  final int? amountPaise;
+
+  Map<String, Object?> toJson() => omitNulls({
+        'includeRemaining': includeRemaining ? true : null,
+        'wingIds': wingIds,
+        'flatIds': flatIds,
+        'flatAmounts': flatAmounts,
+        'amountPaise': amountPaise,
+      });
 }
 
 class CollectionPayment {

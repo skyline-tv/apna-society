@@ -60,6 +60,22 @@ class CollectionRepository {
     return updated;
   }
 
+  Future<CollectionPreview> previewAddFlats(
+    String id,
+    AddCollectionFlatsRequest request,
+  ) {
+    return _api.previewAddFlats(id, request);
+  }
+
+  Future<CollectionSummary> addFlats(
+    String id,
+    AddCollectionFlatsRequest request,
+  ) async {
+    final result = await _api.addFlats(id, request);
+    lastAdminCollections = null;
+    return result;
+  }
+
   Future<CollectionSummary> close(String id) async {
     final result = await _api.close(id);
     lastAdminCollections = null;

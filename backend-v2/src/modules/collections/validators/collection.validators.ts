@@ -79,6 +79,31 @@ export const updateCollectionSchema = z
   });
 export type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
 
+export const addCollectionFlatsSchema = z
+  .object({
+    includeRemaining: z.boolean().optional().default(false),
+    wingIds: z.array(objectId).max(20).optional(),
+    flatIds: z.array(objectId).max(200).optional(),
+    flatAmounts: z.array(flatAmountSchema).max(200).optional(),
+    amountPaise: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (
+      !data.includeRemaining &&
+      !(data.wingIds?.length) &&
+      !(data.flatIds?.length) &&
+      !(data.flatAmounts?.length)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Select flats, wings, or remaining society flats',
+        path: ['flatIds'],
+      });
+    }
+  });
+export type AddCollectionFlatsInput = z.infer<typeof addCollectionFlatsSchema>;
+
 export const cancelCollectionSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });

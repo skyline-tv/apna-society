@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { validateBody, validateParams, validateQuery } from '../../../middleware/validate';
 import { asyncHandler } from '../../../utils/async-handler';
 import {
+  addCollectionFlatsHandler,
   adjustChargeHandler,
   adminCollectionPaymentReceiptHandler,
   adminCollectionReceiptHandler,
@@ -16,10 +17,12 @@ import {
   listCollectionChargesHandler,
   listCollectionsHandler,
   offlineCollectionPaymentHandler,
+  previewAddCollectionFlatsHandler,
   previewCollectionHandler,
   updateCollectionHandler,
 } from '../controllers/admin-collection.controller';
 import {
+  addCollectionFlatsSchema,
   adjustChargeSchema,
   cancelCollectionSchema,
   chargeIdParamSchema,
@@ -88,6 +91,18 @@ router.patch(
   validateParams(collectionIdParamSchema),
   validateBody(updateCollectionSchema),
   asyncHandler(updateCollectionHandler),
+);
+router.post(
+  '/collections/:collectionId/flats/preview',
+  validateParams(collectionIdParamSchema),
+  validateBody(addCollectionFlatsSchema),
+  asyncHandler(previewAddCollectionFlatsHandler),
+);
+router.post(
+  '/collections/:collectionId/flats',
+  validateParams(collectionIdParamSchema),
+  validateBody(addCollectionFlatsSchema),
+  asyncHandler(addCollectionFlatsHandler),
 );
 router.post(
   '/collections/:collectionId/close',

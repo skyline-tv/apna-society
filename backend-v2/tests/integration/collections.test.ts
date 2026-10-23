@@ -146,6 +146,35 @@ describe('One-time collections', () => {
       flatId: flatsA[0]._id,
     });
     expect(chargeCount).toBe(1);
+
+    const addPreview = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats/preview`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        flatIds: [String(flatsA[3]._id), String(flatsB[1]._id)],
+        amountPaise: 50_000,
+      });
+    expect(addPreview.status).toBe(200);
+    expect(addPreview.body.data.assignedFlatCount).toBe(2);
+    expect(addPreview.body.data.expectedTotalPaise).toBe(100_000);
+
+    const added = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        flatIds: [String(flatsA[3]._id), String(flatsB[1]._id)],
+        amountPaise: 50_000,
+      });
+    expect(added.status).toBe(200);
+    expect(added.body.data.assignedFlatCount).toBe(4);
+    expect(added.body.data.expectedTotalPaise).toBe(200_000);
+
+    const again = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ flatIds: [String(flatsA[0]._id)], amountPaise: 50_000 });
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('DUPLICATE_FLAT_ASSIGNMENT');
   });
 
   it('settles full payment, unique receipts, and ignores pending or failed attempts', async () => {
