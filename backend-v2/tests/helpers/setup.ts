@@ -111,6 +111,21 @@ beforeAll(async () => {
   const { ParcelHandoverModel } = await import(
     '../../src/modules/visitors/models/parcel-handover.model'
   );
+  const { CollectionModel } = await import(
+    '../../src/modules/collections/models/collection.model'
+  );
+  const { CollectionChargeModel } = await import(
+    '../../src/modules/collections/models/collection-charge.model'
+  );
+  const { CollectionPaymentModel } = await import(
+    '../../src/modules/collections/models/collection-payment.model'
+  );
+  const { CollectionReceiptModel } = await import(
+    '../../src/modules/collections/models/collection-receipt.model'
+  );
+  const { CollectionAdjustmentModel } = await import(
+    '../../src/modules/collections/models/collection-adjustment.model'
+  );
   await Promise.all([
     MembershipModel.syncIndexes(),
     OccupancyRecordModel.syncIndexes(),
@@ -138,6 +153,11 @@ beforeAll(async () => {
     InterestJobRunModel.syncIndexes(),
     DeviceTokenModel.syncIndexes(),
     ParcelHandoverModel.syncIndexes(),
+    CollectionModel.syncIndexes(),
+    CollectionChargeModel.syncIndexes(),
+    CollectionPaymentModel.syncIndexes(),
+    CollectionReceiptModel.syncIndexes(),
+    CollectionAdjustmentModel.syncIndexes(),
   ]);
 
   setEmailService({

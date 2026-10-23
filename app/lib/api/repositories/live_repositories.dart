@@ -3,6 +3,7 @@ import 'admin_guard_repository.dart';
 import 'admin_user_repository.dart';
 import 'announcement_repository.dart';
 import 'billing_repository.dart';
+import 'collection_repository.dart';
 import 'complaint_repository.dart';
 import 'facility_repository.dart';
 import 'notification_repository.dart';
@@ -24,6 +25,7 @@ class LiveRepositories {
         users = AdminUserRepository(api.adminUsers),
         guards = AdminGuardRepository(api.adminGuards),
         billing = BillingRepository(api.billing),
+        collections = CollectionRepository(api.collections),
         reports = ReportRepository(api.reports),
         visitors = VisitorRepository(api.visitors),
         vehicles = VehicleRepository(api.vehicles),
@@ -38,6 +40,7 @@ class LiveRepositories {
   final AdminUserRepository users;
   final AdminGuardRepository guards;
   final BillingRepository billing;
+  final CollectionRepository collections;
   final ReportRepository reports;
   final VisitorRepository visitors;
   final VehicleRepository vehicles;
@@ -53,6 +56,7 @@ class LiveRepositories {
     users.clear();
     guards.clear();
     billing.clear();
+    collections.clear();
     reports.clear();
     visitors.clear();
     vehicles.clear();
@@ -82,6 +86,7 @@ class LiveRepositories {
 
   void invalidateAfterFinancialMutation({String? billId}) {
     billing.invalidateFinancialCaches(billId: billId);
+    collections.clear();
     reports.clear();
   }
 
@@ -89,6 +94,7 @@ class LiveRepositories {
   /// cannot keep showing data from the previous selection.
   void invalidateAfterFlatSelectionChange() {
     billing.invalidateFinancialCaches();
+    collections.clear();
     visitors.invalidateCaches();
     vehicles.invalidateCaches();
     complaints.invalidateCaches();

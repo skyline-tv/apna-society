@@ -24,6 +24,7 @@ import { ReceiptModel } from '../models/receipt.model';
 import { nextSequence } from '../models/sequence.model';
 import { getPaymentProvider } from '../providers/payment-provider.factory';
 import { startOfCivilDay } from '../utils/billing-calendar';
+import { unpaidInterestPaise } from '../utils/bill-totals';
 import { computeInterestForBillWithEvents, getBillInterest } from './interest.service';
 import { assertBillFinancialInvariants } from './financial-invariants.service';
 import { buildReceiptPdf } from './pdf.service';
@@ -63,16 +64,33 @@ async function nextReceiptNumber(societyId: string, session: ClientSession): Pro
   return `RCPT-${year}-${seq.toString().padStart(6, '0')}`;
 }
 
-function deriveBillStatus(bill: {
-  outstandingPrincipalPaise: number;
-  amountPaidPaise: number;
-  dueDate: Date;
-  status: string;
-}): 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE' | 'ISSUED' {
-  if (bill.outstandingPrincipalPaise <= 0) return 'PAID';
+function deriveBillStatus(
+  bill: {
+    outstandingPrincipalPaise: number;
+    amountPaidPaise: number;
+    dueDate: Date;
+    status: string;
+  },
+  remainingInterestPaise = 0,
+): 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE' | 'ISSUED' {
+  const remainingInterest = Math.max(0, remainingInterestPaise);
+  if (bill.outstandingPrincipalPaise <= 0 && remainingInterest <= 0) return 'PAID';
   const overdue = Date.now() > bill.dueDate.getTime();
-  if (bill.amountPaidPaise > 0) return overdue ? 'OVERDUE' : 'PARTIALLY_PAID';
+  const hasPartialSettlement =
+    bill.amountPaidPaise > 0 || (bill.outstandingPrincipalPaise <= 0 && remainingInterest > 0);
+  if (hasPartialSettlement) return overdue ? 'OVERDUE' : 'PARTIALLY_PAID';
   return overdue ? 'OVERDUE' : 'ISSUED';
+}
+
+function billingPeriodLabel(start?: Date, end?: Date): string | undefined {
+  if (!start || !end) return undefined;
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  return `${fmt.format(start)} - ${fmt.format(end)}`;
 }
 
 /**
@@ -115,9 +133,6 @@ export async function createPaymentOrder(
   });
   if (!bill) throw notFound('Bill not found');
   if (bill.status === 'CANCELLED') throw badRequest('Bill is cancelled', 'BILL_CANCELLED');
-  if (bill.outstandingPrincipalPaise <= 0) {
-    throw badRequest('Bill is already fully paid', 'BILL_ALREADY_PAID');
-  }
   if (!bill.ownerUserId || String(bill.ownerUserId) !== ownerUserId) {
     throw forbidden('Only the bill owner may initiate payment', 'NOT_BILL_OWNER');
   }
@@ -129,10 +144,15 @@ export async function createPaymentOrder(
   });
 
   const interest = await getBillInterest(societyId, billId);
-  const amountPaise = amountDuePaise(
-    interest.principalOutstandingPaise,
-    interest.accruedInterestPaise,
-  );
+  const fresh = await BillModel.findById(bill._id);
+  if (!fresh) throw notFound('Bill not found');
+  const remainingInterest = unpaidInterestPaise({
+    outstandingPrincipalPaise: interest.principalOutstandingPaise,
+    interestAccruedPaise: interest.accruedInterestPaise,
+    interestPaidPaise: fresh.interestPaidPaise ?? 0,
+    status: fresh.status,
+  });
+  const amountPaise = amountDuePaise(interest.principalOutstandingPaise, remainingInterest);
   if (amountPaise <= 0) {
     throw badRequest('Bill is already fully paid', 'BILL_ALREADY_PAID');
   }
@@ -271,10 +291,16 @@ export async function settleSuccessfulPayment(input: {
         input.paidAt,
         timeZone,
       );
+      const remainingInterestBefore = unpaidInterestPaise({
+        outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
+        interestAccruedPaise: interest.accruedInterestPaise,
+        interestPaidPaise: bill.interestPaidPaise ?? 0,
+        status: bill.status,
+      });
       const allocation = allocatePayment(
         claimed.amountPaise,
         bill.outstandingPrincipalPaise,
-        interest.accruedInterestPaise,
+        remainingInterestBefore,
       );
 
       if (allocation.toPrincipal > bill.outstandingPrincipalPaise) {
@@ -287,8 +313,12 @@ export async function settleSuccessfulPayment(input: {
         throw conflict('Outstanding principal would become negative', 'NEGATIVE_PRINCIPAL');
       }
       bill.interestAccruedPaise = interest.accruedInterestPaise;
+      bill.interestPaidPaise = (bill.interestPaidPaise ?? 0) + allocation.toInterest;
       bill.interestCalculatedAsOf = input.paidAt;
-      bill.status = deriveBillStatus(bill);
+      bill.status = deriveBillStatus(
+        bill,
+        remainingInterestBefore - allocation.toInterest,
+      );
       bill.updatedBy = input.actor?.userId
         ? parseObjectId(input.actor.userId, 'userId')
         : bill.updatedBy;
@@ -598,6 +628,11 @@ export async function handleGatewayWebhook(
 
   const payment = await PaymentModel.findOne({ gatewayOrderId: event.orderId });
   if (!payment) {
+    const { handleCollectionGatewayWebhook } = await import(
+      '../../collections/services/collection-payment.service'
+    );
+    const collectionResult = await handleCollectionGatewayWebhook(societyIdHint, event);
+    if (collectionResult) return collectionResult;
     throw notFound('Payment order not found for webhook');
   }
   if (societyIdHint && String(payment.societyId) !== societyIdHint) {
@@ -746,11 +781,29 @@ export async function listPayments(
       .lean(),
   ]);
 
+  const paymentIds = rows.map((row) => row._id);
+  const billIds = [...new Set(rows.map((row) => String(row.billId)))];
+  const [receipts, bills] = await Promise.all([
+    paymentIds.length
+      ? ReceiptModel.find({ paymentId: { $in: paymentIds } })
+          .select('_id paymentId')
+          .lean()
+      : Promise.resolve([]),
+    billIds.length
+      ? BillModel.find({ _id: { $in: billIds } })
+          .select('_id billNumber')
+          .lean()
+      : Promise.resolve([]),
+  ]);
+  const receiptByPayment = new Map(receipts.map((row) => [String(row.paymentId), String(row._id)]));
+  const billNumberById = new Map(bills.map((row) => [String(row._id), row.billNumber]));
+
   return {
     items: rows.map((row) => ({
       id: String(row._id),
       paymentNumber: row.paymentNumber,
       billId: String(row.billId),
+      billNumber: billNumberById.get(String(row.billId)),
       flatId: String(row.flatId),
       ownerUserId: row.ownerUserId ? String(row.ownerUserId) : undefined,
       amountPaise: row.amountPaise,
@@ -762,6 +815,7 @@ export async function listPayments(
       referenceNumber: row.referenceNumber,
       gatewayOrderId: row.gatewayOrderId,
       gatewayPaymentId: row.gatewayPaymentId,
+      receiptId: receiptByPayment.get(String(row._id)),
     })),
     pagination: {
       page,
@@ -778,6 +832,7 @@ export async function getPayment(societyId: string, paymentId: string) {
     societyId: parseObjectId(societyId, 'societyId'),
   }).lean();
   if (!payment) throw notFound('Payment not found');
+  const receipt = await ReceiptModel.findOne({ paymentId: payment._id }).select('_id').lean();
   return {
     id: String(payment._id),
     paymentNumber: payment.paymentNumber,
@@ -788,6 +843,7 @@ export async function getPayment(societyId: string, paymentId: string) {
     paidAt: payment.paidAt?.toISOString(),
     allocatedToPrincipalPaise: payment.allocatedToPrincipalPaise,
     allocatedToInterestPaise: payment.allocatedToInterestPaise,
+    receiptId: receipt ? String(receipt._id) : undefined,
   };
 }
 
@@ -805,6 +861,14 @@ export async function getReceipt(
     throw forbidden('Receipt access denied', 'RECEIPT_ACCESS_DENIED');
   }
 
+  const [bill, payment] = await Promise.all([
+    BillModel.findById(receipt.billId).lean(),
+    PaymentModel.findById(receipt.paymentId).lean(),
+  ]);
+  if (options?.ownerUserId && payment && String(payment.ownerUserId) !== options.ownerUserId) {
+    throw forbidden('Receipt access denied', 'RECEIPT_ACCESS_DENIED');
+  }
+
   const pdf = buildReceiptPdf({
     receiptNumber: receipt.receiptNumber,
     societyName: receipt.societyNameSnapshot,
@@ -813,8 +877,15 @@ export async function getReceipt(
     ownerName: receipt.ownerNameSnapshot,
     amountPaise: receipt.amountPaise,
     paymentMethod: receipt.paymentMethod,
-    transactionReference: receipt.transactionReference,
+    transactionReference: receipt.transactionReference || payment?.gatewayPaymentId || payment?.referenceNumber,
     paidAt: receipt.paidAt,
+    billNumber: bill?.billNumber,
+    billingPeriod: billingPeriodLabel(bill?.billingPeriodStart, bill?.billingPeriodEnd),
+    baseAmountPaise: bill?.baseAmountPaise,
+    additionalServicesPaise: bill?.additionalServicesTotalPaise,
+    principalAmountPaise: payment?.allocatedToPrincipalPaise,
+    interestAmountPaise: payment?.allocatedToInterestPaise,
+    paymentStatus: 'SUCCESSFUL',
   });
 
   return {
@@ -832,9 +903,99 @@ export async function getReceipt(
       flatNumberSnapshot: receipt.flatNumberSnapshot,
       wingCodeSnapshot: receipt.wingCodeSnapshot,
       transactionReference: receipt.transactionReference,
+      billNumber: bill?.billNumber,
+      billingPeriodStart: bill?.billingPeriodStart?.toISOString(),
+      billingPeriodEnd: bill?.billingPeriodEnd?.toISOString(),
     },
     pdfBase64: pdf.toString('base64'),
   };
+}
+
+/**
+ * Returns the receipt for a confirmed payment. Historical SUCCESS payments
+ * without a receipt document get a one-time receipt from stored snapshots.
+ */
+export async function getReceiptForPayment(
+  societyId: string,
+  paymentId: string,
+  options?: { ownerUserId?: string },
+) {
+  const payment = await PaymentModel.findOne({
+    _id: parseObjectId(paymentId, 'paymentId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!payment) throw notFound('Payment not found');
+  if (options?.ownerUserId && String(payment.ownerUserId) !== options.ownerUserId) {
+    throw forbidden('Payment access denied', 'PAYMENT_ACCESS_DENIED');
+  }
+  if (payment.status !== 'SUCCESS') {
+    throw badRequest(
+      'Receipts are only available for confirmed successful payments',
+      'RECEIPT_NOT_AVAILABLE',
+    );
+  }
+
+  const existing = await ReceiptModel.findOne({ paymentId: payment._id });
+  if (existing) {
+    return getReceipt(societyId, String(existing._id), options);
+  }
+
+  const created = await ensureReceiptForSuccessfulPayment(societyId, payment);
+  return getReceipt(societyId, String(created._id), options);
+}
+
+async function ensureReceiptForSuccessfulPayment(
+  societyId: string,
+  payment: InstanceType<typeof PaymentModel>,
+) {
+  const existing = await ReceiptModel.findOne({ paymentId: payment._id });
+  if (existing) return existing;
+
+  const [bill, society] = await Promise.all([
+    BillModel.findById(payment.billId),
+    SocietyModel.findById(societyId).lean(),
+  ]);
+  if (!bill) throw notFound('Bill not found');
+  if (!society) throw notFound('Society not found');
+
+  try {
+    return await withTransaction(async (session) => {
+      const duplicate = await ReceiptModel.findOne({ paymentId: payment._id }).session(session);
+      if (duplicate) return duplicate;
+      const receiptNumber = await nextReceiptNumber(societyId, session);
+      const [receipt] = await ReceiptModel.create(
+        [
+          {
+            societyId: bill.societyId,
+            billId: bill._id,
+            paymentId: payment._id,
+            flatId: bill.flatId,
+            receiptNumber,
+            ownerUserId: bill.ownerUserId,
+            ownerNameSnapshot: bill.ownerNameSnapshot,
+            ownerEmailSnapshot: bill.ownerEmailSnapshot,
+            flatNumberSnapshot: bill.flatNumberSnapshot,
+            wingCodeSnapshot: bill.wingCodeSnapshot,
+            societyNameSnapshot: society.name,
+            amountPaise: payment.amountPaise,
+            paymentMethod: payment.paymentMethod,
+            transactionReference: payment.gatewayPaymentId || payment.referenceNumber,
+            paidAt: payment.paidAt ?? payment.createdAt,
+            generatedAt: new Date(),
+            pdfGenerated: true,
+          },
+        ],
+        { session },
+      );
+      return receipt;
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      const raced = await ReceiptModel.findOne({ paymentId: payment._id });
+      if (raced) return raced;
+    }
+    throw error;
+  }
 }
 
 export async function listReceipts(
@@ -918,10 +1079,20 @@ export async function refundPayment(
     const rateSnapshot = bill.monthlyRatePaise;
     const ownerSnapshot = String(bill.ownerUserId);
     const restoredPrincipal = claimed.allocatedToPrincipalPaise;
+    const restoredInterest = claimed.allocatedToInterestPaise ?? 0;
 
     bill.amountPaidPaise = Math.max(0, bill.amountPaidPaise - restoredPrincipal);
     bill.outstandingPrincipalPaise += restoredPrincipal;
-    bill.status = deriveBillStatus(bill);
+    bill.interestPaidPaise = Math.max(0, (bill.interestPaidPaise ?? 0) - restoredInterest);
+    bill.status = deriveBillStatus(
+      bill,
+      unpaidInterestPaise({
+        outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
+        interestAccruedPaise: bill.interestAccruedPaise,
+        interestPaidPaise: bill.interestPaidPaise ?? 0,
+        status: bill.status === 'PAID' ? 'PARTIALLY_PAID' : bill.status,
+      }),
+    );
     await bill.save({ session });
 
     if (bill.monthlyRatePaise !== rateSnapshot || String(bill.ownerUserId) !== ownerSnapshot) {

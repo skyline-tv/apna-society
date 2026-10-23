@@ -212,7 +212,11 @@ describe('Late interest', () => {
     );
     expect(paidPass.updated).toBe(0);
     const paidBill = await BillModel.findById(paid.billId).lean();
-    expect(paidBill?.status).toBe('PAID');
+    expect(paidBill?.outstandingPrincipalPaise).toBe(0);
+    // Principal-only settlement leaves unpaid interest outstanding; interest on
+    // principal stops because principal is zero, but the bill is not PAID until
+    // remaining interest is collected.
+    expect(paidBill?.status).not.toBe('PAID');
     expect(paidBill?.interestAccruedPaise).toBe(interestAtPay);
 
     const missed = await setupBill();

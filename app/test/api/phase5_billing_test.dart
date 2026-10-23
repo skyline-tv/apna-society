@@ -172,6 +172,18 @@ void main() {
       );
     });
 
+    test('paid bill outstanding is zero even if accrued interest remains', () {
+      final bill = Bill.fromJson({
+        ..._bill(billId, flatId, status: 'PAID'),
+        'outstandingPrincipalPaise': 0,
+        'amountPaidPaise': 400000,
+        'interestAccruedPaise': 1200,
+        'totalPayablePaise': 1200,
+      });
+      expect(billAmountDuePaise(bill), 0);
+      expect(bill.status, 'PAID');
+    });
+
     test('civilDateToIso uses IST midnight not UTC shift', () {
       expect(
         civilDateToIso(DateTime(2026, 4, 15)),

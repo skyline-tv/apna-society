@@ -100,6 +100,19 @@ object IncomingVisitorCallManager {
                 putExtra(EXTRA_PURPOSE, purpose)
                 putExtra(EXTRA_EXPIRES_AT, expiresAt)
             }
+        // STOP must never use startForegroundService. Android kills the app if
+        // startForeground() is not called within a few seconds of that API.
+        if (action != ACTION_SHOW) {
+            stopRingtone()
+            notificationManager(context).cancel(NOTIFICATION_ID)
+            clearActive(if (action == ACTION_STOP_ALL) null else visitorId)
+            try {
+                context.stopService(Intent(context, IncomingVisitorCallService::class.java))
+            } catch (error: Exception) {
+                Log.w(TAG, "Unable to stop incoming-call service: ${error.message}")
+            }
+            return
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -152,6 +165,49 @@ object IncomingVisitorCallManager {
         manager.createNotificationChannel(channel)
     }
 
+    fun buildPlaceholderNotification(context: Context): Notification {
+        ensureChannel(context)
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("VISITOR AT MAIN GATE")
+            .setContentText("Connecting…")
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build()
+    }
+
+    fun promoteToForeground(service: Service, notification: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                service.startForeground(
+                    SERVICE_NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                )
+            } else {
+                service.startForeground(SERVICE_NOTIFICATION_ID, notification)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "startForeground failed, retrying with a simple notice: ${error.message}")
+            try {
+                val fallback = buildPlaceholderNotification(service)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    service.startForeground(
+                        SERVICE_NOTIFICATION_ID,
+                        fallback,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                    )
+                } else {
+                    service.startForeground(SERVICE_NOTIFICATION_ID, fallback)
+                }
+            } catch (ignored: Exception) {
+                Log.e(TAG, "startForeground retry failed: ${ignored.message}")
+            }
+        }
+    }
+
     fun buildNotification(
         context: Context,
         visitorId: String,
@@ -200,9 +256,13 @@ object IncomingVisitorCallManager {
                 .addAction(0, "APPROVE", openIntent)
                 .addAction(0, "REJECT", openIntent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setStyle(
-                NotificationCompat.CallStyle.forIncomingCall(caller, dismissIntent, openIntent),
-            )
+            try {
+                builder.setStyle(
+                    NotificationCompat.CallStyle.forIncomingCall(caller, dismissIntent, openIntent),
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "CallStyle unavailable: ${error.message}")
+            }
         }
         return builder.build()
     }
@@ -330,33 +390,38 @@ object IncomingVisitorCallManager {
 class IncomingVisitorCallService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        IncomingVisitorCallManager.promoteToForeground(
+            this,
+            IncomingVisitorCallManager.buildPlaceholderNotification(this),
+        )
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action ?: return START_NOT_STICKY
+        IncomingVisitorCallManager.promoteToForeground(
+            this,
+            IncomingVisitorCallManager.buildPlaceholderNotification(this),
+        )
+        val action = intent?.action
+        if (action == null) {
+            stopCallAndSelf(null)
+            return START_NOT_STICKY
+        }
         val visitorId = intent.getStringExtra(IncomingVisitorCallManager.EXTRA_VISITOR_ID).orEmpty()
         when (action) {
             IncomingVisitorCallManager.ACTION_SHOW -> {
-                if (visitorId.isEmpty()) return START_NOT_STICKY
+                if (visitorId.isEmpty()) {
+                    stopCallAndSelf(null)
+                    return START_NOT_STICKY
+                }
                 val name = intent.getStringExtra(IncomingVisitorCallManager.EXTRA_VISITOR_NAME).orEmpty()
                 val flat = intent.getStringExtra(IncomingVisitorCallManager.EXTRA_FLAT_LABEL).orEmpty()
                 val purpose = intent.getStringExtra(IncomingVisitorCallManager.EXTRA_PURPOSE).orEmpty()
                 IncomingVisitorCallManager.markActive(visitorId)
                 val notification =
                     IncomingVisitorCallManager.buildNotification(this, visitorId, name, flat, purpose)
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        startForeground(
-                            IncomingVisitorCallManager.SERVICE_NOTIFICATION_ID,
-                            notification,
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                        )
-                    } else {
-                        startForeground(IncomingVisitorCallManager.SERVICE_NOTIFICATION_ID, notification)
-                    }
-                } catch (error: Exception) {
-                    Log.w("IncomingVisitorCall", "startForeground failed: ${error.message}")
-                    IncomingVisitorCallManager.notificationManager(this)
-                        .notify(IncomingVisitorCallManager.SERVICE_NOTIFICATION_ID, notification)
-                }
+                IncomingVisitorCallManager.promoteToForeground(this, notification)
                 IncomingVisitorCallManager.startRingtone(this)
                 IncomingVisitorCallPlugin.dispatchIncoming(
                     mapOf(
@@ -379,22 +444,30 @@ class IncomingVisitorCallService : Service() {
                 ) {
                     return START_NOT_STICKY
                 }
-                IncomingVisitorCallManager.stopRingtone()
-                IncomingVisitorCallManager.notificationManager(this)
-                    .cancel(IncomingVisitorCallManager.SERVICE_NOTIFICATION_ID)
-                IncomingVisitorCallManager.clearActive(
-                    if (action == IncomingVisitorCallManager.ACTION_STOP_ALL) null else visitorId.ifEmpty { active },
+                stopCallAndSelf(
+                    if (action == IncomingVisitorCallManager.ACTION_STOP_ALL) {
+                        null
+                    } else {
+                        visitorId.ifEmpty { active }
+                    },
                 )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
-                }
-                stopSelf()
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun stopCallAndSelf(visitorId: String?) {
+        IncomingVisitorCallManager.stopRingtone()
+        IncomingVisitorCallManager.notificationManager(this)
+            .cancel(IncomingVisitorCallManager.SERVICE_NOTIFICATION_ID)
+        IncomingVisitorCallManager.clearActive(visitorId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
     }
 
     override fun onDestroy() {

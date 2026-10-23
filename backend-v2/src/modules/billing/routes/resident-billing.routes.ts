@@ -12,6 +12,7 @@ import {
   residentListBillsHandler,
   residentListPaymentsHandler,
   residentListReceiptsHandler,
+  residentPaymentReceiptHandler,
   verifyPaymentHandler,
 } from '../controllers/resident-billing.controller';
 import {
@@ -21,6 +22,7 @@ import {
   listBillsQuerySchema,
   listPaymentsQuerySchema,
   listReceiptsQuerySchema,
+  paymentIdParamSchema,
   receiptIdParamSchema,
   verifyPaymentSchema,
 } from '../validators/billing.validators';
@@ -78,6 +80,11 @@ router.get(
   '/billing/payments',
   validateQuery(listPaymentsQuerySchema),
   asyncHandler(residentListPaymentsHandler),
+);
+router.get(
+  '/billing/payments/:paymentId/receipt',
+  validateParams(paymentIdParamSchema),
+  asyncHandler(residentPaymentReceiptHandler),
 );
 router.get(
   '/billing/receipts',

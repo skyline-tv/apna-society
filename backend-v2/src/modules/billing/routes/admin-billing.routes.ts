@@ -8,6 +8,7 @@ import {
   cancelBillHandler,
   eligibleFlatsHandler,
   generateBillsHandler,
+  getAdminPaymentReceiptHandler,
   getAdminReceiptHandler,
   getBillHandler,
   getPaymentHandler,
@@ -122,6 +123,11 @@ router.get(
   '/payments',
   validateQuery(listPaymentsQuerySchema),
   asyncHandler(listPaymentsHandler),
+);
+router.get(
+  '/payments/:paymentId/receipt',
+  validateParams(paymentIdParamSchema),
+  asyncHandler(getAdminPaymentReceiptHandler),
 );
 router.get(
   '/payments/:paymentId',

@@ -31,6 +31,7 @@ import 'api/models/admin_user_models.dart';
 import 'features/billing/collect_payment_page.dart';
 import 'features/billing/live_additional_services_module.dart';
 import 'features/billing/live_billing_module.dart';
+import 'features/collections/live_collections_module.dart';
 import 'features/reports/live_reports_module.dart';
 import 'features/residents/admin_residents_module.dart';
 import 'features/security/security_module.dart';
@@ -971,6 +972,8 @@ const _kResidentDests = <String, _ResidentDest>{
       Icons.receipt_long_rounded),
   'payments': _ResidentDest(
       'payments', 'Payments', Icons.payments_outlined, Icons.payments_rounded),
+  'collections': _ResidentDest('collections', 'Collections',
+      Icons.celebration_outlined, Icons.celebration_rounded),
   'visitors': _ResidentDest(
       'visitors', 'Visitors', Icons.groups_outlined, Icons.groups_rounded),
   'vehicles': _ResidentDest('vehicles', 'Vehicles',
@@ -1083,6 +1086,7 @@ class _OwnerHomeState extends State<OwnerHome> {
         primary: const ['home', 'bills', 'visitors', 'more'],
         more: const [
           'payments',
+          'collections',
           'vehicles',
           'news',
           'profile',
@@ -1091,7 +1095,7 @@ class _OwnerHomeState extends State<OwnerHome> {
     }
     if (finance) {
       return (
-        primary: const ['home', 'bills', 'payments', 'profile'],
+        primary: const ['home', 'bills', 'payments', 'collections', 'profile'],
         more: const [],
       );
     }
@@ -1115,6 +1119,10 @@ class _OwnerHomeState extends State<OwnerHome> {
       case 'payments':
         return LiveOwnerPaymentsPage(
             key: ValueKey('payments-$flatKey'), canFinance: access.canFinance);
+      case 'collections':
+        return LiveOwnerCollectionsPage(
+            key: ValueKey('collections-$flatKey'),
+            canFinance: access.canFinance);
       case 'visitors':
         return LiveResidentVisitorsPage(key: ValueKey('visitors-$flatKey'));
       case 'vehicles':
@@ -1306,6 +1314,13 @@ class _OwnerHomeState extends State<OwnerHome> {
               label: 'Pay bill',
               onTap: () => _open('bills'),
             ),
+          if (ctx.access.canFinance)
+            QuickAccessItem(
+              icon: Icons.celebration_outlined,
+              label: 'Collections',
+              color: C.amber,
+              onTap: () => _open('collections'),
+            ),
           if (ctx.access.canResidential)
             QuickAccessItem(
               icon: Icons.groups_outlined,
@@ -1478,6 +1493,8 @@ class _OwnerHomeState extends State<OwnerHome> {
         return 'Current and previous maintenance';
       case 'payments':
         return 'History and receipts';
+      case 'collections':
+        return 'One-time and special charges';
       case 'visitors':
         return 'Approve or deny entry';
       case 'vehicles':
@@ -1944,6 +1961,7 @@ class _AdminHomeState extends State<AdminHome> {
       'Operations',
       [
         ('announcements', 'Announcements', Icons.campaign_outlined),
+        ('collections', 'One-time collections', Icons.celebration_outlined),
       ]
     ),
     (
@@ -2034,6 +2052,8 @@ class _AdminHomeState extends State<AdminHome> {
         return const LiveAdminAnnouncementsPage();
       case 'additional-services':
         return const LiveAdditionalServicesPage(embedded: true);
+      case 'collections':
+        return const LiveAdminCollectionsPage(embedded: true);
       case 'reports':
         return const LiveAdminReportsPage();
       case 'settings':
@@ -2080,6 +2100,8 @@ class _AdminHomeState extends State<AdminHome> {
         return 'Publish a notice';
       case 'additional-services':
         return 'Recurring charges on individual flats';
+      case 'collections':
+        return 'Festival, repair and special charges';
       case 'reports':
         return 'Collections and outstanding dues';
       case 'settings':
@@ -2310,6 +2332,12 @@ class _AdminHomeState extends State<AdminHome> {
                       label: 'Payments',
                       subtitle: 'Recent collections and receipts',
                       onTap: () => setState(() => tab = 3),
+                    ),
+                    ToolLink(
+                      icon: Icons.celebration_outlined,
+                      label: 'One-time collections',
+                      subtitle: 'Festival, repair and special charges',
+                      onTap: () => _openMore('collections'),
                     ),
                     ToolLink(
                       icon: Icons.shield_outlined,

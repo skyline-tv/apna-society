@@ -52,6 +52,8 @@ export interface BillDocument extends Document {
   amountPaidPaise: number;
   outstandingPrincipalPaise: number;
   interestAccruedPaise: number;
+  /** Confirmed interest collected against this bill. Lifetime accrued is stored separately. */
+  interestPaidPaise?: number;
   interestCalculatedAsOf?: Date;
   dueDate: Date;
   status: BillStatus;
@@ -110,6 +112,7 @@ const billSchema = new Schema<BillDocument>(
     amountPaidPaise: { type: Number, required: true, default: 0, min: 0 },
     outstandingPrincipalPaise: { type: Number, required: true, min: 0 },
     interestAccruedPaise: { type: Number, required: true, default: 0, min: 0 },
+    interestPaidPaise: { type: Number, default: 0, min: 0 },
     interestCalculatedAsOf: { type: Date },
     dueDate: { type: Date, required: true },
     status: { type: String, enum: BILL_STATUSES, required: true, default: 'ISSUED' },

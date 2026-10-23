@@ -441,4 +441,179 @@ describe('Billing payments', () => {
     expect(bill?.outstandingPrincipalPaise).toBe(0);
     expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(1);
   });
+
+  it('shows zero outstanding after a confirmed payment and keeps failed/pending from settling', async () => {
+    const setup = await setupOccupiedBill('paysettle');
+    const ownerToken = await login(`${setup.owner.email}`);
+
+    const opened = await request(app)
+      .get(`/api/v1/resident/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(opened.status).toBe(200);
+    const originalPayable = opened.body.data.totalPayablePaise as number;
+    expect(originalPayable).toBeGreaterThan(0);
+
+    const failedOrder = await request(app)
+      .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    const failed = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ orderId: failedOrder.body.data.order.orderId, outcome: 'failure' });
+    expect(failed.status).toBe(400);
+
+    const afterFail = await request(app)
+      .get(`/api/v1/resident/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(afterFail.body.data.totalPayablePaise).toBe(originalPayable);
+    expect(afterFail.body.data.status).not.toBe('PAID');
+
+    const failedReceipt = await request(app)
+      .get(`/api/v1/resident/billing/payments/${failedOrder.body.data.paymentId}/receipt`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(failedReceipt.status).toBe(400);
+    expect(failedReceipt.body.error.code).toBe('RECEIPT_NOT_AVAILABLE');
+
+    const pendingOrder = await request(app)
+      .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    const pendingReceipt = await request(app)
+      .get(`/api/v1/resident/billing/payments/${pendingOrder.body.data.paymentId}/receipt`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(pendingReceipt.status).toBe(400);
+
+    const success = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ orderId: pendingOrder.body.data.order.orderId, outcome: 'success' });
+    expect(success.status).toBe(200);
+    expect(success.body.data.receiptId).toBeTruthy();
+
+    const paid = await request(app)
+      .get(`/api/v1/resident/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(paid.status).toBe(200);
+    expect(paid.body.data.status).toBe('PAID');
+    expect(paid.body.data.outstandingPrincipalPaise).toBe(0);
+    expect(paid.body.data.totalPayablePaise).toBe(0);
+    expect(paid.body.data.interestOutstandingPaise).toBe(0);
+
+    const duplicate = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ orderId: pendingOrder.body.data.order.orderId, outcome: 'success' });
+    expect(duplicate.body.data.alreadySettled).toBe(true);
+    expect(duplicate.body.data.receiptId).toBe(success.body.data.receiptId);
+    expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(1);
+
+    const receipt = await request(app)
+      .get(`/api/v1/resident/billing/payments/${pendingOrder.body.data.paymentId}/receipt`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(receipt.status).toBe(200);
+    const pdf = Buffer.from(receipt.body.data.pdfBase64, 'base64').toString('utf8');
+    expect(pdf.startsWith('%PDF-1.4')).toBe(true);
+    expect(pdf).toContain('SUCCESSFUL');
+    expect(pdf).toContain('APNA SOCIETY');
+    expect(pdf).toContain(receipt.body.data.receipt.receiptNumber);
+
+    const otherToken = await login(`${setup.otherOwner.email}`);
+    const cross = await request(app)
+      .get(`/api/v1/resident/billing/payments/${pendingOrder.body.data.paymentId}/receipt`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(cross.status).toBe(403);
+  });
+
+  it('settles partial and multiple confirmed payments without double-counting', async () => {
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'true';
+    resetEnvCache();
+    loadEnv();
+
+    const setup = await setupOccupiedBill('paypartial');
+    const first = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        billId: setup.billId,
+        amountPaise: 150_000,
+        paidAt: '2026-07-20T10:00:00.000Z',
+        referenceNumber: 'PART-1',
+        idempotencyKey: 'partial-1',
+      });
+    expect(first.status).toBe(201);
+
+    const afterFirst = await request(app)
+      .get(`/api/v1/admin/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`);
+    expect(afterFirst.body.data.outstandingPrincipalPaise).toBe(250_000);
+    expect(afterFirst.body.data.totalPayablePaise).toBeGreaterThanOrEqual(250_000);
+    expect(afterFirst.body.data.status).not.toBe('PAID');
+
+    const second = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        billId: setup.billId,
+        amountPaise: afterFirst.body.data.totalPayablePaise,
+        paidAt: '2026-07-21T10:00:00.000Z',
+        referenceNumber: 'PART-2',
+        idempotencyKey: 'partial-2',
+      });
+    expect(second.status).toBe(201);
+
+    const settled = await request(app)
+      .get(`/api/v1/admin/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`);
+    expect(settled.body.data.status).toBe('PAID');
+    expect(settled.body.data.outstandingPrincipalPaise).toBe(0);
+    expect(settled.body.data.totalPayablePaise).toBe(0);
+    expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(2);
+
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
+    resetEnvCache();
+    loadEnv();
+  });
+
+  it('reuses a historical receipt instead of creating a duplicate', async () => {
+    const setup = await setupOccupiedBill('payhist');
+    const ownerToken = await login(`${setup.owner.email}`);
+    const order = await request(app)
+      .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    const success = await request(app)
+      .post('/api/v1/resident/billing/demo-complete')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId)
+      .send({ orderId: order.body.data.order.orderId, outcome: 'success' });
+    expect(success.status).toBe(200);
+
+    const paymentId = order.body.data.paymentId as string;
+    await ReceiptModel.deleteOne({ paymentId });
+    expect(await ReceiptModel.countDocuments({ paymentId })).toBe(0);
+
+    const first = await request(app)
+      .get(`/api/v1/resident/billing/payments/${paymentId}/receipt`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(first.status).toBe(200);
+    const second = await request(app)
+      .get(`/api/v1/resident/billing/payments/${paymentId}/receipt`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(second.status).toBe(200);
+    expect(second.body.data.receipt.id).toBe(first.body.data.receipt.id);
+    expect(await ReceiptModel.countDocuments({ paymentId })).toBe(1);
+  });
 });

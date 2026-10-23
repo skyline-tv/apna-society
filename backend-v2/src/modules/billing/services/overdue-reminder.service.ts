@@ -5,6 +5,7 @@ import { notifyBusinessEvent } from '../../notifications/services/business-notif
 import { SocietyModel } from '../../society/models/society.model';
 import { BillModel } from '../models/bill.model';
 import { civilDateKey } from '../utils/billing-calendar';
+import { billOutstandingPayablePaise, unpaidInterestPaise } from '../utils/bill-totals';
 import { ensureSocietyInterestCurrent } from './interest-worker.service';
 
 function billingMonthLabel(start: Date, timeZone: string): string {
@@ -47,15 +48,15 @@ export async function runOverdueReminderPass(now = new Date()): Promise<{
         ],
       })
         .select(
-          '_id ownerUserId billNumber billingPeriodStart dueDate outstandingPrincipalPaise interestAccruedPaise totalAmountPaise flatNumberSnapshot wingCodeSnapshot status',
+          '_id ownerUserId billNumber billingPeriodStart dueDate outstandingPrincipalPaise interestAccruedPaise interestPaidPaise totalAmountPaise flatNumberSnapshot wingCodeSnapshot status',
         )
         .lean();
 
       for (const bill of bills) {
         if (!bill.ownerUserId) continue;
         const outstandingPrincipal = bill.outstandingPrincipalPaise ?? 0;
-        const interest = bill.interestAccruedPaise ?? 0;
-        const totalPayable = outstandingPrincipal + interest;
+        const interest = unpaidInterestPaise(bill);
+        const totalPayable = billOutstandingPayablePaise(bill);
         if (totalPayable <= 0) continue;
 
         const month = billingMonthLabel(bill.billingPeriodStart, timeZone);

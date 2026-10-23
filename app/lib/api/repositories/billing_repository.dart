@@ -338,6 +338,21 @@ class BillingRepository {
     return receipt;
   }
 
+  Future<ReceiptDetail> paymentReceipt(
+    String paymentId, {
+    required bool resident,
+    bool force = false,
+  }) async {
+    final cacheKey = 'payment:$paymentId';
+    if (!force && _receipts.containsKey(cacheKey)) return _receipts[cacheKey]!;
+    final receipt = resident
+        ? await _api.residentPaymentReceipt(paymentId)
+        : await _api.adminPaymentReceipt(paymentId);
+    _receipts[cacheKey] = receipt;
+    _receipts[receipt.receipt.id] = receipt;
+    return receipt;
+  }
+
   Future<Paged<ReceiptSummary>> listResidentReceipts({
     int? page,
     int? limit,

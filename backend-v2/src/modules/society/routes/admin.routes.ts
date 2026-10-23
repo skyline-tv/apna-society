@@ -62,6 +62,7 @@ import {
 } from '../validators/occupancy.validators';
 import adminAnnouncementRoutes from '../../announcements/routes/admin-announcement.routes';
 import adminBillingRoutes from '../../billing/routes/admin-billing.routes';
+import adminCollectionRoutes from '../../collections/routes/admin-collection.routes';
 import adminComplaintRoutes from '../../complaints/routes/admin-complaint.routes';
 import adminFacilityRoutes from '../../facilities/routes/admin-facility.routes';
 import adminReportRoutes from '../../reports/routes/admin-report.routes';
@@ -77,6 +78,7 @@ router.use(authenticate, requireRoles('ADMIN'), (req, res, next) => {
 });
 
 router.use(adminBillingRoutes);
+router.use(adminCollectionRoutes);
 router.use(adminVisitorRoutes);
 router.use(adminVehicleRoutes);
 router.use(adminComplaintRoutes);

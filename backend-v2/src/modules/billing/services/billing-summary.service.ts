@@ -82,7 +82,23 @@ async function loadBillingSummary(societyId: string, query: BillingSummaryQuery)
             },
           },
           totalAccruedInterestPaise: {
-            $sum: { $cond: [{ $ne: ['$status', 'CANCELLED'] }, '$interestAccruedPaise', 0] },
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['CANCELLED', 'PAID']] },
+                0,
+                {
+                  $max: [
+                    0,
+                    {
+                      $subtract: [
+                        { $ifNull: ['$interestAccruedPaise', 0] },
+                        { $ifNull: ['$interestPaidPaise', 0] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
           },
           paidBills: {
             $sum: { $cond: [{ $eq: ['$status', 'PAID'] }, 1, 0] },

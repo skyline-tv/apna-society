@@ -50,11 +50,19 @@ Future<RazorpayCheckoutResult> openPaymentCheckout({
 Future<DemoPaymentChoice> openDemoPaymentCheckout({
   required BuildContext context,
   required CreatePaymentOrderResult order,
+}) {
+  return openDemoPaymentCheckoutForOrder(context: context, order: order.order);
+}
+
+/// Same mock checkout, keyed off a server [PaymentOrder] (bills or collections).
+Future<DemoPaymentChoice> openDemoPaymentCheckoutForOrder({
+  required BuildContext context,
+  required PaymentOrder order,
 }) async {
-  if (!isDemoPaymentProvider(order.order.provider)) {
+  if (!isDemoPaymentProvider(order.provider)) {
     return DemoPaymentChoice.failed;
   }
-  final orderId = order.order.orderId.trim();
+  final orderId = order.orderId.trim();
   if (orderId.isEmpty) {
     return DemoPaymentChoice.failed;
   }
@@ -81,8 +89,8 @@ Future<DemoPaymentChoice> openDemoPaymentCheckout({
               ),
               const SizedBox(height: 6),
               Text(
-                'Amount ₹${(order.order.amountPaise / 100).toStringAsFixed(2)} · '
-                'Order ${order.order.orderId}',
+                'Amount ₹${(order.amountPaise / 100).toStringAsFixed(2)} · '
+                'Order ${order.orderId}',
                 style: const TextStyle(color: C.muted, fontSize: 13),
               ),
               const SizedBox(height: 8),

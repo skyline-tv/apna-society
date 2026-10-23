@@ -57,13 +57,14 @@ class IncomingVisitorCallCoordinator {
   }
 
   Future<void> unbind() async {
+    final wasBound = _bound;
     await _nativeSub?.cancel();
     await _socketSub?.cancel();
     _nativeSub = null;
     _socketSub = null;
     _openVisitorId = null;
     _bound = false;
-    await stopAll();
+    if (wasBound) await stopAll();
   }
 
   /// FCM / local-notification data for a walk-in request or a stop signal.

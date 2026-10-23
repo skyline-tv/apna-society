@@ -13,6 +13,7 @@ import { getBillInterest } from '../services/interest.service';
 import {
   getPayment,
   getReceipt,
+  getReceiptForPayment,
   listPayments,
   listReceipts,
   recordOfflinePayment,
@@ -125,6 +126,14 @@ export async function refundPaymentHandler(req: Request, res: Response): Promise
 
 export async function getAdminReceiptHandler(req: Request, res: Response): Promise<void> {
   const data = await getReceipt(getRequestSocietyId(req), String(req.params.receiptId));
+  res.json({ success: true, data });
+}
+
+export async function getAdminPaymentReceiptHandler(req: Request, res: Response): Promise<void> {
+  const data = await getReceiptForPayment(
+    getRequestSocietyId(req),
+    String(req.params.paymentId),
+  );
   res.json({ success: true, data });
 }
 

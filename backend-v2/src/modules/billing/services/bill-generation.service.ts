@@ -22,7 +22,7 @@ import {
   periodsOverlap,
   startOfCivilDay,
 } from '../utils/billing-calendar';
-import { billComputedTotalPaise } from '../utils/bill-totals';
+import { billComputedTotalPaise, billOutstandingPayablePaise, unpaidInterestPaise } from '../utils/bill-totals';
 import { multiplyPaise, rupeesIntegerToPaise } from '../utils/money';
 import { getBillInterest } from './interest.service';
 import { ensureSocietyInterestCurrent } from './interest-worker.service';
@@ -69,6 +69,7 @@ function serializeBill(bill: {
   totalAmountPaise: number;
   outstandingPrincipalPaise: number;
   interestAccruedPaise: number;
+  interestPaidPaise?: number;
   amountPaidPaise: number;
   dueDate: Date;
   status: string;
@@ -118,7 +119,9 @@ function serializeBill(bill: {
     totalAmountPaise: bill.totalAmountPaise,
     outstandingPrincipalPaise: bill.outstandingPrincipalPaise,
     interestAccruedPaise: bill.interestAccruedPaise,
-    totalPayablePaise: bill.outstandingPrincipalPaise + bill.interestAccruedPaise,
+    interestPaidPaise: bill.interestPaidPaise ?? 0,
+    interestOutstandingPaise: unpaidInterestPaise(bill),
+    totalPayablePaise: billOutstandingPayablePaise(bill),
     amountPaidPaise: bill.amountPaidPaise,
     dueDate: bill.dueDate.toISOString(),
     status: bill.status,

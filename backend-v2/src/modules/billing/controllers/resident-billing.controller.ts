@@ -6,6 +6,7 @@ import {
   completeDemoResidentPayment,
   createPaymentOrder,
   getReceipt,
+  getReceiptForPayment,
   listPayments,
   listReceipts,
   verifyResidentPayment,
@@ -77,8 +78,17 @@ export async function residentListPaymentsHandler(req: Request, res: Response): 
   const limit = Number(req.query.limit ?? 20);
   const data = await listPayments(societyId(req), {
     ownerUserId: req.user!.id,
+    status: req.query.status ? String(req.query.status) : undefined,
+    billId: req.query.billId ? String(req.query.billId) : undefined,
     page,
     limit,
+  });
+  res.json({ success: true, data });
+}
+
+export async function residentPaymentReceiptHandler(req: Request, res: Response): Promise<void> {
+  const data = await getReceiptForPayment(societyId(req), String(req.params.paymentId), {
+    ownerUserId: req.user!.id,
   });
   res.json({ success: true, data });
 }

@@ -6,6 +6,11 @@ import {
   rupeesIntegerToPaise,
 } from '../../src/modules/billing/utils/money';
 import {
+  billOutstandingPayablePaise,
+  unpaidInterestPaise,
+} from '../../src/modules/billing/utils/bill-totals';
+import { buildReceiptPdf } from '../../src/modules/billing/services/pdf.service';
+import {
   billingPeriodBounds,
   dueDateForBillingPeriod,
   overdueDaysAsOf,
@@ -25,6 +30,77 @@ describe('money utils', () => {
     expect(calculateSimpleDailyInterestPaise(400_000, 1, 2400)).toBe(263);
     expect(calculateSimpleDailyInterestPaise(400_000, 0, 2400)).toBe(0);
     expect(calculateSimpleDailyInterestPaise(0, 10, 2400)).toBe(0);
+  });
+});
+
+describe('outstanding payable', () => {
+  it('treats lifetime accrued interest as unpaid until interest is collected', () => {
+    expect(
+      unpaidInterestPaise({
+        outstandingPrincipalPaise: 400_000,
+        interestAccruedPaise: 1_200,
+        interestPaidPaise: 0,
+        status: 'OVERDUE',
+      }),
+    ).toBe(1_200);
+    expect(
+      billOutstandingPayablePaise({
+        outstandingPrincipalPaise: 200_000,
+        interestAccruedPaise: 1_200,
+        interestPaidPaise: 400,
+        status: 'PARTIALLY_PAID',
+      }),
+    ).toBe(200_800);
+  });
+
+  it('shows zero outstanding on a fully paid bill even if accrued interest remains as history', () => {
+    expect(
+      billOutstandingPayablePaise({
+        outstandingPrincipalPaise: 0,
+        interestAccruedPaise: 5_000,
+        interestPaidPaise: 0,
+        status: 'PAID',
+      }),
+    ).toBe(0);
+    expect(
+      billOutstandingPayablePaise({
+        outstandingPrincipalPaise: 0,
+        interestAccruedPaise: 5_000,
+        interestPaidPaise: 5_000,
+        status: 'PAID',
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('receipt pdf', () => {
+  it('builds a PDF with branding, flat, status and paid total', () => {
+    const pdf = buildReceiptPdf({
+      receiptNumber: 'RCPT-2026-000001',
+      societyName: 'Monarch Solitaire',
+      flatNumber: '303',
+      wingCode: 'E',
+      ownerName: 'Owner One',
+      amountPaise: 401_200,
+      paymentMethod: 'UPI',
+      transactionReference: 'pay_abc',
+      paidAt: new Date('2026-07-15T10:30:00.000+05:30'),
+      billNumber: 'BILL-2026-000001',
+      billingPeriod: '01 Jul 2026 - 31 Jul 2026',
+      baseAmountPaise: 400_000,
+      interestAmountPaise: 1_200,
+      paymentStatus: 'SUCCESSFUL',
+    });
+    const text = pdf.toString('utf8');
+    expect(text.startsWith('%PDF-1.4')).toBe(true);
+    expect(text).toContain('APNA SOCIETY');
+    expect(text).toContain('Monarch Solitaire');
+    expect(text).toContain('E-303');
+    expect(text).toContain('RCPT-2026-000001');
+    expect(text).toContain('SUCCESSFUL');
+    expect(text).toContain('BILL-2026-000001');
+    expect(text).toContain('pay_abc');
+    expect(text).toContain('authorized receipt');
   });
 });
 

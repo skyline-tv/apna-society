@@ -12,6 +12,7 @@ import {
 } from '../controllers/resident.controller';
 import residentAnnouncementRoutes from '../../announcements/routes/resident-announcement.routes';
 import residentBillingRoutes from '../../billing/routes/resident-billing.routes';
+import residentCollectionRoutes from '../../collections/routes/resident-collection.routes';
 import residentComplaintRoutes from '../../complaints/routes/resident-complaint.routes';
 import residentFacilityRoutes from '../../facilities/routes/resident-facility.routes';
 import residentNotificationRoutes from '../../notifications/routes/resident-notification.routes';
@@ -32,6 +33,7 @@ router.get(
 );
 
 router.use(residentBillingRoutes);
+router.use(residentCollectionRoutes);
 router.use(residentVisitorRoutes);
 router.use(residentVehicleRoutes);
 router.use(residentComplaintRoutes);

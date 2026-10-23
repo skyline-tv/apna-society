@@ -211,6 +211,14 @@ class BillingApi {
     );
   }
 
+  Future<ReceiptDetail> adminPaymentReceipt(String paymentId, {String? societyId}) {
+    return _client.get(
+      '$_admin/payments/$paymentId/receipt',
+      societyId: societyId,
+      decode: ReceiptDetail.fromJson,
+    );
+  }
+
   Future<Paged<Bill>> listResidentBills({
     ListBillsQuery query = const ListBillsQuery(),
     String? societyId,
@@ -326,6 +334,14 @@ class BillingApi {
   Future<ReceiptDetail> residentReceipt(String receiptId, {String? societyId}) {
     return _client.get(
       '$_resident/billing/receipts/$receiptId',
+      societyId: societyId,
+      decode: ReceiptDetail.fromJson,
+    );
+  }
+
+  Future<ReceiptDetail> residentPaymentReceipt(String paymentId, {String? societyId}) {
+    return _client.get(
+      '$_resident/billing/payments/$paymentId/receipt',
       societyId: societyId,
       decode: ReceiptDetail.fromJson,
     );

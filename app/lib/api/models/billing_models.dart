@@ -76,6 +76,8 @@ class Bill {
     required this.totalAmountPaise,
     required this.outstandingPrincipalPaise,
     required this.interestAccruedPaise,
+    this.interestPaidPaise = 0,
+    this.interestOutstandingPaise,
     this.totalPayablePaise,
     required this.amountPaidPaise,
     required this.dueDate,
@@ -111,6 +113,8 @@ class Bill {
   final int totalAmountPaise;
   final int outstandingPrincipalPaise;
   final int interestAccruedPaise;
+  final int interestPaidPaise;
+  final int? interestOutstandingPaise;
   final int? totalPayablePaise;
   final int amountPaidPaise;
   final String dueDate;
@@ -150,6 +154,8 @@ class Bill {
       totalAmountPaise: requireInt(json, 'totalAmountPaise'),
       outstandingPrincipalPaise: requireInt(json, 'outstandingPrincipalPaise'),
       interestAccruedPaise: requireInt(json, 'interestAccruedPaise'),
+      interestPaidPaise: optionalInt(json, 'interestPaidPaise') ?? 0,
+      interestOutstandingPaise: optionalInt(json, 'interestOutstandingPaise'),
       totalPayablePaise: optionalInt(json, 'totalPayablePaise'),
       amountPaidPaise: requireInt(json, 'amountPaidPaise'),
       dueDate: requireString(json, 'dueDate'),
@@ -477,6 +483,8 @@ class PaymentSummary {
     this.referenceNumber,
     this.gatewayOrderId,
     this.gatewayPaymentId,
+    this.receiptId,
+    this.billNumber,
   });
 
   final String id;
@@ -493,6 +501,8 @@ class PaymentSummary {
   final String? referenceNumber;
   final String? gatewayOrderId;
   final String? gatewayPaymentId;
+  final String? receiptId;
+  final String? billNumber;
 
   factory PaymentSummary.fromJson(JsonMap json) {
     return PaymentSummary(
@@ -510,6 +520,8 @@ class PaymentSummary {
       referenceNumber: optionalString(json, 'referenceNumber'),
       gatewayOrderId: optionalString(json, 'gatewayOrderId'),
       gatewayPaymentId: optionalString(json, 'gatewayPaymentId'),
+      receiptId: optionalString(json, 'receiptId'),
+      billNumber: optionalString(json, 'billNumber'),
     );
   }
 }
@@ -924,10 +936,19 @@ class UpdateAdditionalServiceRequest {
   }
 }
 
-/// Principal + accrued interest still due (server-authoritative when present).
-int billAmountDuePaise(Bill bill) =>
-    bill.totalPayablePaise ??
-    bill.outstandingPrincipalPaise + bill.interestAccruedPaise;
+/// Remaining payable: unpaid principal + unpaid interest.
+///
+/// Fully settled bills always return 0 even if a stale `totalPayablePaise`
+/// or lifetime `interestAccruedPaise` is still present on the payload.
+int billAmountDuePaise(Bill bill) {
+  if (bill.status == 'PAID' || bill.status == 'CANCELLED') return 0;
+  if (bill.totalPayablePaise != null) return bill.totalPayablePaise!;
+  final remainingInterest = bill.interestOutstandingPaise ??
+      (bill.interestAccruedPaise < bill.interestPaidPaise
+          ? 0
+          : bill.interestAccruedPaise - bill.interestPaidPaise);
+  return bill.outstandingPrincipalPaise + remainingInterest;
+}
 
 int billingSummaryPayablePaise(BillingSummary summary) =>
     summary.totalPayablePaise ??

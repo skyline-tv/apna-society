@@ -5,6 +5,7 @@ import 'services/admin_user_api.dart';
 import 'services/announcement_api.dart';
 import 'services/auth_api.dart';
 import 'services/billing_api.dart';
+import 'services/collection_api.dart';
 import 'services/complaint_api.dart';
 import 'services/device_token_api.dart';
 import 'services/facility_api.dart';
@@ -40,6 +41,7 @@ class ApnaApi {
   late final AdminGuardApi adminGuards = AdminGuardApi(client);
   late final ResidentApi residents = ResidentApi(client);
   late final BillingApi billing = BillingApi(client);
+  late final CollectionApi collections = CollectionApi(client);
   late final VisitorApi visitors = VisitorApi(client);
   late final VehicleApi vehicles = VehicleApi(client);
   late final ComplaintApi complaints = ComplaintApi(client);
