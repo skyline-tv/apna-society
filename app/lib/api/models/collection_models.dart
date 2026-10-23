@@ -334,6 +334,9 @@ class CollectionPayment {
     this.referenceNumber,
     this.gatewayPaymentId,
     this.receiptId,
+    this.wingCodeSnapshot,
+    this.flatNumberSnapshot,
+    this.flatLabel,
   });
 
   final String id;
@@ -348,6 +351,15 @@ class CollectionPayment {
   final String? referenceNumber;
   final String? gatewayPaymentId;
   final String? receiptId;
+  final String? wingCodeSnapshot;
+  final String? flatNumberSnapshot;
+  final String? flatLabel;
+
+  String get displayFlat {
+    final labeled = (flatLabel ?? '').trim();
+    if (labeled.isNotEmpty) return labeled;
+    return formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
+  }
 
   factory CollectionPayment.fromJson(JsonMap json) {
     return CollectionPayment(
@@ -363,6 +375,9 @@ class CollectionPayment {
       referenceNumber: optionalString(json, 'referenceNumber'),
       gatewayPaymentId: optionalString(json, 'gatewayPaymentId'),
       receiptId: optionalString(json, 'receiptId'),
+      wingCodeSnapshot: optionalString(json, 'wingCodeSnapshot'),
+      flatNumberSnapshot: optionalString(json, 'flatNumberSnapshot'),
+      flatLabel: optionalString(json, 'flatLabel'),
     );
   }
 }

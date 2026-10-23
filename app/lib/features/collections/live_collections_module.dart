@@ -167,6 +167,51 @@ String _assignmentLabel(String type) {
 bool _isSuccessfulPayment(CollectionPayment payment) =>
     payment.status.toUpperCase() == 'SUCCESS';
 
+class _CollectionPaymentCard extends StatelessWidget {
+  const _CollectionPaymentCard({required this.payment, this.onReceipt});
+  final CollectionPayment payment;
+  final VoidCallback? onReceipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = payment;
+    final flat = p.displayFlat;
+    final status = p.status.toUpperCase();
+    final tone = status == 'SUCCESS'
+        ? C.green
+        : status == 'FAILED'
+            ? C.error
+            : C.amber;
+    return ListRow(
+      leading: AppAvatar(
+        icon: Icons.payments_outlined,
+        color: tone,
+        size: 42,
+      ),
+      title: flat.isNotEmpty ? flat : p.paymentNumber,
+      subtitle: [
+        if (flat.isNotEmpty) p.paymentNumber,
+        humanizeStatus(p.paymentMethod),
+        humanizeStatus(p.status),
+        if (p.paidAt != null) fmtIsoDateTime(p.paidAt),
+      ].join(' · '),
+      trailing: Text(moneyPaise(p.amountPaise),
+          style: T.money.copyWith(fontSize: 15, color: tone)),
+      showChevron: false,
+      footer: onReceipt == null
+          ? null
+          : Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onReceipt,
+                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                label: const Text('Receipt'),
+              ),
+            ),
+    );
+  }
+}
+
 CreatePaymentOrderResult _asCheckoutOrder(CollectionPaymentOrderResult order) {
   return CreatePaymentOrderResult(
     paymentId: order.paymentId,
@@ -1915,18 +1960,10 @@ class _LiveAdminCollectionDetailPageState
                       icon: Icons.payments_outlined, compact: true)
                 else
                   ...bundle.payments.items.map(
-                    (p) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('${p.paymentNumber} · ${moneyPaise(p.amountPaise)}'),
-                      subtitle: Text(
-                        '${humanizeStatus(p.paymentMethod)} · ${humanizeStatus(p.status)}'
-                        '${p.paidAt == null ? '' : ' · ${fmtIsoDateTime(p.paidAt)}'}',
-                      ),
-                      trailing: _isSuccessfulPayment(p)
-                          ? IconButton(
-                              tooltip: 'Receipt',
-                              icon: const Icon(Icons.receipt_long_outlined),
-                              onPressed: () => Navigator.push<void>(
+                    (p) => _CollectionPaymentCard(
+                      payment: p,
+                      onReceipt: _isSuccessfulPayment(p)
+                          ? () => Navigator.push<void>(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => LiveCollectionReceiptPage(
@@ -1934,8 +1971,7 @@ class _LiveAdminCollectionDetailPageState
                                     resident: false,
                                   ),
                                 ),
-                              ),
-                            )
+                              )
                           : null,
                     ),
                   ),
@@ -2514,19 +2550,10 @@ class _LiveOwnerCollectionChargePageState
                         icon: Icons.payments_outlined, compact: true)
                   else
                     ...bundle.payments.map(
-                      (p) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                            '${p.paymentNumber} · ${moneyPaise(p.amountPaise)}'),
-                        subtitle: Text(
-                          '${humanizeStatus(p.status)}'
-                          '${p.paidAt == null ? '' : ' · ${fmtIsoDateTime(p.paidAt)}'}',
-                        ),
-                        trailing: _isSuccessfulPayment(p)
-                            ? IconButton(
-                                tooltip: 'Receipt',
-                                icon: const Icon(Icons.receipt_long_outlined),
-                                onPressed: () => Navigator.push<void>(
+                      (p) => _CollectionPaymentCard(
+                        payment: p,
+                        onReceipt: _isSuccessfulPayment(p)
+                            ? () => Navigator.push<void>(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => LiveCollectionReceiptPage(
@@ -2534,8 +2561,7 @@ class _LiveOwnerCollectionChargePageState
                                       resident: true,
                                     ),
                                   ),
-                                ),
-                              )
+                                )
                             : null,
                       ),
                     ),

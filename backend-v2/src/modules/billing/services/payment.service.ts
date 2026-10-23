@@ -9,6 +9,7 @@ import {
   notFound,
 } from '../../../shared/errors/app-error';
 import { isDuplicateKeyError, mapMongoWriteError } from '../../../utils/mongo-errors';
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { parseObjectId } from '../../../utils/object-id';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { notifyBusinessEvent } from '../../notifications/services/business-notify.service';
@@ -788,32 +789,40 @@ export async function listPayments(
       : Promise.resolve([]),
     billIds.length
       ? BillModel.find({ _id: { $in: billIds } })
-          .select('_id billNumber')
+          .select('_id billNumber wingCodeSnapshot flatNumberSnapshot')
           .lean()
       : Promise.resolve([]),
   ]);
   const receiptByPayment = new Map(receipts.map((row) => [String(row.paymentId), String(row._id)]));
-  const billNumberById = new Map(bills.map((row) => [String(row._id), row.billNumber]));
+  const billById = new Map(bills.map((row) => [String(row._id), row]));
 
   return {
-    items: rows.map((row) => ({
-      id: String(row._id),
-      paymentNumber: row.paymentNumber,
-      billId: String(row.billId),
-      billNumber: billNumberById.get(String(row.billId)),
-      flatId: String(row.flatId),
-      ownerUserId: row.ownerUserId ? String(row.ownerUserId) : undefined,
-      amountPaise: row.amountPaise,
-      allocatedToPrincipalPaise: row.allocatedToPrincipalPaise,
-      allocatedToInterestPaise: row.allocatedToInterestPaise,
-      paymentMethod: row.paymentMethod,
-      status: row.status,
-      paidAt: row.paidAt?.toISOString(),
-      referenceNumber: row.referenceNumber,
-      gatewayOrderId: row.gatewayOrderId,
-      gatewayPaymentId: row.gatewayPaymentId,
-      receiptId: receiptByPayment.get(String(row._id)),
-    })),
+    items: rows.map((row) => {
+      const bill = billById.get(String(row.billId));
+      return {
+        id: String(row._id),
+        paymentNumber: row.paymentNumber,
+        billId: String(row.billId),
+        billNumber: bill?.billNumber,
+        flatId: String(row.flatId),
+        ownerUserId: row.ownerUserId ? String(row.ownerUserId) : undefined,
+        amountPaise: row.amountPaise,
+        allocatedToPrincipalPaise: row.allocatedToPrincipalPaise,
+        allocatedToInterestPaise: row.allocatedToInterestPaise,
+        paymentMethod: row.paymentMethod,
+        status: row.status,
+        paidAt: row.paidAt?.toISOString(),
+        referenceNumber: row.referenceNumber,
+        gatewayOrderId: row.gatewayOrderId,
+        gatewayPaymentId: row.gatewayPaymentId,
+        receiptId: receiptByPayment.get(String(row._id)),
+        wingCodeSnapshot: bill?.wingCodeSnapshot,
+        flatNumberSnapshot: bill?.flatNumberSnapshot,
+        flatLabel: bill
+          ? formatFlatLabel(bill.wingCodeSnapshot, bill.flatNumberSnapshot)
+          : undefined,
+      };
+    }),
     pagination: {
       page,
       limit,

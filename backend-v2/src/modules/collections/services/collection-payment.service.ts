@@ -46,22 +46,28 @@ async function nextCollectionReceiptNumber(societyId: string, session: ClientSes
   return `COLRCPT-${year}-${seq.toString().padStart(6, '0')}`;
 }
 
-function serializePayment(row: {
-  _id: { toString(): string };
-  paymentNumber: string;
-  collectionId: { toString(): string };
-  chargeId: { toString(): string };
-  flatId: { toString(): string };
-  ownerUserId?: { toString(): string } | null;
-  amountPaise: number;
-  paymentMethod: string;
-  status: string;
-  paidAt?: Date;
-  referenceNumber?: string;
-  gatewayOrderId?: string;
-  gatewayPaymentId?: string;
-  receiptId?: string;
-}) {
+function serializePayment(
+  row: {
+    _id: { toString(): string };
+    paymentNumber: string;
+    collectionId: { toString(): string };
+    chargeId: { toString(): string };
+    flatId: { toString(): string };
+    ownerUserId?: { toString(): string } | null;
+    amountPaise: number;
+    paymentMethod: string;
+    status: string;
+    paidAt?: Date;
+    referenceNumber?: string;
+    gatewayOrderId?: string;
+    gatewayPaymentId?: string;
+    receiptId?: string;
+  },
+  extras?: { wingCodeSnapshot?: string; flatNumberSnapshot?: string },
+) {
+  const wingCodeSnapshot = extras?.wingCodeSnapshot;
+  const flatNumberSnapshot = extras?.flatNumberSnapshot;
+  const flatLabel = formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
   return {
     id: String(row._id),
     paymentNumber: row.paymentNumber,
@@ -77,6 +83,9 @@ function serializePayment(row: {
     gatewayOrderId: row.gatewayOrderId,
     gatewayPaymentId: row.gatewayPaymentId,
     receiptId: row.receiptId,
+    wingCodeSnapshot,
+    flatNumberSnapshot,
+    flatLabel: flatLabel || undefined,
   };
 }
 
@@ -568,11 +577,25 @@ export async function listCollectionPayments(
         .select('_id paymentId')
         .lean()
     : [];
+  const chargeIds = [...new Set(rows.map((row) => String(row.chargeId)))];
+  const charges = chargeIds.length
+    ? await CollectionChargeModel.find({ _id: { $in: chargeIds } })
+        .select('_id wingCodeSnapshot flatNumberSnapshot')
+        .lean()
+    : [];
   const receiptByPayment = new Map(receipts.map((row) => [String(row.paymentId), String(row._id)]));
+  const chargeById = new Map(charges.map((row) => [String(row._id), row]));
   return {
-    items: rows.map((row) =>
-      serializePayment({ ...row, receiptId: receiptByPayment.get(String(row._id)) }),
-    ),
+    items: rows.map((row) => {
+      const charge = chargeById.get(String(row.chargeId));
+      return serializePayment(
+        { ...row, receiptId: receiptByPayment.get(String(row._id)) },
+        {
+          wingCodeSnapshot: charge?.wingCodeSnapshot,
+          flatNumberSnapshot: charge?.flatNumberSnapshot,
+        },
+      );
+    }),
     pagination: {
       page,
       limit,

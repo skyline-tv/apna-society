@@ -485,6 +485,9 @@ class PaymentSummary {
     this.gatewayPaymentId,
     this.receiptId,
     this.billNumber,
+    this.wingCodeSnapshot,
+    this.flatNumberSnapshot,
+    this.flatLabel,
   });
 
   final String id;
@@ -503,6 +506,15 @@ class PaymentSummary {
   final String? gatewayPaymentId;
   final String? receiptId;
   final String? billNumber;
+  final String? wingCodeSnapshot;
+  final String? flatNumberSnapshot;
+  final String? flatLabel;
+
+  String get displayFlat {
+    final labeled = (flatLabel ?? '').trim();
+    if (labeled.isNotEmpty) return labeled;
+    return formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
+  }
 
   factory PaymentSummary.fromJson(JsonMap json) {
     return PaymentSummary(
@@ -522,6 +534,9 @@ class PaymentSummary {
       gatewayPaymentId: optionalString(json, 'gatewayPaymentId'),
       receiptId: optionalString(json, 'receiptId'),
       billNumber: optionalString(json, 'billNumber'),
+      wingCodeSnapshot: optionalString(json, 'wingCodeSnapshot'),
+      flatNumberSnapshot: optionalString(json, 'flatNumberSnapshot'),
+      flatLabel: optionalString(json, 'flatLabel'),
     );
   }
 }

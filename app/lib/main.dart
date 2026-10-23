@@ -4838,7 +4838,7 @@ class _OwnerPaymentsPageState extends State<OwnerPaymentsPage> {
                       'Payments collected by the society admin for your flat. Tap a row to open the receipt.'),
                 );
               }
-              return _PaymentCard(row: rows[i - 2]);
+              return _PaymentCard(row: rows[i - 2], showFlat: true);
             },
           );
         },
