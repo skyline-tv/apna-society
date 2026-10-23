@@ -6,6 +6,8 @@ import {
   type NotificationType,
 } from '../models/notification.model';
 import { emitNotificationCreated } from './notification-events.service';
+import { enqueuePushDelivery } from './push-delivery.service';
+import { sanitizeNotificationMetadata } from './safe-metadata';
 
 export function serializeNotification(doc: {
   _id: { toString(): string };
@@ -18,6 +20,7 @@ export function serializeNotification(doc: {
   relatedEntityId?: string;
   isRead: boolean;
   readAt?: Date;
+  metadata?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -32,14 +35,16 @@ export function serializeNotification(doc: {
     relatedEntityId: doc.relatedEntityId,
     isRead: doc.isRead,
     readAt: doc.readAt?.toISOString(),
+    metadata: sanitizeNotificationMetadata(doc.metadata),
     createdAt: new Date(doc.createdAt).toISOString(),
     updatedAt: new Date(doc.updatedAt).toISOString(),
   };
 }
 
 /**
- * Persist a notification idempotently, then emit a Socket.IO hint.
+ * Persist a notification idempotently, then emit a Socket.IO hint and enqueue push.
  * Safe to call after business transactions commit (or from workers).
+ * Duplicate idempotency keys do not send a second push.
  */
 export async function createNotification(input: {
   societyId: string;
@@ -52,7 +57,9 @@ export async function createNotification(input: {
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
   emitSocket?: boolean;
+  deliverPush?: boolean;
 }): Promise<{ created: boolean; notification: ReturnType<typeof serializeNotification> }> {
+  const metadata = sanitizeNotificationMetadata(input.metadata);
   try {
     const [doc] = await NotificationModel.create([
       {
@@ -64,13 +71,18 @@ export async function createNotification(input: {
         relatedEntityType: input.relatedEntityType,
         relatedEntityId: input.relatedEntityId,
         idempotencyKey: input.idempotencyKey,
-        metadata: input.metadata,
+        metadata,
         isRead: false,
+        pushStatus: 'PENDING',
+        pushAttemptCount: 0,
       },
     ]);
     const serialized = serializeNotification(doc);
     if (input.emitSocket !== false) {
       emitNotificationCreated(serialized);
+    }
+    if (input.deliverPush !== false) {
+      enqueuePushDelivery(String(doc._id));
     }
     return { created: true, notification: serialized };
   } catch (error) {

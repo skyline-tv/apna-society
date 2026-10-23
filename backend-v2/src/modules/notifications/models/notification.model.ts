@@ -3,12 +3,16 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 export const NOTIFICATION_TYPES = [
   'ANNOUNCEMENT',
   'BILL_GENERATED',
+  'BILL_OVERDUE',
   'PAYMENT_SUCCESS',
   'PAYMENT_FAILED',
   'VISITOR_REQUEST',
   'VISITOR_APPROVED',
   'VISITOR_REJECTED',
   'VISITOR_ENTERED',
+  'VISITOR_EXPIRED',
+  'PARCEL_AWAITING_HANDOVER',
+  'PARCEL_RECEIVED',
   'COMPLAINT_ASSIGNED',
   'COMPLAINT_STATUS_CHANGED',
   'FACILITY_BOOKING_APPROVED',
@@ -18,6 +22,16 @@ export const NOTIFICATION_TYPES = [
   'SYSTEM',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const PUSH_DELIVERY_STATUSES = [
+  'PENDING',
+  'SENT',
+  'PARTIAL',
+  'FAILED',
+  'SKIPPED',
+  'NOT_CONFIGURED',
+] as const;
+export type PushDeliveryStatus = (typeof PUSH_DELIVERY_STATUSES)[number];
 
 export interface NotificationDocument extends Document {
   societyId: Types.ObjectId;
@@ -32,6 +46,10 @@ export interface NotificationDocument extends Document {
   /** Unique per recipient event to prevent duplicates on retries. */
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  pushStatus: PushDeliveryStatus;
+  pushAttemptCount: number;
+  pushLastAttemptAt?: Date;
+  pushSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,6 +67,15 @@ const notificationSchema = new Schema<NotificationDocument>(
     readAt: { type: Date },
     idempotencyKey: { type: String, required: true, maxlength: 200 },
     metadata: { type: Schema.Types.Mixed },
+    pushStatus: {
+      type: String,
+      enum: PUSH_DELIVERY_STATUSES,
+      required: true,
+      default: 'PENDING',
+    },
+    pushAttemptCount: { type: Number, required: true, default: 0, min: 0 },
+    pushLastAttemptAt: { type: Date },
+    pushSentAt: { type: Date },
   },
   { timestamps: true },
 );
@@ -57,5 +84,6 @@ notificationSchema.index({ idempotencyKey: 1 }, { unique: true });
 notificationSchema.index({ societyId: 1, recipientUserId: 1, createdAt: -1 });
 notificationSchema.index({ societyId: 1, recipientUserId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ societyId: 1, type: 1, createdAt: -1 });
+notificationSchema.index({ pushStatus: 1, pushAttemptCount: 1, pushLastAttemptAt: 1 });
 
 export const NotificationModel = model<NotificationDocument>('Notification', notificationSchema);

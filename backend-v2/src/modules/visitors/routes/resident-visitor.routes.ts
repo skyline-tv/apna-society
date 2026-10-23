@@ -4,14 +4,20 @@ import { validateBody, validateParams, validateQuery } from '../../../middleware
 import { asyncHandler } from '../../../utils/async-handler';
 import {
   residentApproveHandler,
+  residentAuthorizeParcelHandler,
   residentCancelHandler,
+  residentCollectParcelHandler,
+  residentGetParcelHandler,
   residentGetVisitorHandler,
+  residentListParcelsHandler,
   residentListVisitorsHandler,
   residentPendingVisitorsHandler,
   residentRejectHandler,
 } from '../controllers/visitor.controller';
 import {
+  listParcelsQuerySchema,
   listVisitorsQuerySchema,
+  parcelIdParamSchema,
   rejectVisitorSchema,
   visitorIdParamSchema,
 } from '../validators/visitor.validators';
@@ -46,6 +52,27 @@ router.post(
   '/visitors/:visitorId/cancel',
   validateParams(visitorIdParamSchema),
   asyncHandler(residentCancelHandler),
+);
+router.post(
+  '/visitors/:visitorId/leave-parcel',
+  validateParams(visitorIdParamSchema),
+  asyncHandler(residentAuthorizeParcelHandler),
+);
+
+router.get(
+  '/parcels',
+  validateQuery(listParcelsQuerySchema),
+  asyncHandler(residentListParcelsHandler),
+);
+router.get(
+  '/parcels/:parcelId',
+  validateParams(parcelIdParamSchema),
+  asyncHandler(residentGetParcelHandler),
+);
+router.post(
+  '/parcels/:parcelId/collect',
+  validateParams(parcelIdParamSchema),
+  asyncHandler(residentCollectParcelHandler),
 );
 
 export default router;

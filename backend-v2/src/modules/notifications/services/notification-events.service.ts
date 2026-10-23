@@ -14,6 +14,7 @@ export interface NotificationSocketPayload {
   relatedEntityType?: string;
   relatedEntityId?: string;
   isRead: boolean;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -45,6 +46,7 @@ export function emitNotificationCreated(payload: NotificationSocketPayload): voi
     relatedEntityType: payload.relatedEntityType,
     relatedEntityId: payload.relatedEntityId,
     isRead: payload.isRead,
+    metadata: payload.metadata,
     createdAt: payload.createdAt,
   };
   const rooms = [residentVisitorRoom(safe.societyId, safe.recipientUserId)];

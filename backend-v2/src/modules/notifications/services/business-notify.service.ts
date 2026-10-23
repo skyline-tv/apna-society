@@ -16,10 +16,11 @@ export async function notifyBusinessEvent(input: {
   relatedEntityType?: string;
   relatedEntityId?: string;
   idempotencyKey: string;
-}): Promise<void> {
-  if (!input.recipientUserId) return;
+  metadata?: Record<string, unknown>;
+}): Promise<{ created: boolean }> {
+  if (!input.recipientUserId) return { created: false };
   try {
-    await createNotification({
+    const result = await createNotification({
       societyId: input.societyId,
       recipientUserId: input.recipientUserId,
       type: input.type,
@@ -28,12 +29,16 @@ export async function notifyBusinessEvent(input: {
       relatedEntityType: input.relatedEntityType,
       relatedEntityId: input.relatedEntityId,
       idempotencyKey: input.idempotencyKey,
+      metadata: input.metadata,
       emitSocket: true,
+      deliverPush: true,
     });
+    return { created: result.created };
   } catch (error) {
     getLogger().error(
       { err: error, type: input.type, idempotencyKey: input.idempotencyKey },
       'Failed to persist business notification',
     );
+    return { created: false };
   }
 }

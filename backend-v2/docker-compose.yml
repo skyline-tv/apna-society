@@ -21,10 +21,13 @@ services:
       INTEREST_WORKER_INTERVAL_MS: ${INTEREST_WORKER_INTERVAL_MS:-3600000}
       COMPLAINT_STORAGE_LOCAL_DIR: /data/storage/complaints
       ANNOUNCEMENT_STORAGE_LOCAL_DIR: /data/storage/announcements
+      FCM_ENABLED: ${FCM_ENABLED:-false}
+      FIREBASE_SERVICE_ACCOUNT_PATH: /app/secrets/firebase-service-account.json
     ports:
       - "${PORT:-4000}:4000"
     volumes:
       - api_storage:/data/storage
+      - ./secrets:/app/secrets:ro
     depends_on:
       mongo:
         condition: service_healthy

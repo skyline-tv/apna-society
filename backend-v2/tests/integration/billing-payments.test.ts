@@ -95,12 +95,19 @@ describe('Billing payments', () => {
       .set('x-society-id', setup.ctx.societyId);
     expect(tenantDenied.status).toBe(403);
 
+    const opened = await request(app)
+      .get(`/api/v1/admin/billing/bills/${setup.billId}`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`);
+    expect(opened.status).toBe(200);
+    const expectedDue =
+      opened.body.data.outstandingPrincipalPaise + opened.body.data.interestAccruedPaise;
+
     const order = await request(app)
       .post(`/api/v1/resident/billing/bills/${setup.billId}/payment-order`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .set('x-society-id', setup.ctx.societyId);
     expect(order.status).toBe(201);
-    expect(order.body.data.amountPaise).toBe(400_000);
+    expect(order.body.data.amountPaise).toBe(expectedDue);
     expect(order.body.data.order.orderId).toBeTruthy();
 
     const wrongOwner = await request(app)
@@ -109,8 +116,8 @@ describe('Billing payments', () => {
       .set('x-society-id', setup.ctx.societyId);
     expect(wrongOwner.status).toBe(403);
 
-    // Client-supplied amount is ignored — order always uses outstanding principal.
-    expect(order.body.data.amountPaise).toBe(400_000);
+    // Client cannot choose the amount — order is server-computed principal + current interest.
+    expect(order.body.data.amountPaise).toBe(opened.body.data.totalPayablePaise);
 
     const badSig = await request(app)
       .post('/api/v1/resident/billing/verify-payment')

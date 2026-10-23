@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import '../../services/push_notification_service.dart';
 import '../../services/session_store.dart';
 import '../models/auth_models.dart';
 import '../models/resident_home_context.dart';
@@ -60,6 +63,7 @@ class HomeResolver {
     final repos = ensureLiveRepositories(session.api);
 
     VisitorSocket.instance.connectForSession(session);
+    unawaited(PushNotificationService.instance.start(session));
 
     switch (role) {
       case AppRole.admin:

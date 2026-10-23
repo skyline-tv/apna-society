@@ -1,4 +1,5 @@
 import '../models/common.dart';
+import '../models/parcel_models.dart';
 import '../models/visitor_models.dart';
 import '../services/visitor_api.dart';
 
@@ -17,7 +18,12 @@ class VisitorRepository {
   Paged<Visitor>? lastResidentPending;
   Paged<Visitor>? lastAdminVisitors;
   String? lastAdminVisitorsKey;
+  Paged<ParcelHandover>? lastGuardParcels;
+  String? lastGuardParcelsKey;
+  Paged<ParcelHandover>? lastResidentParcels;
+  String? lastResidentParcelsKey;
   final Map<String, Visitor> _byId = {};
+  final Map<String, ParcelHandover> _parcelsById = {};
 
   /// Prevents duplicate OTP verify / checkout / approve / reject / cancel / create.
   bool mutationLocked = false;
@@ -32,7 +38,12 @@ class VisitorRepository {
     lastResidentPending = null;
     lastAdminVisitors = null;
     lastAdminVisitorsKey = null;
+    lastGuardParcels = null;
+    lastGuardParcelsKey = null;
+    lastResidentParcels = null;
+    lastResidentParcelsKey = null;
     _byId.clear();
+    _parcelsById.clear();
     mutationLocked = false;
   }
 
@@ -46,11 +57,16 @@ class VisitorRepository {
     lastResidentPending = null;
     lastAdminVisitors = null;
     lastAdminVisitorsKey = null;
+    lastGuardParcels = null;
+    lastGuardParcelsKey = null;
+    lastResidentParcels = null;
+    lastResidentParcelsKey = null;
     if (visitorId != null) {
       _byId.remove(visitorId);
     } else {
       _byId.clear();
     }
+    _parcelsById.clear();
   }
 
   void _store(Visitor visitor) {
@@ -236,6 +252,91 @@ class VisitorRepository {
     } finally {
       mutationLocked = false;
     }
+  }
+
+  Future<ParcelAuthorizationResult> leaveParcel(String visitorId) async {
+    if (mutationLocked) {
+      throw StateError('Visitor action is already in progress.');
+    }
+    mutationLocked = true;
+    try {
+      final result = await _api.leaveParcel(visitorId);
+      invalidateCaches(visitorId: visitorId);
+      _parcelsById[result.parcel.id] = result.parcel;
+      return result;
+    } finally {
+      mutationLocked = false;
+    }
+  }
+
+  Future<Paged<ParcelHandover>> listGuardParcels({
+    String? status,
+    bool force = false,
+  }) async {
+    final key = status ?? '';
+    if (!force && lastGuardParcels != null && lastGuardParcelsKey == key) {
+      return lastGuardParcels!;
+    }
+    final page = await _api.listGuardParcels(status: status);
+    lastGuardParcels = page;
+    lastGuardParcelsKey = key;
+    for (final parcel in page.items) {
+      _parcelsById[parcel.id] = parcel;
+    }
+    return page;
+  }
+
+  Future<ParcelHandover> guardParcel(String parcelId, {bool force = false}) async {
+    if (!force && _parcelsById.containsKey(parcelId)) {
+      return _parcelsById[parcelId]!;
+    }
+    final parcel = await _api.guardParcel(parcelId);
+    _parcelsById[parcel.id] = parcel;
+    return parcel;
+  }
+
+  Future<ParcelHandover> receiveParcel(String parcelId) async {
+    if (mutationLocked) {
+      throw StateError('A parcel action is already in progress.');
+    }
+    mutationLocked = true;
+    try {
+      final parcel = await _api.receiveParcel(parcelId);
+      lastGuardParcels = null;
+      lastResidentParcels = null;
+      _parcelsById[parcel.id] = parcel;
+      return parcel;
+    } finally {
+      mutationLocked = false;
+    }
+  }
+
+  Future<Paged<ParcelHandover>> listResidentParcels({
+    String? status,
+    bool force = false,
+  }) async {
+    final key = status ?? '';
+    if (!force &&
+        lastResidentParcels != null &&
+        lastResidentParcelsKey == key) {
+      return lastResidentParcels!;
+    }
+    final page = await _api.listResidentParcels(status: status);
+    lastResidentParcels = page;
+    lastResidentParcelsKey = key;
+    for (final parcel in page.items) {
+      _parcelsById[parcel.id] = parcel;
+    }
+    return page;
+  }
+
+  Future<ParcelHandover> residentParcel(String parcelId, {bool force = false}) async {
+    if (!force && _parcelsById.containsKey(parcelId)) {
+      return _parcelsById[parcelId]!;
+    }
+    final parcel = await _api.residentParcel(parcelId);
+    _parcelsById[parcel.id] = parcel;
+    return parcel;
   }
 
   Future<Visitor> cancel(String visitorId) async {

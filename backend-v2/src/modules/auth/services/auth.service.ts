@@ -19,6 +19,10 @@ import { getLogger } from '../../../utils/logger';
 import { hashPassword, verifyPassword } from '../../../utils/password';
 import { normalizeMobileE164 } from '../../../utils/phone';
 import { normalizeUsername } from '../../../utils/username';
+import {
+  deactivateAllTokensForUser,
+  unregisterDeviceToken,
+} from '../../notifications/services/device-token.service';
 import { MembershipModel } from '../../users/models/membership.model';
 import { UserModel } from '../../users/models/user.model';
 import { OtpChallengeModel } from '../models/otp-challenge.model';
@@ -504,7 +508,11 @@ export async function refreshTokens(refreshToken: string, meta: RequestMeta = {}
   });
 }
 
-export async function logout(refreshToken: string | undefined, meta: RequestMeta = {}): Promise<void> {
+export async function logout(
+  refreshToken: string | undefined,
+  meta: RequestMeta = {},
+  deviceToken?: string,
+): Promise<void> {
   if (!refreshToken) {
     return;
   }
@@ -515,6 +523,19 @@ export async function logout(refreshToken: string | undefined, meta: RequestMeta
   }
   session.revokedAt = new Date();
   await session.save();
+  if (deviceToken) {
+    try {
+      await unregisterDeviceToken({
+        userId: String(session.userId),
+        token: deviceToken,
+      });
+    } catch (error) {
+      getLogger().warn(
+        { err: error instanceof Error ? error.message : 'cleanup failed' },
+        'Device token cleanup on logout skipped',
+      );
+    }
+  }
   await writeAuditLog({
     action: 'AUTH_LOGOUT',
     actorUserId: session.userId,
@@ -528,6 +549,14 @@ export async function logoutAll(userId: string, meta: RequestMeta = {}): Promise
     { userId, revokedAt: { $exists: false } },
     { $set: { revokedAt: new Date() } },
   );
+  try {
+    await deactivateAllTokensForUser(userId);
+  } catch (error) {
+    getLogger().warn(
+      { err: error instanceof Error ? error.message : 'cleanup failed' },
+      'Device token cleanup on logout-all skipped',
+    );
+  }
   await writeAuditLog({
     action: 'AUTH_LOGOUT_ALL',
     actorUserId: userId,

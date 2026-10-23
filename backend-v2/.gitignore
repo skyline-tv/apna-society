@@ -15,3 +15,7 @@ tmp/
 .vitest/
 # Runtime attachment blobs only (never ignore TypeScript under src/**/storage/)
 /storage/
+
+# Firebase Admin SDK service account (never commit)
+/secrets/*
+!/secrets/.gitkeep

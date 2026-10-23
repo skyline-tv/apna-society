@@ -1,3 +1,8 @@
+# Firebase client config (never commit)
+google-services.json
+**/google-services.json
+**/GoogleService-Info.plist
+
 # OS / editor
 .DS_Store
 .idea/

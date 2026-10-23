@@ -17,6 +17,11 @@ export interface SocietyDocument extends Document {
     maintenanceDayOfMonth: number;
     /** Simple annual overdue interest in basis points. 2400 = 24% p.a. */
     annualInterestRateBps: number;
+    /**
+     * PRIMARY_OCCUPIER: current occupier only (default, existing membership rules).
+     * ALL_AUTHORIZED: every residential-authorized member on the flat; first valid response wins.
+     */
+    visitorApprovalPolicy: 'PRIMARY_OCCUPIER' | 'ALL_AUTHORIZED';
   };
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +43,11 @@ const societySchema = new Schema<SocietyDocument>(
       timezone: { type: String, default: DEFAULT_TIMEZONE },
       maintenanceDayOfMonth: { type: Number, default: 1, min: 1, max: 28 },
       annualInterestRateBps: { type: Number, default: 2400, min: 0, max: 100_000 },
+      visitorApprovalPolicy: {
+        type: String,
+        enum: ['PRIMARY_OCCUPIER', 'ALL_AUTHORIZED'],
+        default: 'PRIMARY_OCCUPIER',
+      },
     },
   },
   { timestamps: true },

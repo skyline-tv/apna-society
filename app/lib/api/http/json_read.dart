@@ -90,6 +90,12 @@ List<String> requireStringList(JsonMap json, String key) {
   }).toList();
 }
 
+JsonMap? optionalJsonMap(JsonMap json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  return requireMap(value, key);
+}
+
 Map<String, Object?> omitNulls(Map<String, Object?> source) {
   return {
     for (final entry in source.entries)

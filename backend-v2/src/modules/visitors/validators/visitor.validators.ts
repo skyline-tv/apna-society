@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { isObjectId } from '../../../utils/object-id';
-import { APPROVAL_STATUSES, ENTRY_STATUSES, VISITOR_TYPES } from '../models/visitor-log.model';
+import {
+  APPROVAL_STATUSES,
+  ENTRY_MODES,
+  ENTRY_STATUSES,
+  VISITOR_TYPES,
+} from '../models/visitor-log.model';
+import { PARCEL_STATUSES } from '../models/parcel-handover.model';
 
 const objectId = z.string().refine(isObjectId, 'Must be a valid ObjectId');
 
@@ -61,7 +67,14 @@ export const createVisitorSchema = z
   .object({
     flatId: objectId,
     visitorName: z.string().trim().min(1).max(120),
-    visitorPhone: phoneSchema,
+    visitorPhone: z.preprocess(
+      (value) => {
+        if (value == null) return undefined;
+        if (typeof value === 'string' && value.trim() === '') return undefined;
+        return value;
+      },
+      phoneSchema.optional(),
+    ),
     visitorEmail: z.preprocess(
       (value) => {
         if (value == null) return undefined;
@@ -75,14 +88,25 @@ export const createVisitorSchema = z
     vehicleNumber: z.string().trim().max(32).optional(),
     numberOfVisitors: z.coerce.number().int().min(1).max(50).default(1),
     notes: z.string().trim().max(2000).optional(),
+    entryMode: z.enum(ENTRY_MODES).optional().default('OTP'),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if ((data.entryMode ?? 'OTP') === 'OTP' && !data.visitorPhone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'visitorPhone is required for OTP visitor requests',
+        path: ['visitorPhone'],
+      });
+    }
+  });
 
 export const visitorIdParamSchema = z.object({ visitorId: objectId });
 
 export const listVisitorsQuerySchema = z.object({
   approvalStatus: z.enum(APPROVAL_STATUSES).optional(),
   entryStatus: z.enum(ENTRY_STATUSES).optional(),
+  entryMode: z.enum(ENTRY_MODES).optional(),
   flatId: objectId.optional(),
   wingCode: z.string().trim().min(1).max(16).optional(),
   visitorType: z.enum(VISITOR_TYPES).optional(),
@@ -101,6 +125,21 @@ export const verifyEntryOtpSchema = z
   .strict();
 
 export const rejectVisitorSchema = z
+  .object({
+    reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .strict();
+
+export const parcelIdParamSchema = z.object({ parcelId: objectId });
+
+export const listParcelsQuerySchema = z.object({
+  status: z.enum(PARCEL_STATUSES).optional(),
+  flatId: objectId.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const cancelParcelSchema = z
   .object({
     reason: z.string().trim().min(1).max(500).optional(),
   })

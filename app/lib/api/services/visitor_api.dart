@@ -2,6 +2,7 @@ import '../config/api_config.dart';
 import '../http/api_client.dart';
 import '../http/json_read.dart';
 import '../models/common.dart';
+import '../models/parcel_models.dart';
 import '../models/visitor_models.dart';
 
 /// Guard, resident, and admin visitor routes.
@@ -146,6 +147,65 @@ class VisitorApi {
       body: omitNulls({'reason': reason}),
       societyId: societyId,
       decode: Visitor.fromJson,
+    );
+  }
+
+  Future<ParcelAuthorizationResult> leaveParcel(
+    String visitorId, {
+    String? societyId,
+  }) {
+    return _client.post(
+      '$_resident/visitors/$visitorId/leave-parcel',
+      societyId: societyId,
+      decode: ParcelAuthorizationResult.fromJson,
+    );
+  }
+
+  Future<Paged<ParcelHandover>> listGuardParcels({
+    String? status,
+    String? societyId,
+  }) {
+    return _client.get(
+      '$_guard/parcels',
+      query: omitNulls({'status': status}),
+      societyId: societyId,
+      decode: (data) => Paged.fromJson(data, ParcelHandover.fromJson),
+    );
+  }
+
+  Future<ParcelHandover> guardParcel(String parcelId, {String? societyId}) {
+    return _client.get(
+      '$_guard/parcels/$parcelId',
+      societyId: societyId,
+      decode: ParcelHandover.fromJson,
+    );
+  }
+
+  Future<ParcelHandover> receiveParcel(String parcelId, {String? societyId}) {
+    return _client.post(
+      '$_guard/parcels/$parcelId/receive',
+      societyId: societyId,
+      decode: ParcelHandover.fromJson,
+    );
+  }
+
+  Future<Paged<ParcelHandover>> listResidentParcels({
+    String? status,
+    String? societyId,
+  }) {
+    return _client.get(
+      '$_resident/parcels',
+      query: omitNulls({'status': status}),
+      societyId: societyId,
+      decode: (data) => Paged.fromJson(data, ParcelHandover.fromJson),
+    );
+  }
+
+  Future<ParcelHandover> residentParcel(String parcelId, {String? societyId}) {
+    return _client.get(
+      '$_resident/parcels/$parcelId',
+      societyId: societyId,
+      decode: ParcelHandover.fromJson,
     );
   }
 

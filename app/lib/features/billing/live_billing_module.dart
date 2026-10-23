@@ -1234,7 +1234,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   final reference = TextEditingController();
   final notes = TextEditingController();
   late final amount = TextEditingController(
-      text: paiseToRupeeInput(widget.bill.outstandingPrincipalPaise));
+      text: paiseToRupeeInput(billAmountDuePaise(widget.bill)));
   bool busy = false;
   String? error;
 
@@ -1317,6 +1317,14 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
               'Outstanding principal',
               moneyPaise(bill.outstandingPrincipalPaise)
             ),
+            (
+              'Accrued interest',
+              moneyPaise(bill.interestAccruedPaise)
+            ),
+            (
+              'Amount due',
+              moneyPaise(billAmountDuePaise(bill))
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -1332,7 +1340,8 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           decoration: const InputDecoration(
             labelText: 'Amount received (₹) *',
             prefixText: '₹ ',
-            helperText: 'Settlement rules are applied by the server.',
+            helperText:
+                'Defaults to principal plus current overdue interest. The server recalculates interest at settlement.',
           ),
           validator: (v) {
             final paise = parseRupeesToPaise(v ?? '');
@@ -1677,8 +1686,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
 
   Future<void> _pay(Bill bill) async {
     if (paying) return;
-    if (bill.outstandingPrincipalPaise <= 0) {
-      showWarningSnack(context, 'This bill has no outstanding principal.');
+    if (billAmountDuePaise(bill) <= 0) {
+      showWarningSnack(context, 'This bill is already settled.');
       return;
     }
     setState(() => paying = true);
@@ -1793,7 +1802,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
           final bill = snap.data!.bill;
           final interest = snap.data!.interest;
           final payable =
-              bill.outstandingPrincipalPaise > 0 && bill.status != 'CANCELLED';
+              billAmountDuePaise(bill) > 0 && bill.status != 'CANCELLED';
           final open = bill.status != 'PAID' && bill.status != 'CANCELLED';
           final adjustPaise = bill.totalAmountPaise - bill.baseAmountPaise;
           return Column(children: [
@@ -1866,8 +1875,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
             if (payable)
               BottomActionBar(children: [
                 PrimaryButton(
-                  label:
-                      'Pay ${moneyPaise(bill.outstandingPrincipalPaise)} principal',
+                  label: 'Pay ${moneyPaise(billAmountDuePaise(bill))}',
                   icon: Icons.lock_outline_rounded,
                   busy: paying,
                   onPressed: () => _pay(bill),

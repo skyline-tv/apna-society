@@ -24,6 +24,7 @@ const kAnnouncementStatuses = [
 ];
 
 const kAudienceTypes = ['ALL_RESIDENTS', 'WING', 'SELECTED_FLATS'];
+const kAudienceRoles = ['ALL', 'OWNERS', 'TENANTS'];
 
 const kAnnouncementAttachmentMaxBytes = 5 * 1024 * 1024;
 const kAnnouncementAttachmentMaxCount = 5;
@@ -92,6 +93,19 @@ String audienceTypeLabel(String v) {
   }
 }
 
+String audienceRoleLabel(String v) {
+  switch (v) {
+    case 'OWNERS':
+      return 'Owners only';
+    case 'TENANTS':
+      return 'Tenants only';
+    case 'ALL':
+      return 'Owners and tenants';
+    default:
+      return v;
+  }
+}
+
 class AnnouncementAttachment {
   const AnnouncementAttachment({
     required this.id,
@@ -130,6 +144,7 @@ class Announcement {
     required this.category,
     required this.priority,
     required this.audienceType,
+    this.audienceRole = 'ALL',
     required this.attachments,
     required this.status,
     required this.createdAt,
@@ -155,6 +170,7 @@ class Announcement {
   final String category;
   final String priority;
   final String audienceType;
+  final String audienceRole;
   final List<String>? targetWingIds;
   final List<String>? targetFlatIds;
   final List<AnnouncementAttachment> attachments;
@@ -184,6 +200,7 @@ class Announcement {
       category: requireString(json, 'category'),
       priority: requireString(json, 'priority'),
       audienceType: requireString(json, 'audienceType'),
+      audienceRole: optionalString(json, 'audienceRole') ?? 'ALL',
       targetWingIds: wings is List
           ? wings.map((e) => e.toString()).toList()
           : null,
@@ -216,6 +233,7 @@ class CreateAnnouncementRequest {
     required this.body,
     required this.category,
     required this.audienceType,
+    this.audienceRole,
     this.priority,
     this.targetWingIds,
     this.targetFlatIds,
@@ -228,6 +246,7 @@ class CreateAnnouncementRequest {
   final String category;
   final String? priority;
   final String audienceType;
+  final String? audienceRole;
   final List<String>? targetWingIds;
   final List<String>? targetFlatIds;
   final String? expiresAt;
@@ -239,6 +258,7 @@ class CreateAnnouncementRequest {
         'category': category,
         'priority': priority,
         'audienceType': audienceType,
+        'audienceRole': audienceRole,
         'targetWingIds': targetWingIds,
         'targetFlatIds': targetFlatIds,
         'expiresAt': expiresAt,
@@ -253,6 +273,7 @@ class UpdateAnnouncementRequest {
     this.category,
     this.priority,
     this.audienceType,
+    this.audienceRole,
     this.targetWingIds,
     this.targetFlatIds,
     this.expiresAt,
@@ -265,6 +286,7 @@ class UpdateAnnouncementRequest {
   final String? category;
   final String? priority;
   final String? audienceType;
+  final String? audienceRole;
   final List<String>? targetWingIds;
   final List<String>? targetFlatIds;
   final String? expiresAt;
@@ -278,6 +300,7 @@ class UpdateAnnouncementRequest {
       'category': category,
       'priority': priority,
       'audienceType': audienceType,
+      'audienceRole': audienceRole,
       'targetWingIds': targetWingIds,
       'targetFlatIds': targetFlatIds,
       'adminNotes': adminNotes,

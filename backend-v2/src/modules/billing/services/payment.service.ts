@@ -76,6 +76,17 @@ function deriveBillStatus(bill: {
 }
 
 /**
+ * Amount due at payment time: unpaid maintenance principal plus simple interest
+ * accrued on that principal. Interest is never added back into principal.
+ */
+export function amountDuePaise(
+  outstandingPrincipalPaise: number,
+  accruedInterestPaise: number,
+): number {
+  return Math.max(0, outstandingPrincipalPaise) + Math.max(0, accruedInterestPaise);
+}
+
+/**
  * Allocation policy:
  * 1) Apply payment to outstanding principal first.
  * 2) Any remainder is recorded as interest allocation (explicit, not mixed into principal).
@@ -117,10 +128,14 @@ export async function createPaymentOrder(
     flatId: String(bill.flatId),
   });
 
-  await getBillInterest(societyId, billId);
-
-  // Charge outstanding principal only (interest settled separately / optionally via remainder).
-  const amountPaise = bill.outstandingPrincipalPaise;
+  const interest = await getBillInterest(societyId, billId);
+  const amountPaise = amountDuePaise(
+    interest.principalOutstandingPaise,
+    interest.accruedInterestPaise,
+  );
+  if (amountPaise <= 0) {
+    throw badRequest('Bill is already fully paid', 'BILL_ALREADY_PAID');
+  }
   const provider = getPaymentProvider();
   const order = await provider.createOrder({
     amountPaise,

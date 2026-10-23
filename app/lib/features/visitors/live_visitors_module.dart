@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../../api/auth/app_role.dart';
 import '../../api/auth/auth_session.dart';
-import '../../api/http/api_exception.dart';
 import '../../api/models/common.dart';
 import '../../api/models/society_models.dart';
 import '../../api/models/visitor_models.dart';
@@ -13,54 +12,12 @@ import '../../api/repositories/live_repositories.dart';
 import '../../api/socket/visitor_socket.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
+import '../parcels/live_parcels_module.dart';
 import '../vehicles/live_vehicles_module.dart';
+import 'incoming_visitor_page.dart';
+import 'visitor_messages.dart';
 
-String visitorErrorMessage(Object error) {
-  if (error is ApiException) {
-    switch (error.code) {
-      case 'NO_ACTIVE_RESIDENT':
-        return 'This flat has no active resident to approve visitors.';
-      case 'FLAT_INACTIVE':
-        return 'This flat is inactive.';
-      case 'INVALID_OCCUPANCY':
-        return 'This flat occupancy cannot receive visitors.';
-      case 'VISITOR_EMAIL_REQUIRED':
-        return 'A visitor or resident email is required for entry OTP delivery.';
-      case 'NOT_APPROVED':
-        return 'Visitor is not approved for entry yet.';
-      case 'OTP_MISSING':
-        return 'No active entry OTP for this visitor.';
-      case 'OTP_EXPIRED':
-        return 'This OTP has expired. Ask the resident to share a new one.';
-      case 'OTP_INVALID':
-        return 'Invalid or expired OTP. Try again.';
-      case 'OTP_MAX_ATTEMPTS':
-        return 'Too many incorrect OTP attempts. Entry is locked.';
-      case 'OTP_NOT_VERIFIED':
-        return 'Verify the visitor OTP before recording entry.';
-      case 'ALREADY_ENTERED':
-        return 'This visitor has already entered.';
-      case 'NOT_ENTERED':
-        return 'Visitor has not entered yet.';
-      case 'CHECKOUT_CONFLICT':
-        return 'Checkout conflict. Refresh and try again.';
-      case 'NOT_CURRENT_APPROVER':
-        return 'You are no longer the approver for this flat.';
-      case 'INVALID_STATUS':
-        return 'This action is not allowed in the current visitor status.';
-      case 'ALREADY_PROCESSED':
-        return 'This request was already processed.';
-      case 'RATE_LIMITED':
-        return 'Too many OTP attempts. Wait and try again.';
-      case 'FORBIDDEN_ROLE':
-        return 'You do not have access to this visitor action.';
-      default:
-        return error.message;
-    }
-  }
-  if (error is StateError) return error.message;
-  return '$error';
-}
+export 'visitor_messages.dart';
 
 /// Approval + entry badges for a visitor.
 Widget visitorStatusChips(Visitor v) {
@@ -144,6 +101,9 @@ class _VisitorRow extends StatelessWidget {
       badges: [
         StatusBadge(approvalStatusLabel(v.approvalStatus)),
         StatusBadge(entryStatusLabel(v.entryStatus)),
+        if (v.isWalkIn)
+          const StatusBadge('No OTP',
+              tone: BadgeTone.warning, icon: Icons.ring_volume_outlined),
         if (v.hasActiveOtp)
           const StatusBadge('OTP active',
               tone: BadgeTone.info, icon: Icons.key_rounded),
@@ -173,11 +133,13 @@ class LiveGuardDashboardPage extends StatefulWidget {
     required this.guardName,
     required this.onNavigate,
     required this.onOpenQueue,
+    this.headerAction,
   });
 
   final String guardName;
   final ValueChanged<int> onNavigate;
   final VoidCallback onOpenQueue;
+  final Widget? headerAction;
 
   @override
   State<LiveGuardDashboardPage> createState() => _LiveGuardDashboardPageState();
@@ -258,23 +220,33 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
                     eyebrow: 'On duty',
                     title: first,
                     subtitle: 'Register, verify, then let them in',
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: C.blue,
-                        borderRadius: BorderRadius.circular(Rd.pill),
-                      ),
-                      child:
-                          const Row(mainAxisSize: MainAxisSize.min, children: [
-                        _PulseDot(),
-                        SizedBox(width: 6),
-                        Text('Active',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
-                      ]),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.headerAction != null) ...[
+                          widget.headerAction!,
+                          const SizedBox(width: 8),
+                        ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: C.blue,
+                            borderRadius: BorderRadius.circular(Rd.pill),
+                          ),
+                          child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _PulseDot(),
+                                SizedBox(width: 6),
+                                Text('Active',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700)),
+                              ]),
+                        ),
+                      ],
                     ),
                     child: Row(children: [
                       Expanded(
@@ -327,6 +299,24 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
                         onPressed: _register,
                       ),
                       const SizedBox(height: 8),
+                      SecondaryButton(
+                        label: 'Visitor without OTP',
+                        icon: Icons.ring_volume_outlined,
+                        onPressed: () async {
+                          final changed = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const LiveAddGateVisitorPage(walkIn: true),
+                            ),
+                          );
+                          if (changed == true) {
+                            reload();
+                            widget.onOpenQueue();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
@@ -347,6 +337,17 @@ class _LiveGuardDashboardPageState extends State<LiveGuardDashboardPage> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const LiveGuardVehiclesPage(),
+                            ),
+                          ),
+                        ),
+                        ToolLink(
+                          icon: Icons.inventory_2_outlined,
+                          label: 'Parcels',
+                          subtitle: 'Accept authorized parcel handovers',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LiveGuardParcelsPage(),
                             ),
                           ),
                         ),
@@ -454,7 +455,10 @@ class _GuardKpi extends StatelessWidget {
 }
 
 class LiveAddGateVisitorPage extends StatefulWidget {
-  const LiveAddGateVisitorPage({super.key});
+  const LiveAddGateVisitorPage({super.key, this.walkIn = false});
+
+  /// Guard flow for visitors who arrive without an OTP.
+  final bool walkIn;
 
   @override
   State<LiveAddGateVisitorPage> createState() => _LiveAddGateVisitorPageState();
@@ -582,10 +586,16 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                   _vehicle.text.trim().isEmpty ? null : _vehicle.text.trim(),
               numberOfVisitors: _count,
               notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              entryMode: widget.walkIn ? 'WALK_IN' : 'OTP',
             ),
           );
       if (!mounted) return;
-      showSuccessSnack(context, 'Visitor request sent for resident approval');
+      showSuccessSnack(
+        context,
+        widget.walkIn
+            ? 'Approval request sent. Keep the visitor outside until the resident responds.'
+            : 'Visitor request sent for resident approval',
+      );
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -597,15 +607,16 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.walkIn ? 'Visitor without OTP' : 'Register visitor';
     if (_loadingFlats) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Register visitor')),
+        appBar: AppBar(title: Text(title)),
         body: const LoadingView(label: 'Loading flats…'),
       );
     }
     if (_flatError != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Register visitor')),
+        appBar: AppBar(title: Text(title)),
         body: LoadFailure(
           error: _flatError!,
           title: 'Could not load flats',
@@ -619,7 +630,9 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
     final notes = _notes.text.trim();
 
     return FormScaffold(
-      title: _reviewing ? 'Review visitor' : 'Register visitor',
+      title: _reviewing
+          ? 'Review visitor'
+          : (widget.walkIn ? 'Visitor without OTP' : 'Register visitor'),
       formKey: _form,
       actions: _reviewing
           ? [
@@ -657,8 +670,9 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                   if (vehicle.isNotEmpty) ('Vehicle', vehicle),
                   if (notes.isNotEmpty) ('Notes', notes),
                 ],
-                note:
-                    'Resident approval is required before this visitor can enter. Entry OTP is emailed after approval.',
+                note: widget.walkIn
+                    ? 'The resident must approve before this visitor can enter. Approval does not record entry — you confirm entry at the gate. This request expires if unanswered.'
+                    : 'Resident approval is required before this visitor can enter. Entry OTP is emailed after approval.',
               ),
               InlineError(_submitError),
             ]
@@ -700,13 +714,17 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
                 enabled: !_submitting,
                 keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Visitor phone *',
-                  prefixIcon: Icon(Icons.phone_outlined),
+                decoration: InputDecoration(
+                  labelText: widget.walkIn
+                      ? 'Visitor phone'
+                      : 'Visitor phone *',
+                  prefixIcon: const Icon(Icons.phone_outlined),
                 ),
                 validator: (v) {
                   final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-                  if (digits.isEmpty) return 'Enter a phone number.';
+                  if (digits.isEmpty) {
+                    return widget.walkIn ? null : 'Enter a phone number.';
+                  }
                   if (digits.length < 8) {
                     return 'Enter a valid phone number.';
                   }
@@ -1395,6 +1413,7 @@ class LiveGuardVisitorDetailPage extends StatefulWidget {
 class _LiveGuardVisitorDetailPageState
     extends State<LiveGuardVisitorDetailPage> {
   late Future<Visitor> _future = _load();
+  bool _busy = false;
 
   Future<Visitor> _load({bool force = false}) async {
     final session = authSession;
@@ -1402,6 +1421,26 @@ class _LiveGuardVisitorDetailPageState
     return ensureLiveRepositories(session.api)
         .visitors
         .guardVisitor(widget.visitorId, force: force);
+  }
+
+  Future<void> _confirmEntry(Visitor visitor) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      final entered = await ensureLiveRepositories(session.api)
+          .visitors
+          .confirmVisitorEntry(visitor.id);
+      if (!mounted) return;
+      showSuccessSnack(context, '${entered.visitorName} entered.');
+      setState(() => _future = _load(force: true));
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, visitorErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -1421,12 +1460,28 @@ class _LiveGuardVisitorDetailPageState
               onRetry: () => setState(() => _future = _load(force: true)),
             );
           }
+          final visitor = snapshot.data!;
+          final canConfirm = visitor.approvalStatus == 'APPROVED' &&
+              visitor.entryStatus == 'NOT_ENTERED' &&
+              (visitor.isWalkIn || visitor.otpVerified);
           return _VisitorDetailBody(
-            visitor: snapshot.data!,
+            visitor: visitor,
             onRefresh: () async {
               setState(() => _future = _load(force: true));
               await _future;
             },
+            footer: canConfirm
+                ? PrimaryButton(
+                    label: 'Confirm visitor entry',
+                    icon: Icons.login_rounded,
+                    busy: _busy,
+                    onPressed: () => _confirmEntry(visitor),
+                  )
+                : visitor.approvalStatus == 'PENDING'
+                    ? const InfoNote(
+                        'Waiting for resident approval. Keep the visitor outside.',
+                      )
+                    : null,
           );
         },
       ),
@@ -1472,6 +1527,8 @@ class _VisitorDetailBody extends StatelessWidget {
           badges: [
             StatusBadge(approvalStatusLabel(v.approvalStatus)),
             StatusBadge(entryStatusLabel(v.entryStatus)),
+            if (v.isWalkIn)
+              const StatusBadge('No OTP', tone: BadgeTone.warning),
             if (v.hasActiveOtp)
               const StatusBadge('OTP active',
                   tone: BadgeTone.info, icon: Icons.key_rounded),
@@ -1480,6 +1537,7 @@ class _VisitorDetailBody extends StatelessWidget {
         const SizedBox(height: 18),
         DetailCard(title: 'Visit', children: [
           DetailRow('Purpose', v.purpose),
+          DetailRow('Entry mode', v.isWalkIn ? 'Without OTP' : 'OTP'),
           DetailRow('Flat', _flatLabel(v)),
           DetailRow('Party size',
               '${v.numberOfVisitors} ${v.numberOfVisitors == 1 ? 'person' : 'people'}'),
@@ -1657,8 +1715,9 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
     final ok = await confirmDialog(
       context,
       title: 'Approve ${v.visitorName}?',
-      message:
-          '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
+      message: v.isWalkIn
+          ? '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nApproval lets the guard confirm entry. It does not record entry by itself.'
+          : '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
       confirmLabel: 'Approve',
       icon: Icons.check_circle_outline_rounded,
     );
@@ -1670,7 +1729,11 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
       await ensureLiveRepositories(session.api).visitors.approve(v.id);
       if (!mounted) return;
       showSuccessSnack(
-          context, '${v.visitorName} approved. Entry OTP sent by email.');
+        context,
+        v.isWalkIn
+            ? '${v.visitorName} approved. The guard must confirm actual entry.'
+            : '${v.visitorName} approved. Entry OTP sent by email.',
+      );
       reload();
     } catch (e) {
       if (!mounted) return;
@@ -1777,6 +1840,7 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
               final v = items[i];
               final busy = _busy.contains(v.id);
               final canAct = showActions &&
+                  !v.isWalkIn &&
                   v.approvalStatus == 'PENDING' &&
                   v.entryStatus == 'NOT_ENTERED';
               final canCancel = showActions &&
@@ -1784,7 +1848,21 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
                       v.approvalStatus == 'APPROVED') &&
                   v.entryStatus == 'NOT_ENTERED';
               Widget? footer;
-              if (canAct) {
+              if (showActions && v.isPendingWalkIn) {
+                footer = PrimaryButton(
+                  label: 'Respond now',
+                  icon: Icons.ring_volume_outlined,
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => IncomingVisitorPage(visitorId: v.id),
+                      ),
+                    );
+                    reload();
+                  },
+                );
+              } else if (canAct) {
                 footer = Row(children: [
                   Expanded(
                     child: SecondaryButton(
@@ -1822,8 +1900,9 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          LiveResidentVisitorDetailPage(visitorId: v.id),
+                      builder: (_) => v.isPendingWalkIn
+                          ? IncomingVisitorPage(visitorId: v.id)
+                          : LiveResidentVisitorDetailPage(visitorId: v.id),
                     ),
                   );
                   reload();
@@ -1848,6 +1927,19 @@ class _LiveResidentVisitorsPageState extends State<LiveResidentVisitorsPage>
               Tab(text: 'Pending'),
               Tab(text: 'History'),
             ],
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const LiveResidentParcelsPage(),
+              ),
+            ),
+            icon: const Icon(Icons.inventory_2_outlined, size: 18),
+            label: const Text('Parcels'),
           ),
         ),
         Expanded(
@@ -1899,8 +1991,9 @@ class _LiveResidentVisitorDetailPageState
     final ok = await confirmDialog(
       context,
       title: 'Approve ${v.visitorName}?',
-      message:
-          '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
+      message: v.isWalkIn
+          ? '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nApproval lets the guard confirm entry. It does not record entry by itself.'
+          : '${_flatLabel(v)} · ${visitorTypeLabel(v.visitorType)}\nEntry OTP will be emailed after approval.',
       confirmLabel: 'Approve',
       icon: Icons.check_circle_outline_rounded,
     );
@@ -1912,7 +2005,11 @@ class _LiveResidentVisitorDetailPageState
       await ensureLiveRepositories(session.api).visitors.approve(v.id);
       if (!mounted) return;
       showSuccessSnack(
-          context, '${v.visitorName} approved. Entry OTP sent by email.');
+        context,
+        v.isWalkIn
+            ? '${v.visitorName} approved. The guard must confirm actual entry.'
+            : '${v.visitorName} approved. Entry OTP sent by email.',
+      );
       _reload();
     } catch (e) {
       if (!mounted) return;
@@ -1975,6 +2072,9 @@ class _LiveResidentVisitorDetailPageState
           );
         }
         final v = snapshot.data!;
+        if (v.isPendingWalkIn) {
+          return IncomingVisitorPage(visitorId: widget.visitorId);
+        }
         final canAct =
             v.approvalStatus == 'PENDING' && v.entryStatus == 'NOT_ENTERED';
         return Scaffold(
@@ -1991,7 +2091,9 @@ class _LiveResidentVisitorDetailPageState
                     primary: ToolLink(
                       icon: Icons.check_rounded,
                       label: 'Approve visitor',
-                      subtitle: 'Sends entry OTP by email',
+                      subtitle: v.isWalkIn
+                          ? 'Guard confirms actual entry'
+                          : 'Sends entry OTP by email',
                       onTap: () => _approve(v),
                     ),
                     secondary: [

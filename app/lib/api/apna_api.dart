@@ -6,6 +6,7 @@ import 'services/announcement_api.dart';
 import 'services/auth_api.dart';
 import 'services/billing_api.dart';
 import 'services/complaint_api.dart';
+import 'services/device_token_api.dart';
 import 'services/facility_api.dart';
 import 'services/notification_api.dart';
 import 'services/report_api.dart';
@@ -46,5 +47,6 @@ class ApnaApi {
   late final FacilityApi facilities = FacilityApi(client);
   late final AnnouncementApi announcements = AnnouncementApi(client);
   late final NotificationApi notifications = NotificationApi(client);
+  late final DeviceTokenApi deviceTokens = DeviceTokenApi(client);
   late final ReportApi reports = ReportApi(client);
 }

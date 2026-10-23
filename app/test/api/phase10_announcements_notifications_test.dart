@@ -21,6 +21,7 @@ void main() {
       final a = Announcement.fromJson(_announcement(admin: true));
       expect(a.status, 'DRAFT');
       expect(a.audienceType, 'ALL_RESIDENTS');
+      expect(a.audienceRole, 'ALL');
       expect(a.adminNotes, 'Internal');
       expect(a.deliveryState, 'NOT_STARTED');
       expect(a.targetWingIds, isEmpty);
@@ -65,6 +66,7 @@ void main() {
       final adapter = ScriptedAdapter((options) async {
         expect(options.path.endsWith('/admin/announcements'), isTrue);
         expect(options.data['audienceType'], 'WING');
+        expect(options.data['audienceRole'], 'OWNERS');
         expect(options.data['targetWingIds'], [wingId]);
         expect(options.method, 'POST');
         return jsonBody(201, {
@@ -83,6 +85,7 @@ void main() {
           body: 'Please note elevator maintenance',
           category: 'MAINTENANCE',
           audienceType: 'WING',
+          audienceRole: 'OWNERS',
           targetWingIds: [wingId],
         ),
       );
@@ -263,6 +266,14 @@ void main() {
       final n = AppNotification.fromJson(_notification());
       expect(n.type, 'ANNOUNCEMENT');
       expect(n.isKnownType, isTrue);
+      expect(
+        AppNotification.fromJson(_notification(type: 'BILL_OVERDUE')).isKnownType,
+        isTrue,
+      );
+      expect(
+        notificationTypeLabel('BILL_OVERDUE'),
+        contains('Overdue'),
+      );
       final unknown = AppNotification.fromJson(
         _notification(type: 'FUTURE_TYPE'),
       );

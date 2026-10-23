@@ -107,6 +107,10 @@ class Visitor {
     this.rejectionReason,
     this.notes,
     this.expiredAt,
+    this.entryMode = 'OTP',
+    this.requestState,
+    this.resolution,
+    this.pendingExpiresAt,
   });
 
   final String id;
@@ -144,6 +148,14 @@ class Visitor {
   final String? expiredAt;
   final String createdAt;
   final String updatedAt;
+  final String entryMode;
+  final String? requestState;
+  final String? resolution;
+  final String? pendingExpiresAt;
+
+  bool get isWalkIn => entryMode == 'WALK_IN';
+  bool get isPendingWalkIn =>
+      isWalkIn && approvalStatus == 'PENDING' && entryStatus == 'NOT_ENTERED';
 
   factory Visitor.fromJson(Object? data) {
     final json = requireMap(data, 'visitor');
@@ -182,6 +194,10 @@ class Visitor {
       expiredAt: optionalString(json, 'expiredAt'),
       createdAt: requireString(json, 'createdAt'),
       updatedAt: requireString(json, 'updatedAt'),
+      entryMode: optionalString(json, 'entryMode') ?? 'OTP',
+      requestState: optionalString(json, 'requestState'),
+      resolution: optionalString(json, 'resolution'),
+      pendingExpiresAt: optionalString(json, 'pendingExpiresAt'),
     );
   }
 }
@@ -227,6 +243,7 @@ class CreateVisitorRequest {
     this.vehicleNumber,
     this.numberOfVisitors = 1,
     this.notes,
+    this.entryMode,
   });
 
   final String flatId;
@@ -238,17 +255,19 @@ class CreateVisitorRequest {
   final String? vehicleNumber;
   final int numberOfVisitors;
   final String? notes;
+  final String? entryMode;
 
   Map<String, Object?> toJson() => {
         'flatId': flatId,
         'visitorName': visitorName,
-        'visitorPhone': visitorPhone,
+        'visitorPhone': visitorPhone.trim().isEmpty ? null : visitorPhone.trim(),
         'visitorEmail': visitorEmail,
         'visitorType': visitorType,
         'purpose': purpose,
         'vehicleNumber': vehicleNumber,
         'numberOfVisitors': numberOfVisitors,
         'notes': notes,
+        'entryMode': entryMode,
       };
 }
 
@@ -376,4 +395,7 @@ const kVisitorSocketEvents = [
   'visitor:rejected',
   'visitor:entered',
   'visitor:exited',
+  'visitor:expired',
+  'visitor:parcel_authorized',
+  'parcel:received',
 ];

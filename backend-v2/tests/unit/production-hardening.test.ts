@@ -67,6 +67,12 @@ describe('production env hardening', () => {
     expect(env.RESEND_API_KEY).toBeTruthy();
   });
 
+  it('keeps FCM disabled by default in production', () => {
+    const env = loadEnv({ ...base });
+    expect(env.FCM_ENABLED).toBe(false);
+    expect(env.FIREBASE_SERVICE_ACCOUNT_PATH).toBe('');
+  });
+
   it('rejects SMS_OTP_DEV_BYPASS in production', () => {
     expect(() =>
       loadEnv({

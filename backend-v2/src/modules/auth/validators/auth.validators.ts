@@ -43,6 +43,7 @@ export const refreshSchema = z.object({
 
 export const logoutSchema = z.object({
   refreshToken: z.string().min(20).optional(),
+  deviceToken: z.string().trim().min(16).max(4096).optional(),
 });
 
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;

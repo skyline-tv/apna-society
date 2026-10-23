@@ -15,7 +15,9 @@ import { SocietyModel } from '../../society/models/society.model';
 import { WingModel } from '../../society/models/wing.model';
 import { MembershipModel } from '../../users/models/membership.model';
 import { UserModel } from '../../users/models/user.model';
+import { getFlatAccess } from '../../users/services/access-control.service';
 import { VisitorLogModel, type VisitorLogDocument } from '../models/visitor-log.model';
+import { createParcelFromVisitor } from './parcel.service';
 import { normalizeEmail } from '../../../utils/crypto';
 import { notifyBusinessEvent } from '../../notifications/services/business-notify.service';
 import { deliverVisitorEntryOtp } from '../providers/visitor-otp-email.provider';
@@ -90,19 +92,75 @@ async function resolveApprover(flat: {
   throw badRequest('Unsupported occupancy status for visitor routing', 'INVALID_OCCUPANCY');
 }
 
+async function guardDisplayName(userId: string): Promise<string> {
+  const user = await UserModel.findById(userId).select('name').lean();
+  const name = user?.name?.trim();
+  return name && name.length > 0 ? name : 'Security';
+}
+
+async function resolveNotifiedResidentIds(
+  societyId: string,
+  flat: {
+    _id: { toString(): string };
+    societyId: { toString(): string };
+  },
+  primaryUserId: string,
+): Promise<string[]> {
+  const ids = new Set<string>([primaryUserId]);
+  const society = await SocietyModel.findById(societyId).select('config').lean();
+  const policy = society?.config?.visitorApprovalPolicy ?? 'PRIMARY_OCCUPIER';
+  if (policy !== 'ALL_AUTHORIZED') return [...ids];
+
+  const members = await MembershipModel.find({
+    societyId: flat.societyId,
+    flatId: flat._id,
+    isActive: true,
+    role: { $in: ['OWNER', 'TENANT'] },
+  })
+    .select('userId')
+    .lean();
+
+  for (const member of members) {
+    const access = await getFlatAccess({
+      userId: String(member.userId),
+      societyId,
+      flatId: String(flat._id),
+    });
+    if (access.residential) ids.add(String(member.userId));
+  }
+  return [...ids];
+}
+
+function extraResidentIds(
+  visitor: { assignedResidentUserId: { toString(): string }; notifiedResidentUserIds?: { toString(): string }[] },
+): string[] {
+  const assigned = String(visitor.assignedResidentUserId);
+  return (visitor.notifiedResidentUserIds ?? [])
+    .map((id) => String(id))
+    .filter((id) => id !== assigned);
+}
+
+function residentVisibilityFilter(userId: string) {
+  const uid = parseObjectId(userId, 'assignedResidentUserId');
+  return {
+    $or: [{ assignedResidentUserId: uid }, { notifiedResidentUserIds: uid }],
+  };
+}
+
 export async function createVisitorRequest(
   societyId: string,
   guardUserId: string,
   input: {
     flatId: string;
     visitorName: string;
-    visitorPhone: string;
+    visitorPhone?: string;
     visitorEmail?: string;
     visitorType: string;
     purpose: string;
     vehicleNumber?: string;
     numberOfVisitors: number;
     notes?: string;
+    entryMode?: 'OTP' | 'WALK_IN';
   },
   actor: Actor,
 ) {
@@ -114,6 +172,15 @@ export async function createVisitorRequest(
 
   const approver = await resolveApprover(flat);
   const wing = await WingModel.findById(flat.wingId).select('code').lean();
+  const entryMode = input.entryMode === 'WALK_IN' ? 'WALK_IN' : 'OTP';
+  const env = getEnv();
+  const pendingExpiresAt =
+    entryMode === 'WALK_IN' ? new Date(Date.now() + env.VISITOR_WALK_IN_TTL_MS) : undefined;
+  const notifiedResidentUserIds = await resolveNotifiedResidentIds(
+    societyId,
+    flat,
+    approver.userId,
+  );
 
   const visitor = await withTransaction(async (session) => {
     const [doc] = await VisitorLogModel.create(
@@ -123,7 +190,7 @@ export async function createVisitorRequest(
           flatId: flat._id,
           wingId: flat.wingId,
           visitorName: input.visitorName.trim(),
-          visitorPhone: input.visitorPhone.trim(),
+          visitorPhone: (input.visitorPhone ?? '').trim(),
           visitorEmail: input.visitorEmail
             ? normalizeEmail(input.visitorEmail)
             : undefined,
@@ -134,8 +201,11 @@ export async function createVisitorRequest(
           requestedByGuardId: guardUserId,
           assignedResidentUserId: approver.userId,
           assignedResidentRole: approver.role,
+          notifiedResidentUserIds,
           approvalStatus: 'PENDING',
           entryStatus: 'NOT_ENTERED',
+          entryMode,
+          pendingExpiresAt,
           otpAttempts: 0,
           notes: input.notes,
           flatNumberSnapshot: flat.number,
@@ -157,6 +227,7 @@ export async function createVisitorRequest(
           assignedResidentUserId: approver.userId,
           assignedResidentRole: approver.role,
           visitorType: input.visitorType,
+          entryMode,
         },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
@@ -169,18 +240,47 @@ export async function createVisitorRequest(
 
   emitVisitorEvent('visitor:approval_requested', visitorEventPayloadFromDoc(visitor), {
     includeGuards: true,
+    extraResidentUserIds: extraResidentIds(visitor),
   });
 
-  await notifyBusinessEvent({
-    societyId,
-    recipientUserId: String(visitor.assignedResidentUserId),
-    type: 'VISITOR_REQUEST',
-    title: 'Visitor approval requested',
-    body: `${visitor.visitorName} is waiting at the gate for ${formatFlatLabel(visitor.wingCodeSnapshot, visitor.flatNumberSnapshot)}`,
-    relatedEntityType: 'VisitorLog',
-    relatedEntityId: String(visitor._id),
-    idempotencyKey: `VISITOR_REQUEST:${String(visitor._id)}`,
-  });
+  const flatLabel = formatFlatLabel(visitor.wingCodeSnapshot, visitor.flatNumberSnapshot);
+  const guardName = await guardDisplayName(guardUserId);
+  const walkIn = entryMode === 'WALK_IN';
+  const requestTime = new Date(visitor.createdAt).toISOString();
+  for (const recipientUserId of notifiedResidentUserIds) {
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId,
+      type: 'VISITOR_REQUEST',
+      title: walkIn ? 'Incoming visitor' : 'Visitor approval requested',
+      body: walkIn
+        ? `${visitor.visitorName} is at the gate for ${flatLabel}`
+        : `${visitor.visitorName} is waiting at the gate for ${flatLabel}`,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(visitor._id),
+      idempotencyKey:
+        recipientUserId === approver.userId
+          ? `VISITOR_REQUEST:${String(visitor._id)}`
+          : `VISITOR_REQUEST:${String(visitor._id)}:${recipientUserId}`,
+      metadata: {
+        visitorName: visitor.visitorName,
+        visitorPhone: visitor.visitorPhone || '',
+        visitorType: visitor.visitorType,
+        purpose: visitor.purpose,
+        flatLabel,
+        guardName,
+        requestId: String(visitor._id),
+        requestTime,
+        expiresAt: pendingExpiresAt?.toISOString() ?? '',
+        entryMode,
+        priority: walkIn ? 'high' : 'normal',
+        channel: walkIn ? 'incoming_visitor' : 'visitors',
+        deepLink: walkIn
+          ? `apnasociety://visitor-approval/${String(visitor._id)}`
+          : `apnasociety://visitor/${String(visitor._id)}`,
+      },
+    });
+  }
 
   return serializeVisitor(visitor, { forGuard: true, includeOtpMeta: true });
 }
@@ -198,6 +298,7 @@ export async function listVisitorsForSociety(
     from?: Date;
     to?: Date;
     assignedResidentUserId?: string;
+    entryMode?: string;
     page?: number;
     limit?: number;
     forGuard?: boolean;
@@ -213,12 +314,10 @@ export async function listVisitorsForSociety(
   if (query.flatId) filter.flatId = parseObjectId(query.flatId, 'flatId');
   if (query.wingCode) filter.wingCodeSnapshot = query.wingCode.toUpperCase();
   if (query.visitorType) filter.visitorType = query.visitorType;
+  if (query.entryMode) filter.entryMode = query.entryMode;
   if (query.visitorPhone) filter.visitorPhone = query.visitorPhone.trim();
   if (query.assignedResidentUserId) {
-    filter.assignedResidentUserId = parseObjectId(
-      query.assignedResidentUserId,
-      'assignedResidentUserId',
-    );
+    Object.assign(filter, residentVisibilityFilter(query.assignedResidentUserId));
   }
   if (query.visitorName) {
     const escaped = query.visitorName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -262,7 +361,7 @@ export async function getVisitor(
     societyId: parseObjectId(societyId, 'societyId'),
   };
   if (options?.assignedResidentUserId) {
-    filter.assignedResidentUserId = options.assignedResidentUserId;
+    Object.assign(filter, residentVisibilityFilter(options.assignedResidentUserId));
   }
   const doc = await VisitorLogModel.findOne(filter).lean();
   if (!doc) throw notFound('Visitor record not found');
@@ -300,6 +399,90 @@ async function assertStillAssignedResident(visitor: {
   }
 }
 
+async function assertCanActOnVisitor(
+  visitor: {
+    societyId: { toString(): string };
+    flatId: { toString(): string };
+    assignedResidentUserId: { toString(): string };
+    assignedResidentRole: string;
+    notifiedResidentUserIds?: { toString(): string }[];
+  },
+  residentUserId: string,
+) {
+  const notified = [
+    String(visitor.assignedResidentUserId),
+    ...(visitor.notifiedResidentUserIds ?? []).map((id) => String(id)),
+  ];
+  if (!notified.includes(residentUserId)) {
+    throw notFound('Visitor record not found');
+  }
+  await assertStillAssignedResident(visitor);
+  if (String(visitor.assignedResidentUserId) === residentUserId) return;
+  const access = await getFlatAccess({
+    userId: residentUserId,
+    societyId: String(visitor.societyId),
+    flatId: String(visitor.flatId),
+  });
+  if (!access.residential) {
+    throw forbidden('You are not authorized to act on this visitor request', 'NOT_CURRENT_APPROVER');
+  }
+}
+
+async function expirePendingIfTimedOut(existing: VisitorLogDocument) {
+  if (existing.approvalStatus !== 'PENDING' || !existing.pendingExpiresAt) {
+    return;
+  }
+  if (existing.pendingExpiresAt > new Date()) return;
+
+  const now = new Date();
+  const claimed = await VisitorLogModel.findOneAndUpdate(
+    { _id: existing._id, approvalStatus: 'PENDING' },
+    {
+      $set: {
+        approvalStatus: 'EXPIRED',
+        expiredAt: now,
+        resolution: 'EXPIRED',
+      },
+      $unset: { entryOtpHash: 1, entryOtpExpiresAt: 1 },
+    },
+    { new: true },
+  );
+  if (claimed) {
+    emitVisitorEvent('visitor:expired', visitorEventPayloadFromDoc(claimed), {
+      extraResidentUserIds: extraResidentIds(claimed),
+    });
+    await notifyVisitorExpired(claimed);
+  }
+  throw conflict('Visitor request has expired', 'REQUEST_EXPIRED');
+}
+
+async function notifyVisitorExpired(visitor: VisitorLogDocument) {
+  const societyId = String(visitor.societyId);
+  const flatLabel = formatFlatLabel(visitor.wingCodeSnapshot, visitor.flatNumberSnapshot);
+  const recipients = [
+    String(visitor.assignedResidentUserId),
+    ...extraResidentIds(visitor),
+    String(visitor.requestedByGuardId),
+  ];
+  for (const recipientUserId of [...new Set(recipients)]) {
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId,
+      type: 'VISITOR_EXPIRED',
+      title: 'Visitor request expired',
+      body: `The request for ${visitor.visitorName} at ${flatLabel} expired without a decision.`,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(visitor._id),
+      idempotencyKey: `VISITOR_EXPIRED:${String(visitor._id)}:${recipientUserId}`,
+      metadata: {
+        visitorName: visitor.visitorName,
+        flatLabel,
+        entryMode: visitor.entryMode ?? 'OTP',
+      },
+    });
+  }
+}
+
 export async function approveVisitor(
   societyId: string,
   visitorId: string,
@@ -309,7 +492,7 @@ export async function approveVisitor(
   const existing = await VisitorLogModel.findOne({
     _id: parseObjectId(visitorId, 'visitorId'),
     societyId: parseObjectId(societyId, 'societyId'),
-    assignedResidentUserId: residentUserId,
+    ...residentVisibilityFilter(residentUserId),
   });
   if (!existing) throw notFound('Visitor record not found');
   if (existing.approvalStatus === 'APPROVED') {
@@ -319,9 +502,72 @@ export async function approveVisitor(
     throw conflict(`Cannot approve visitor in status ${existing.approvalStatus}`, 'INVALID_STATUS');
   }
 
-  await assertStillAssignedResident(existing);
+  await assertCanActOnVisitor(existing, residentUserId);
+  await expirePendingIfTimedOut(existing);
 
   const env = getEnv();
+  const isWalkIn = (existing.entryMode ?? 'OTP') === 'WALK_IN';
+
+  if (isWalkIn) {
+    const updatedWalkIn = await withTransaction(async (session) => {
+      const claimed = await VisitorLogModel.findOneAndUpdate(
+        {
+          _id: existing._id,
+          approvalStatus: 'PENDING',
+          entryStatus: 'NOT_ENTERED',
+        },
+        {
+          $set: {
+            approvalStatus: 'APPROVED',
+            approvedAt: new Date(),
+            actedByUserId: residentUserId,
+            resolution: 'ENTRY',
+          },
+        },
+        { session, new: true },
+      );
+      if (!claimed) {
+        const current = await VisitorLogModel.findById(existing._id).session(session);
+        if (current?.approvalStatus === 'APPROVED') return current;
+        throw conflict('Visitor request was already processed', 'ALREADY_PROCESSED');
+      }
+      await writeAuditLog(
+        {
+          action: 'VISITOR_APPROVED',
+          actorUserId: actor.userId,
+          societyId,
+          targetType: 'VisitorLog',
+          targetId: visitorId,
+          metadata: { flatId: String(claimed.flatId), entryMode: 'WALK_IN' },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
+        },
+        session,
+      );
+      return claimed;
+    });
+
+    emitVisitorEvent('visitor:approved', visitorEventPayloadFromDoc(updatedWalkIn), {
+      extraResidentUserIds: extraResidentIds(updatedWalkIn),
+    });
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId: String(updatedWalkIn.requestedByGuardId),
+      type: 'VISITOR_APPROVED',
+      title: 'Visitor approved',
+      body: `${updatedWalkIn.visitorName} was approved for ${formatFlatLabel(updatedWalkIn.wingCodeSnapshot, updatedWalkIn.flatNumberSnapshot)}. Confirm entry at the gate.`,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(updatedWalkIn._id),
+      idempotencyKey: `VISITOR_APPROVED:${String(updatedWalkIn._id)}:guard`,
+      metadata: {
+        visitorName: updatedWalkIn.visitorName,
+        flatLabel: formatFlatLabel(updatedWalkIn.wingCodeSnapshot, updatedWalkIn.flatNumberSnapshot),
+        entryMode: 'WALK_IN',
+        deepLink: `apnasociety://visitor/${String(updatedWalkIn._id)}`,
+      },
+    });
+    return serializeVisitor(updatedWalkIn, { includeOtpMeta: true });
+  }
   const otpDevBypass = env.SMS_OTP_DEV_BYPASS && env.NODE_ENV !== 'production';
 
   const resident = await UserModel.findById(existing.assignedResidentUserId)
@@ -399,7 +645,9 @@ export async function approveVisitor(
     });
   }
 
-  emitVisitorEvent('visitor:approved', visitorEventPayloadFromDoc(updated));
+  emitVisitorEvent('visitor:approved', visitorEventPayloadFromDoc(updated), {
+    extraResidentUserIds: extraResidentIds(updated),
+  });
 
   await notifyBusinessEvent({
     societyId,
@@ -425,7 +673,7 @@ export async function rejectVisitor(
   const existing = await VisitorLogModel.findOne({
     _id: parseObjectId(visitorId, 'visitorId'),
     societyId: parseObjectId(societyId, 'societyId'),
-    assignedResidentUserId: residentUserId,
+    ...residentVisibilityFilter(residentUserId),
   });
   if (!existing) throw notFound('Visitor record not found');
   if (existing.approvalStatus === 'REJECTED') {
@@ -435,7 +683,8 @@ export async function rejectVisitor(
     throw conflict(`Cannot reject visitor in status ${existing.approvalStatus}`, 'INVALID_STATUS');
   }
 
-  await assertStillAssignedResident(existing);
+  await assertCanActOnVisitor(existing, residentUserId);
+  await expirePendingIfTimedOut(existing);
 
   const updated = await withTransaction(async (session) => {
     const claimed = await VisitorLogModel.findOneAndUpdate(
@@ -445,6 +694,8 @@ export async function rejectVisitor(
           approvalStatus: 'REJECTED',
           rejectedAt: new Date(),
           rejectionReason: reason,
+          actedByUserId: residentUserId,
+          resolution: 'DENIED',
         },
         $unset: { entryOtpHash: 1, entryOtpExpiresAt: 1 },
       },
@@ -472,7 +723,9 @@ export async function rejectVisitor(
     return claimed;
   });
 
-  emitVisitorEvent('visitor:rejected', visitorEventPayloadFromDoc(updated));
+  emitVisitorEvent('visitor:rejected', visitorEventPayloadFromDoc(updated), {
+    extraResidentUserIds: extraResidentIds(updated),
+  });
 
   await notifyBusinessEvent({
     societyId,
@@ -483,6 +736,21 @@ export async function rejectVisitor(
     relatedEntityType: 'VisitorLog',
     relatedEntityId: String(updated._id),
     idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}`,
+  });
+  await notifyBusinessEvent({
+    societyId,
+    recipientUserId: String(updated.requestedByGuardId),
+    type: 'VISITOR_REJECTED',
+    title: 'Visitor denied',
+    body: `${updated.visitorName} was denied entry to ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}.`,
+    relatedEntityType: 'VisitorLog',
+    relatedEntityId: String(updated._id),
+    idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}:guard`,
+    metadata: {
+      visitorName: updated.visitorName,
+      entryMode: updated.entryMode ?? 'OTP',
+      deepLink: `apnasociety://visitor/${String(updated._id)}`,
+    },
   });
 
   return serializeVisitor(updated);
@@ -497,7 +765,7 @@ export async function cancelVisitor(
   const existing = await VisitorLogModel.findOne({
     _id: parseObjectId(visitorId, 'visitorId'),
     societyId: parseObjectId(societyId, 'societyId'),
-    assignedResidentUserId: residentUserId,
+    ...residentVisibilityFilter(residentUserId),
   });
   if (!existing) throw notFound('Visitor record not found');
   if (existing.approvalStatus === 'CANCELLED') {
@@ -691,29 +959,38 @@ export async function confirmVisitorEntry(
     societyId: parseObjectId(societyId, 'societyId'),
   });
   if (!visitor) throw notFound('Visitor record not found');
+  if (visitor.resolution === 'PARCEL') {
+    throw forbidden('Parcel authorization cannot grant visitor entry', 'PARCEL_NOT_ENTRY');
+  }
   if (visitor.approvalStatus !== 'APPROVED') {
     throw badRequest('Visitor is not approved for entry', 'NOT_APPROVED');
   }
   if (visitor.entryStatus === 'ENTERED' || visitor.entryStatus === 'EXITED') {
     throw conflict('Visitor entry was already recorded', 'ALREADY_ENTERED');
   }
-  if (!visitor.otpVerifiedAt) {
+  const isWalkIn = (visitor.entryMode ?? 'OTP') === 'WALK_IN';
+  if (!isWalkIn && !visitor.otpVerifiedAt) {
     throw forbidden('Verify the visitor OTP before recording entry', 'OTP_NOT_VERIFIED');
+  }
+
+  const entryFilter: Record<string, unknown> = {
+    _id: visitor._id,
+    approvalStatus: 'APPROVED',
+    entryStatus: 'NOT_ENTERED',
+  };
+  if (!isWalkIn) {
+    entryFilter.otpVerifiedAt = { $exists: true, $ne: null };
   }
 
   const updated = await withTransaction(async (session) => {
     const claimed = await VisitorLogModel.findOneAndUpdate(
-      {
-        _id: visitor._id,
-        approvalStatus: 'APPROVED',
-        entryStatus: 'NOT_ENTERED',
-        otpVerifiedAt: { $exists: true, $ne: null },
-      },
+      entryFilter,
       {
         $set: {
           entryStatus: 'ENTERED',
           entryAt: new Date(),
           checkedInBy: guardUserId,
+          resolution: 'ENTRY',
         },
       },
       { session, new: true },
@@ -742,17 +1019,41 @@ export async function confirmVisitorEntry(
     return claimed;
   });
 
-  emitVisitorEvent('visitor:entered', visitorEventPayloadFromDoc(updated));
-  await notifyBusinessEvent({
-    societyId,
-    recipientUserId: String(updated.assignedResidentUserId),
-    type: 'VISITOR_ENTERED',
-    title: 'Visitor entered',
-    body: `${updated.visitorName} entered ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
-    relatedEntityType: 'VisitorLog',
-    relatedEntityId: String(updated._id),
-    idempotencyKey: `VISITOR_ENTERED:${String(updated._id)}`,
+  emitVisitorEvent('visitor:entered', visitorEventPayloadFromDoc(updated), {
+    extraResidentUserIds: extraResidentIds(updated),
   });
+  const entryFlatLabel = formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot);
+  const entryGuardName = await guardDisplayName(guardUserId);
+  const entryRecipients = [
+    String(updated.assignedResidentUserId),
+    ...extraResidentIds(updated),
+  ];
+  for (const recipientUserId of [...new Set(entryRecipients)]) {
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId,
+      type: 'VISITOR_ENTERED',
+      title: 'Visitor Entered Society',
+      body: 'Your visitor has entered the society.',
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(updated._id),
+      idempotencyKey:
+        recipientUserId === String(updated.assignedResidentUserId)
+          ? `VISITOR_ENTERED:${String(updated._id)}`
+          : `VISITOR_ENTERED:${String(updated._id)}:${recipientUserId}`,
+      metadata: {
+        visitorName: updated.visitorName,
+        visitorPhone: updated.visitorPhone || '',
+        visitorType: updated.visitorType,
+        purpose: updated.purpose,
+        flatLabel: entryFlatLabel,
+        entryAt: updated.entryAt?.toISOString() ?? new Date().toISOString(),
+        guardName: entryGuardName,
+        entryMode: updated.entryMode ?? 'OTP',
+        deepLink: `apnasociety://visitor/${String(updated._id)}`,
+      },
+    });
+  }
 
   return serializeAuthorizedVisitor(updated);
 }
@@ -815,6 +1116,121 @@ export async function checkoutVisitor(
 
   emitVisitorEvent('visitor:exited', visitorEventPayloadFromDoc(updated));
   return serializeVisitor(updated, { forGuard: true });
+}
+
+export async function authorizeParcelHandover(
+  societyId: string,
+  visitorId: string,
+  residentUserId: string,
+  actor: Actor,
+) {
+  const existing = await VisitorLogModel.findOne({
+    _id: parseObjectId(visitorId, 'visitorId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+    ...residentVisibilityFilter(residentUserId),
+  });
+  if (!existing) throw notFound('Visitor record not found');
+  if (existing.resolution === 'PARCEL') {
+    const { ParcelHandoverModel } = await import('../models/parcel-handover.model');
+    const parcel = await ParcelHandoverModel.findOne({ visitorLogId: existing._id }).lean();
+    if (parcel) {
+      const { serializeParcel } = await import('./parcel.service');
+      return {
+        visitor: serializeVisitor(existing),
+        parcel: serializeParcel(parcel),
+      };
+    }
+  }
+  if (existing.approvalStatus !== 'PENDING') {
+    throw conflict(
+      `Cannot authorize a parcel from visitor status ${existing.approvalStatus}`,
+      'INVALID_STATUS',
+    );
+  }
+  if (existing.entryStatus !== 'NOT_ENTERED') {
+    throw conflict('Cannot convert an entered visitor into a parcel', 'ALREADY_ENTERED');
+  }
+
+  await assertCanActOnVisitor(existing, residentUserId);
+  await expirePendingIfTimedOut(existing);
+
+  const { visitor: updated, parcel } = await withTransaction(async (session) => {
+    const claimed = await VisitorLogModel.findOneAndUpdate(
+      {
+        _id: existing._id,
+        approvalStatus: 'PENDING',
+        entryStatus: 'NOT_ENTERED',
+      },
+      {
+        $set: {
+          approvalStatus: 'CANCELLED',
+          actedByUserId: residentUserId,
+          resolution: 'PARCEL',
+        },
+        $unset: { entryOtpHash: 1, entryOtpExpiresAt: 1 },
+      },
+      { session, new: true },
+    );
+    if (!claimed) {
+      throw conflict('Visitor request was already processed', 'ALREADY_PROCESSED');
+    }
+
+    const created = await createParcelFromVisitor(claimed, actor, session);
+
+    await writeAuditLog(
+      {
+        action: 'PARCEL_AUTHORIZED',
+        actorUserId: actor.userId,
+        societyId,
+        targetType: 'ParcelHandover',
+        targetId: String(created._id),
+        metadata: {
+          visitorLogId: visitorId,
+          flatId: String(claimed.flatId),
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+
+    return { visitor: claimed, parcel: created };
+  });
+
+  emitVisitorEvent(
+    'visitor:parcel_authorized',
+    {
+      ...visitorEventPayloadFromDoc(updated),
+      parcelId: String(parcel._id),
+    },
+    { extraResidentUserIds: extraResidentIds(updated) },
+  );
+
+  const flatLabel = formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot);
+  await notifyBusinessEvent({
+    societyId,
+    recipientUserId: String(updated.requestedByGuardId),
+    type: 'PARCEL_AWAITING_HANDOVER',
+    title: 'Accept parcel at the gate',
+    body: `${updated.visitorName} may leave a parcel for ${flatLabel}. Do not allow visitor entry.`,
+    relatedEntityType: 'ParcelHandover',
+    relatedEntityId: String(parcel._id),
+    idempotencyKey: `PARCEL_AWAITING:${String(parcel._id)}:guard`,
+    metadata: {
+      visitorName: updated.visitorName,
+      visitorPhone: updated.visitorPhone || '',
+      flatLabel,
+      parcelId: String(parcel._id),
+      parcelStatus: 'AWAITING_HANDOVER',
+      deepLink: `apnasociety://parcel/${String(parcel._id)}`,
+    },
+  });
+
+  const { serializeParcel } = await import('./parcel.service');
+  return {
+    visitor: serializeVisitor(updated),
+    parcel: serializeParcel(parcel),
+  };
 }
 
 export async function getGuardDashboard(societyId: string) {

@@ -8,6 +8,7 @@ import 'api/auth/auth_messages.dart';
 import 'api/auth/auth_session.dart';
 import 'api/auth/home_resolver.dart';
 import 'api/socket/visitor_socket.dart';
+import 'services/push_notification_service.dart';
 import 'api/models/billing_models.dart'
     show
         AdditionalService,
@@ -45,9 +46,13 @@ import 'services/session_store.dart';
 import 'ui/components.dart';
 import 'ui/load_failure.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AuthSession.onLocalSessionCleared = disconnectVisitorSocket;
+  await PushNotificationService.bootstrap();
+  AuthSession.onLocalSessionCleared = () {
+    disconnectVisitorSocket();
+    unawaited(PushNotificationService.instance.stop());
+  };
   AuthSession.onAccessTokenRefreshed = (session) {
     VisitorSocket.instance.connectForSession(session);
   };
@@ -114,6 +119,7 @@ class ApnaSocietyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: kAppName,
+        navigatorKey: appNavigatorKey,
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
         home: const AppBootstrap(),
@@ -276,6 +282,7 @@ class _AuthGateState extends State<AuthGate> {
         return const ChangePasswordScreen(forced: true);
       }
       final destination = await HomeResolver(session).resolve();
+      PushNotificationService.instance.flushPending();
       return _widgetForDestination(destination);
     } catch (error) {
       // Only wipe credentials for terminal auth failures. Network / context
@@ -414,6 +421,7 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => _homeFromDestination(destination)),
         (_) => false,
       );
+      PushNotificationService.instance.flushPending();
     } catch (e) {
       if (!mounted) return;
       setState(() => error = authErrorMessage(e));

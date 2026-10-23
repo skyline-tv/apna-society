@@ -21,6 +21,14 @@ import {
   startVisitorExpiryWorker,
   stopVisitorExpiryWorker,
 } from './modules/visitors/services/visitor-expiry.service';
+import {
+  startOverdueReminderWorker,
+  stopOverdueReminderWorker,
+} from './modules/billing/services/overdue-reminder.service';
+import {
+  startPushRetryWorker,
+  stopPushRetryWorker,
+} from './modules/notifications/services/push-delivery.service';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
@@ -38,6 +46,8 @@ async function bootstrap(): Promise<void> {
   startAnnouncementWorker();
   startFacilityBookingWorker();
   startInterestWorker();
+  startOverdueReminderWorker();
+  startPushRetryWorker();
 
   server.listen(env.PORT, env.HOST, () => {
     logger.info(
@@ -51,6 +61,9 @@ async function bootstrap(): Promise<void> {
           announcements: env.ANNOUNCEMENT_WORKER_ENABLED,
           facilityBookings: env.FACILITY_BOOKING_WORKER_ENABLED,
           interestAccrual: env.INTEREST_WORKER_ENABLED,
+          overdueReminders: env.OVERDUE_REMINDER_WORKER_ENABLED,
+          pushRetry: env.PUSH_RETRY_WORKER_ENABLED,
+          fcm: env.FCM_ENABLED,
         },
       },
       'HTTP server listening',
@@ -66,6 +79,8 @@ async function bootstrap(): Promise<void> {
     stopAnnouncementWorker();
     stopFacilityBookingWorker();
     stopInterestWorker();
+    stopOverdueReminderWorker();
+    stopPushRetryWorker();
     io.close();
     server.close(async () => {
       await disconnectRedis();

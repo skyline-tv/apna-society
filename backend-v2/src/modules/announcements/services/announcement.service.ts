@@ -12,6 +12,7 @@ import {
   type AnnouncementCategory,
   type AnnouncementPriority,
   type AnnouncementStatus,
+  type AudienceRole,
   type AudienceType,
 } from '../models/announcement.model';
 import { getAnnouncementStorage } from '../storage/announcement-storage';
@@ -48,6 +49,7 @@ function serializeAnnouncement(
     category: string;
     priority: string;
     audienceType: string;
+    audienceRole?: string;
     targetWingIds: { toString(): string }[];
     targetFlatIds: { toString(): string }[];
     attachments?: Array<{
@@ -81,6 +83,7 @@ function serializeAnnouncement(
     category: doc.category,
     priority: doc.priority,
     audienceType: doc.audienceType,
+    audienceRole: doc.audienceRole ?? 'ALL',
     targetWingIds: options.includeAdmin
       ? doc.targetWingIds.map((id) => String(id))
       : undefined,
@@ -116,6 +119,7 @@ export async function createDraftAnnouncement(
     category: AnnouncementCategory;
     priority?: AnnouncementPriority;
     audienceType: AudienceType;
+    audienceRole?: AudienceRole;
     targetWingIds?: string[];
     targetFlatIds?: string[];
     expiresAt?: Date;
@@ -127,6 +131,7 @@ export async function createDraftAnnouncement(
   await resolveAnnouncementRecipients({
     societyId,
     audienceType: input.audienceType,
+    audienceRole: input.audienceRole ?? 'ALL',
     targetWingIds: dedupeIds(input.targetWingIds),
     targetFlatIds: dedupeIds(input.targetFlatIds),
   });
@@ -139,6 +144,7 @@ export async function createDraftAnnouncement(
       category: input.category,
       priority: input.priority ?? 'NORMAL',
       audienceType: input.audienceType,
+      audienceRole: input.audienceRole ?? 'ALL',
       targetWingIds: dedupeIds(input.targetWingIds),
       targetFlatIds: dedupeIds(input.targetFlatIds),
       status: 'DRAFT',
@@ -172,6 +178,7 @@ export async function updateDraftAnnouncement(
     category: AnnouncementCategory;
     priority: AnnouncementPriority;
     audienceType: AudienceType;
+    audienceRole: AudienceRole;
     targetWingIds: string[];
     targetFlatIds: string[];
     expiresAt: Date | null;
@@ -193,6 +200,7 @@ export async function updateDraftAnnouncement(
   if (input.category !== undefined) doc.category = input.category;
   if (input.priority !== undefined) doc.priority = input.priority;
   if (input.audienceType !== undefined) doc.audienceType = input.audienceType;
+  if (input.audienceRole !== undefined) doc.audienceRole = input.audienceRole;
   if (input.targetWingIds !== undefined) doc.targetWingIds = dedupeIds(input.targetWingIds).map(
     (id) => parseObjectId(id, 'wingId'),
   ) as never;
@@ -205,6 +213,7 @@ export async function updateDraftAnnouncement(
   await resolveAnnouncementRecipients({
     societyId,
     audienceType: doc.audienceType,
+    audienceRole: doc.audienceRole ?? 'ALL',
     targetWingIds: doc.targetWingIds.map(String),
     targetFlatIds: doc.targetFlatIds.map(String),
   });
@@ -451,6 +460,7 @@ export async function getAnnouncementRecipientSummary(
   const eligible = await resolveAnnouncementRecipients({
     societyId,
     audienceType: doc.audienceType,
+    audienceRole: doc.audienceRole ?? 'ALL',
     targetWingIds: doc.targetWingIds.map(String),
     targetFlatIds: doc.targetFlatIds.map(String),
   });
@@ -503,6 +513,7 @@ export async function listResidentAnnouncements(
     .sort({ publishedAt: -1, createdAt: -1 })
     .select({
       audienceType: 1,
+      audienceRole: 1,
       targetWingIds: 1,
       targetFlatIds: 1,
       category: 1,
@@ -527,6 +538,7 @@ export async function listResidentAnnouncements(
       societyId,
       userId,
       audienceType: row.audienceType,
+      audienceRole: row.audienceRole ?? 'ALL',
       targetWingIds: row.targetWingIds.map(String),
       targetFlatIds: row.targetFlatIds.map(String),
     });
@@ -574,6 +586,7 @@ export async function getResidentAnnouncement(
     societyId,
     userId,
     audienceType: doc.audienceType,
+    audienceRole: doc.audienceRole ?? 'ALL',
     targetWingIds: doc.targetWingIds.map(String),
     targetFlatIds: doc.targetFlatIds.map(String),
   });

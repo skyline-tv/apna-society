@@ -6,7 +6,10 @@ export type VisitorSocketEvent =
   | 'visitor:approved'
   | 'visitor:rejected'
   | 'visitor:entered'
-  | 'visitor:exited';
+  | 'visitor:exited'
+  | 'visitor:expired'
+  | 'visitor:parcel_authorized'
+  | 'parcel:received';
 
 export interface VisitorEventPayload {
   visitorId: string;
@@ -18,7 +21,9 @@ export interface VisitorEventPayload {
   visitorType: string;
   approvalStatus: string;
   entryStatus: string;
+  entryMode?: string;
   assignedResidentUserId?: string;
+  parcelId?: string;
   /** Never include OTP fields. */
 }
 
@@ -55,7 +60,7 @@ export function societyGuardsRoom(societyId: string): string {
 export function emitVisitorEvent(
   event: VisitorSocketEvent,
   payload: VisitorEventPayload,
-  options?: { includeGuards?: boolean },
+  options?: { includeGuards?: boolean; extraResidentUserIds?: string[] },
 ): void {
   // Strip any accidental OTP-like keys.
   const safe: VisitorEventPayload = {
@@ -68,14 +73,22 @@ export function emitVisitorEvent(
     visitorType: payload.visitorType,
     approvalStatus: payload.approvalStatus,
     entryStatus: payload.entryStatus,
+    entryMode: payload.entryMode,
     assignedResidentUserId: payload.assignedResidentUserId,
+    parcelId: payload.parcelId,
   };
 
-  const residentRoom = safe.assignedResidentUserId
-    ? residentVisitorRoom(safe.societyId, safe.assignedResidentUserId)
-    : undefined;
+  const residentUserIds = [
+    ...new Set(
+      [
+        safe.assignedResidentUserId,
+        ...(options?.extraResidentUserIds ?? []),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const residentRooms = residentUserIds.map((id) => residentVisitorRoom(safe.societyId, id));
   const rooms = [
-    ...(residentRoom ? [residentRoom] : []),
+    ...residentRooms,
     ...(options?.includeGuards !== false ? [societyGuardsRoom(safe.societyId)] : []),
   ];
   const guardSafe: VisitorEventPayload = {
@@ -91,8 +104,8 @@ export function emitVisitorEvent(
     return;
   }
 
-  if (residentRoom) {
-    ioRef.to(residentRoom).emit(event, safe);
+  for (const room of residentRooms) {
+    ioRef.to(room).emit(event, safe);
   }
   if (options?.includeGuards !== false) {
     ioRef.to(societyGuardsRoom(safe.societyId)).emit(event, guardSafe);
@@ -110,7 +123,9 @@ export function visitorEventPayloadFromDoc(doc: {
   visitorType: string;
   approvalStatus: string;
   entryStatus: string;
+  entryMode?: string;
   assignedResidentUserId: { toString(): string };
+  parcelId?: string;
 }): VisitorEventPayload {
   return {
     visitorId: String(doc._id),
@@ -122,6 +137,8 @@ export function visitorEventPayloadFromDoc(doc: {
     visitorType: doc.visitorType,
     approvalStatus: doc.approvalStatus,
     entryStatus: doc.entryStatus,
+    entryMode: doc.entryMode,
     assignedResidentUserId: String(doc.assignedResidentUserId),
+    parcelId: doc.parcelId,
   };
 }

@@ -22,6 +22,18 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 export const ENTRY_STATUSES = ['NOT_ENTERED', 'ENTERED', 'EXITED'] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
+export const ENTRY_MODES = ['OTP', 'WALK_IN'] as const;
+export type EntryMode = (typeof ENTRY_MODES)[number];
+
+export const VISITOR_RESOLUTIONS = [
+  'ENTRY',
+  'PARCEL',
+  'DENIED',
+  'EXPIRED',
+  'CANCELLED',
+] as const;
+export type VisitorResolution = (typeof VISITOR_RESOLUTIONS)[number];
+
 export interface VisitorLogDocument extends Document {
   societyId: Types.ObjectId;
   flatId: Types.ObjectId;
@@ -37,8 +49,14 @@ export interface VisitorLogDocument extends Document {
   requestedByGuardId: Types.ObjectId;
   assignedResidentUserId: Types.ObjectId;
   assignedResidentRole: 'OWNER' | 'TENANT';
+  notifiedResidentUserIds: Types.ObjectId[];
   approvalStatus: ApprovalStatus;
   entryStatus: EntryStatus;
+  /** OTP = existing email-OTP gate flow. WALK_IN = resident approval without OTP. */
+  entryMode: EntryMode;
+  resolution?: VisitorResolution;
+  pendingExpiresAt?: Date;
+  actedByUserId?: Types.ObjectId;
   entryOtpHash?: string;
   entryOtpExpiresAt?: Date;
   otpAttempts: number;
@@ -65,7 +83,7 @@ const visitorLogSchema = new Schema<VisitorLogDocument>(
     flatId: { type: Schema.Types.ObjectId, ref: 'Flat', required: true },
     wingId: { type: Schema.Types.ObjectId, ref: 'Wing' },
     visitorName: { type: String, required: true, trim: true, maxlength: 120 },
-    visitorPhone: { type: String, required: true, trim: true, maxlength: 32 },
+    visitorPhone: { type: String, required: false, default: '', trim: true, maxlength: 32 },
     visitorEmail: { type: String, trim: true, lowercase: true, maxlength: 254 },
     visitorType: { type: String, enum: VISITOR_TYPES, required: true },
     purpose: { type: String, required: true, trim: true, maxlength: 500 },
@@ -74,6 +92,14 @@ const visitorLogSchema = new Schema<VisitorLogDocument>(
     requestedByGuardId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     assignedResidentUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     assignedResidentRole: { type: String, enum: ['OWNER', 'TENANT'], required: true },
+    notifiedResidentUserIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    entryMode: { type: String, enum: ENTRY_MODES, required: true, default: 'OTP' },
+    resolution: { type: String, enum: VISITOR_RESOLUTIONS },
+    pendingExpiresAt: { type: Date },
+    actedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     approvalStatus: {
       type: String,
       enum: APPROVAL_STATUSES,
@@ -123,5 +149,7 @@ visitorLogSchema.index({
 visitorLogSchema.index({ societyId: 1, wingId: 1, createdAt: -1 });
 visitorLogSchema.index({ societyId: 1, entryAt: -1 });
 visitorLogSchema.index({ societyId: 1, entryOtpHash: 1 }, { sparse: true });
+visitorLogSchema.index({ societyId: 1, entryMode: 1, approvalStatus: 1, pendingExpiresAt: 1 });
+visitorLogSchema.index({ societyId: 1, notifiedResidentUserIds: 1, approvalStatus: 1 });
 
 export const VisitorLogModel = model<VisitorLogDocument>('VisitorLog', visitorLogSchema);

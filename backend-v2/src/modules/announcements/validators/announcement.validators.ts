@@ -4,6 +4,7 @@ import {
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
   ANNOUNCEMENT_STATUSES,
+  AUDIENCE_ROLES,
   AUDIENCE_TYPES,
 } from '../models/announcement.model';
 import { NOTIFICATION_TYPES } from '../../notifications/models/notification.model';
@@ -17,6 +18,7 @@ export const createAnnouncementSchema = z
     category: z.enum(ANNOUNCEMENT_CATEGORIES),
     priority: z.enum(ANNOUNCEMENT_PRIORITIES).optional(),
     audienceType: z.enum(AUDIENCE_TYPES),
+    audienceRole: z.enum(AUDIENCE_ROLES).optional().default('ALL'),
     targetWingIds: z.array(objectId).max(100).optional(),
     targetFlatIds: z.array(objectId).max(500).optional(),
     expiresAt: z.coerce.date().optional(),
@@ -49,6 +51,7 @@ export const updateAnnouncementSchema = z
     category: z.enum(ANNOUNCEMENT_CATEGORIES).optional(),
     priority: z.enum(ANNOUNCEMENT_PRIORITIES).optional(),
     audienceType: z.enum(AUDIENCE_TYPES).optional(),
+    audienceRole: z.enum(AUDIENCE_ROLES).optional(),
     targetWingIds: z.array(objectId).max(100).optional(),
     targetFlatIds: z.array(objectId).max(500).optional(),
     expiresAt: z.coerce.date().nullable().optional(),

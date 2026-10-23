@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { getRequestSocietyId } from '../../../middleware/admin-society';
 import {
   approveVisitor,
+  authorizeParcelHandover,
   cancelVisitor,
   checkoutVisitor,
   createVisitorRequest,
@@ -14,6 +15,14 @@ import {
   verifyEntryOtp,
   verifyEntryOtpByCode,
 } from '../services/visitor.service';
+import {
+  cancelParcel,
+  getParcel,
+  listParcels,
+  markParcelCollected,
+  markParcelDelivered,
+  recordParcelReceived,
+} from '../services/parcel.service';
 import type { CreateVisitorInput, ListVisitorsQuery } from '../validators/visitor.validators';
 
 function actorFrom(req: Request) {
@@ -140,6 +149,86 @@ export async function residentRejectHandler(req: Request, res: Response): Promis
     req.user!.id,
     (req.body as { reason?: string }).reason,
     actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function residentAuthorizeParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await authorizeParcelHandover(
+    societyId(req),
+    String(req.params.visitorId),
+    req.user!.id,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function residentListParcelsHandler(req: Request, res: Response): Promise<void> {
+  const data = await listParcels(societyId(req), {
+    ...(req.query as { status?: never; flatId?: string; page?: number; limit?: number }),
+    recipientUserId: req.user!.id,
+  });
+  res.json({ success: true, data });
+}
+
+export async function residentGetParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await getParcel(
+    societyId(req),
+    String(req.params.parcelId),
+    req.user!.id,
+    'resident',
+  );
+  res.json({ success: true, data });
+}
+
+export async function residentCollectParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await markParcelCollected(
+    societyId(req),
+    String(req.params.parcelId),
+    req.user!.id,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function guardListParcelsHandler(req: Request, res: Response): Promise<void> {
+  const data = await listParcels(societyId(req), req.query as never);
+  res.json({ success: true, data });
+}
+
+export async function guardGetParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await getParcel(societyId(req), String(req.params.parcelId), req.user!.id, 'guard');
+  res.json({ success: true, data });
+}
+
+export async function guardReceiveParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await recordParcelReceived(
+    societyId(req),
+    String(req.params.parcelId),
+    req.user!.id,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function guardDeliverParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await markParcelDelivered(
+    societyId(req),
+    String(req.params.parcelId),
+    req.user!.id,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function guardCancelParcelHandler(req: Request, res: Response): Promise<void> {
+  const data = await cancelParcel(
+    societyId(req),
+    String(req.params.parcelId),
+    req.user!.id,
+    (req.body as { reason?: string }).reason,
+    actorFrom(req),
+    'guard',
   );
   res.json({ success: true, data });
 }

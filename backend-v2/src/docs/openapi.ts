@@ -835,7 +835,7 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/resident/billing/bills/{billId}/payment-order`]: {
           post: {
             tags: ['Resident Billing'],
-            summary: 'Create UPI payment order for outstanding principal (server-side amount)',
+            summary: 'Create UPI payment order for principal plus current overdue interest (server-side amount)',
             security: adminSecurity,
             parameters: [{ name: 'billId', in: 'path', required: true, schema: { type: 'string' } }],
             responses: { 201: { description: 'Order + pending payment' }, ...errorResponses },
@@ -919,7 +919,8 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/guard/visitors`]: {
           post: {
             tags: ['Guard Visitors'],
-            summary: 'Register a visitor request for resident approval',
+            summary:
+              'Register a visitor request for resident approval. Set entryMode=WALK_IN for approval without OTP.',
             security: adminSecurity,
             responses: { 201: { description: 'Visitor request created' }, ...errorResponses },
           },
@@ -1535,6 +1536,44 @@ export function buildOpenApiSpec() {
             summary: 'Mark all notifications read (idempotent)',
             security: adminSecurity,
             responses: { 200: { description: 'Updated count' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/me/device-tokens`]: {
+          post: {
+            tags: ['Device Tokens'],
+            summary: 'Register an FCM device token for a resident (OWNER/TENANT) account',
+            security: adminSecurity,
+            responses: { 201: { description: 'Registered token' }, ...errorResponses },
+          },
+          delete: {
+            tags: ['Device Tokens'],
+            summary: 'Deactivate an FCM device token for a resident (OWNER/TENANT) account',
+            security: adminSecurity,
+            responses: { 200: { description: 'Unregistered' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/me/notifications`]: {
+          get: {
+            tags: ['Notifications'],
+            summary: 'List notifications for any authenticated society member including guards',
+            security: adminSecurity,
+            responses: { 200: { description: 'Notifications' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/resident/visitors/{visitorId}/leave-parcel`]: {
+          post: {
+            tags: ['Resident Visitors'],
+            summary: 'Authorize parcel handover instead of visitor entry (walk-in requests)',
+            security: adminSecurity,
+            responses: { 200: { description: 'Parcel handover' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/guard/parcels/{parcelId}/receive`]: {
+          post: {
+            tags: ['Guard Parcels'],
+            summary: 'Record that the guard received an authorized parcel',
+            security: adminSecurity,
+            responses: { 200: { description: 'Parcel' }, ...errorResponses },
           },
         },
         [`${API_PREFIX}/admin/reports/dashboard`]: {

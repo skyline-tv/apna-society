@@ -19,6 +19,7 @@ export async function deliverAnnouncementNotifications(announcementId: string): 
   const recipients = await resolveAnnouncementRecipients({
     societyId: String(announcement.societyId),
     audienceType: announcement.audienceType,
+    audienceRole: announcement.audienceRole ?? 'ALL',
     targetWingIds: announcement.targetWingIds.map(String),
     targetFlatIds: announcement.targetFlatIds.map(String),
   });
@@ -30,10 +31,13 @@ export async function deliverAnnouncementNotifications(announcementId: string): 
       recipientUserId: userId,
       type: 'ANNOUNCEMENT',
       title: announcement.title,
-      body: announcement.body.slice(0, 500),
+      body: 'A new society notice has been published.',
       relatedEntityType: 'Announcement',
       relatedEntityId: String(announcement._id),
       idempotencyKey: `ANNOUNCEMENT:${String(announcement._id)}:${userId}`,
+      metadata: {
+        deepLink: `apnasociety://notice/${String(announcement._id)}`,
+      },
       emitSocket: true,
     });
     if (result.created) createdThisPass += 1;

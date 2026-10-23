@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../api/auth/app_role.dart';
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
 import '../../api/models/common.dart';
@@ -11,9 +10,7 @@ import '../../api/repositories/live_repositories.dart';
 import '../../api/socket/visitor_socket.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
-import '../announcements/live_announcements_module.dart';
-import '../billing/live_billing_module.dart';
-import '../visitors/live_visitors_module.dart';
+import '../../services/notification_deep_link.dart';
 
 String notificationErrorMessage(Object error) {
   if (error is ApiException) {
@@ -35,6 +32,7 @@ IconData _typeIcon(String type) {
     case 'ANNOUNCEMENT':
       return Icons.campaign_outlined;
     case 'BILL_GENERATED':
+    case 'BILL_OVERDUE':
       return Icons.receipt_long_outlined;
     case 'PAYMENT_SUCCESS':
       return Icons.check_circle_outline_rounded;
@@ -44,6 +42,9 @@ IconData _typeIcon(String type) {
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
     case 'VISITOR_ENTERED':
+    case 'VISITOR_EXPIRED':
+    case 'PARCEL_AWAITING_HANDOVER':
+    case 'PARCEL_RECEIVED':
       return Icons.badge_outlined;
     case 'COMPLAINT_ASSIGNED':
     case 'COMPLAINT_STATUS_CHANGED':
@@ -64,14 +65,18 @@ Color _typeColor(String type) {
     case 'PAYMENT_SUCCESS':
     case 'VISITOR_APPROVED':
     case 'VISITOR_ENTERED':
+    case 'PARCEL_RECEIVED':
     case 'FACILITY_BOOKING_APPROVED':
       return C.green;
     case 'PAYMENT_FAILED':
     case 'VISITOR_REJECTED':
+    case 'VISITOR_EXPIRED':
     case 'FACILITY_BOOKING_REJECTED':
       return C.error;
     case 'FACILITY_BOOKING_CANCELLED':
     case 'VISITOR_REQUEST':
+    case 'BILL_OVERDUE':
+    case 'PARCEL_AWAITING_HANDOVER':
       return C.amber;
     default:
       return C.blue;
@@ -94,42 +99,26 @@ String _relative(String iso) {
 /// Resolves the screen a notification should open, or null when there is no
 /// safe destination for the current role.
 Widget? _linkedPage(AppNotification n) {
-  final role = authSession?.appRole;
-  final entityId = n.relatedEntityId;
-  final isResident = role == AppRole.owner || role == AppRole.tenant;
-  if (!isResident) return null;
-  switch (n.type) {
-    case 'ANNOUNCEMENT':
-      return entityId == null
-          ? null
-          : LiveResidentAnnouncementDetailPage(announcementId: entityId);
-    case 'VISITOR_REQUEST':
-    case 'VISITOR_APPROVED':
-    case 'VISITOR_REJECTED':
-    case 'VISITOR_ENTERED':
-      return const LiveResidentVisitorsPage();
-    case 'BILL_GENERATED':
-      // Financial detail is owner-only in the UI; the backend remains
-      // authoritative for access.
-      if (role != AppRole.owner || entityId == null) return null;
-      return LiveOwnerBillDetailPage(billId: entityId);
-    default:
-      // PAYMENT_*, STAFF_SHIFT_ASSIGNED, SYSTEM, unknown → detail only.
-      return null;
-  }
+  return widgetForNotificationDeepLink(NotificationDeepLink.fromNotification(n));
 }
 
 String _linkLabel(String type) {
   switch (type) {
     case 'ANNOUNCEMENT':
-      return 'Open announcement';
+      return 'View notice';
     case 'VISITOR_REQUEST':
+      return 'Respond to visitor';
     case 'VISITOR_APPROVED':
     case 'VISITOR_REJECTED':
     case 'VISITOR_ENTERED':
-      return 'Open visitors';
+    case 'VISITOR_EXPIRED':
+      return 'Open visitor';
     case 'BILL_GENERATED':
+    case 'BILL_OVERDUE':
       return 'Open bill';
+    case 'PARCEL_AWAITING_HANDOVER':
+    case 'PARCEL_RECEIVED':
+      return 'Open parcel';
     default:
       return 'Open';
   }
@@ -156,7 +145,7 @@ class _LiveNotificationBellButtonState
     final session = authSession;
     if (session == null) return 0;
     final role = session.appRole;
-    if (role != AppRole.owner && role != AppRole.tenant) return 0;
+    if (role == null) return 0;
     try {
       final c = await ensureLiveRepositories(session.api)
           .notifications
@@ -236,6 +225,7 @@ class LiveNotificationsInboxPage extends StatefulWidget {
 class _LiveNotificationsInboxPageState
     extends State<LiveNotificationsInboxPage> {
   bool? isReadFilter;
+  String? typeFilter;
   late Future<Paged<AppNotification>> _future = _load();
   StreamSubscription<NotificationEventPayload>? _sub;
   bool _busy = false;
@@ -245,7 +235,11 @@ class _LiveNotificationsInboxPageState
     if (session == null) throw StateError('Not signed in.');
     return ensureLiveRepositories(session.api).notifications.list(
           force: force,
-          query: ListNotificationsQuery(isRead: isReadFilter, limit: 50),
+          query: ListNotificationsQuery(
+            isRead: isReadFilter,
+            type: typeFilter,
+            limit: 50,
+          ),
         );
   }
 
@@ -357,6 +351,26 @@ class _LiveNotificationsInboxPageState
                         selected: isReadFilter == f.$1,
                         onSelected: () => setState(() {
                           isReadFilter = f.$1;
+                          _future = _load(force: true);
+                        }),
+                      ),
+                  ],
+                ),
+                FilterBar(
+                  children: [
+                    for (final f in const [
+                      (null, 'All types'),
+                      ('VISITOR_REQUEST', 'Visitors'),
+                      ('BILL_GENERATED', 'Bills'),
+                      ('BILL_OVERDUE', 'Overdue'),
+                      ('ANNOUNCEMENT', 'Notices'),
+                      ('PARCEL_RECEIVED', 'Parcels'),
+                    ])
+                      AppFilterChip(
+                        label: f.$2,
+                        selected: typeFilter == f.$1,
+                        onSelected: () => setState(() {
+                          typeFilter = f.$1;
                           _future = _load(force: true);
                         }),
                       ),
@@ -495,6 +509,12 @@ class _LiveNotificationDetailPageState
                       DetailRow('Read', fmtIsoDateTime(n.readAt)),
                     if (n.relatedEntityType != null)
                       DetailRow('About', humanizeStatus(n.relatedEntityType!)),
+                    if (n.metadataString('flatLabel') != null)
+                      DetailRow('Flat', n.metadataString('flatLabel')!),
+                    if (n.metadataString('visitorName') != null)
+                      DetailRow('Visitor', n.metadataString('visitorName')!),
+                    if (n.metadataString('billingMonth') != null)
+                      DetailRow('Billing month', n.metadataString('billingMonth')!),
                   ]),
                   if (!n.isKnownType)
                     const InfoNote(

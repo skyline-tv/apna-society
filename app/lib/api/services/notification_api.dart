@@ -9,7 +9,7 @@ class NotificationApi {
   NotificationApi(this._client);
   final ApiClient _client;
 
-  static const _root = '${ApiConfig.apiPrefix}/resident/notifications';
+  static const _root = '${ApiConfig.apiPrefix}/me/notifications';
 
   Future<UnreadCount> unreadCount({String? societyId}) {
     return _client.get(

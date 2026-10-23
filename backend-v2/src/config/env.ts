@@ -52,8 +52,32 @@ const envSchema = z
     VISITOR_OTP_TTL_MS: z.coerce.number().int().positive().default(10 * 60 * 1000),
     VISITOR_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
     VISITOR_PENDING_TTL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
+    /**
+     * Walk-in (no OTP) approval window. Default 2 minutes for call-style requests.
+     */
+    VISITOR_WALK_IN_TTL_MS: z.coerce.number().int().positive().default(2 * 60 * 1000),
     VISITOR_EXPIRY_WORKER_ENABLED: boolFromEnv,
     VISITOR_EXPIRY_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+    // Push (FCM). Disabled by default so local/dev never contacts Firebase.
+    FCM_ENABLED: boolFromEnv,
+    /**
+     * Path to a Firebase Admin service-account JSON file inside the container.
+     * Prefer this over inlining credentials. Never log file contents.
+     */
+    FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional().default(''),
+    /** JSON string of a Firebase service account. Never log this value. */
+    FCM_SERVICE_ACCOUNT_JSON: z.string().optional().default(''),
+    PUSH_RETRY_WORKER_ENABLED: boolFromEnv,
+    PUSH_RETRY_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+    OVERDUE_REMINDER_WORKER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    OVERDUE_REMINDER_WORKER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 1000),
     // Complaints / attachments
     COMPLAINT_STORAGE_PROVIDER: z.enum(['local', 'memory', 's3']).default('local'),
     COMPLAINT_STORAGE_LOCAL_DIR: z.string().default('./storage/complaints'),

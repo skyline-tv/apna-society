@@ -989,6 +989,7 @@ class _LiveAdminAnnouncementDetailPageState
                 ],
                 DetailCard(title: 'Delivery', children: [
                   DetailRow('Audience', audienceTypeLabel(a.audienceType)),
+                  DetailRow('Occupancy', audienceRoleLabel(a.audienceRole)),
                   if (a.audienceType == 'WING' && a.targetWingIds != null)
                     DetailRow('Wings', '${a.targetWingIds!.length} selected'),
                   if (a.audienceType == 'SELECTED_FLATS' &&
@@ -1107,6 +1108,7 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
   late String _category = widget.existing?.category ?? 'GENERAL';
   late String _priority = widget.existing?.priority ?? 'NORMAL';
   late String _audience = widget.existing?.audienceType ?? 'ALL_RESIDENTS';
+  late String _audienceRole = widget.existing?.audienceRole ?? 'ALL';
   final _selectedWings = <String>{};
   late final _flatPicker = AnnouncementFlatPickerModel(
     initiallySelected: {...?widget.existing?.targetFlatIds},
@@ -1247,6 +1249,7 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
             category: _category,
             priority: _priority,
             audienceType: _audience,
+            audienceRole: _audienceRole,
             targetWingIds: _audience == 'WING' ? _selectedWings.toList() : null,
             targetFlatIds:
                 _audience == 'SELECTED_FLATS' ? _selectedFlats.toList() : null,
@@ -1262,6 +1265,7 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
             category: _category,
             priority: _priority,
             audienceType: _audience,
+            audienceRole: _audienceRole,
             targetWingIds:
                 _audience == 'WING' ? _selectedWings.toList() : const [],
             targetFlatIds: _audience == 'SELECTED_FLATS'
@@ -1414,6 +1418,7 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
                   ('Category', announcementCategoryLabel(_category)),
                   ('Priority', _priorityLabel(_priority)),
                   ('Audience', audienceTypeLabel(_audience)),
+                  ('Occupancy', audienceRoleLabel(_audienceRole)),
                   ('Audience count', _audienceCountLabel),
                 ],
                 note:
@@ -1501,6 +1506,21 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
                           _loadAllFlats();
                         }
                       },
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final role in kAudienceRoles)
+                    AppFilterChip(
+                      label: audienceRoleLabel(role),
+                      selected: _audienceRole == role,
+                      onSelected: _submitting
+                          ? () {}
+                          : () => setState(() => _audienceRole = role),
+                    ),
+                ],
               ),
               if (_audience != 'ALL_RESIDENTS') ...[
                 const SizedBox(height: 12),

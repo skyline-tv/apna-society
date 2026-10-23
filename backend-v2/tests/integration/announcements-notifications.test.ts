@@ -537,3 +537,82 @@ describe('Notifications APIs and idempotency', () => {
     expect(again.body.data.unreadCount).toBe(before.body.data.unreadCount);
   });
 });
+
+describe('Announcement audience roles', () => {
+  it('publishes owners-only and tenants-only notices to the matching occupancy pointers', async () => {
+    const setup = await setupSociety('roleaud');
+    await FlatModel.updateOne(
+      { _id: setup.flatA1 },
+      {
+        occupancyStatus: 'TENANT_OCCUPIED',
+        activeOwnerUserId: setup.owner._id,
+        activeTenantUserId: setup.tenant._id,
+      },
+    );
+
+    const owners = await request(app)
+      .post('/api/v1/admin/announcements')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        title: 'Owners AGM',
+        body: 'Owners meeting',
+        category: 'MEETING',
+        audienceType: 'ALL_RESIDENTS',
+        audienceRole: 'OWNERS',
+      });
+    expect(owners.status).toBe(201);
+    await request(app)
+      .post(`/api/v1/admin/announcements/${owners.body.data.id}/publish`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`);
+
+    const tenants = await request(app)
+      .post('/api/v1/admin/announcements')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        title: 'Tenant circular',
+        body: 'Tenants only',
+        category: 'GENERAL',
+        audienceType: 'ALL_RESIDENTS',
+        audienceRole: 'TENANTS',
+      });
+    await request(app)
+      .post(`/api/v1/admin/announcements/${tenants.body.data.id}/publish`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`);
+
+    const ownerSeesOwners = await request(app)
+      .get(`/api/v1/resident/announcements/${owners.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(ownerSeesOwners.status).toBe(200);
+
+    const tenantBlockedOwners = await request(app)
+      .get(`/api/v1/resident/announcements/${owners.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.tenantToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(tenantBlockedOwners.status).toBe(403);
+
+    const tenantSeesTenants = await request(app)
+      .get(`/api/v1/resident/announcements/${tenants.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.tenantToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(tenantSeesTenants.status).toBe(200);
+
+    const ownerBlockedTenants = await request(app)
+      .get(`/api/v1/resident/announcements/${tenants.body.data.id}`)
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .set('x-society-id', setup.ctx.societyId);
+    expect(ownerBlockedTenants.status).toBe(403);
+
+    const nonAdmin = await request(app)
+      .post('/api/v1/admin/announcements')
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .send({
+        title: 'Nope',
+        body: 'Cannot publish',
+        category: 'GENERAL',
+        audienceType: 'ALL_RESIDENTS',
+      });
+    expect(nonAdmin.status).toBe(403);
+  });
+});
+

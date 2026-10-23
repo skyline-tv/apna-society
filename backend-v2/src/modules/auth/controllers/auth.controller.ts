@@ -62,8 +62,8 @@ export async function refreshHandler(req: Request, res: Response): Promise<void>
 }
 
 export async function logoutHandler(req: Request, res: Response): Promise<void> {
-  const body = req.body as { refreshToken?: string };
-  await logout(body.refreshToken, metaFromRequest(req));
+  const body = req.body as { refreshToken?: string; deviceToken?: string };
+  await logout(body.refreshToken, metaFromRequest(req), body.deviceToken);
   res.status(200).json({ success: true, data: { message: 'Logged out' } });
 }
 

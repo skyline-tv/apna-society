@@ -146,6 +146,10 @@ void main() {
       });
       expect(billAmountDuePaise(bill), 401200);
       expect(
+        billAmountDuePaise(bill),
+        bill.outstandingPrincipalPaise + bill.interestAccruedPaise,
+      );
+      expect(
         billingSummaryPayablePaise(
           BillingSummary(
             totalBilledPaise: 400000,

@@ -13,6 +13,9 @@ export async function getReadinessSnapshot() {
     announcementPublication: env.ANNOUNCEMENT_WORKER_ENABLED,
     facilityBookingExpiry: env.FACILITY_BOOKING_WORKER_ENABLED,
     interestAccrual: env.INTEREST_WORKER_ENABLED,
+    overdueReminders: env.OVERDUE_REMINDER_WORKER_ENABLED,
+    pushRetry: env.PUSH_RETRY_WORKER_ENABLED,
+    fcm: env.FCM_ENABLED,
   };
 
   const emailConfigured = Boolean(env.RESEND_API_KEY);

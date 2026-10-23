@@ -409,15 +409,29 @@ export async function generateBills(
       const serialized = serializeBill(bill);
       created.push(serialized);
       if (bill.ownerUserId) {
+        const month = new Intl.DateTimeFormat('en-IN', {
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'Asia/Kolkata',
+        }).format(bill.billingPeriodStart);
+        const flatLabel = formatFlatLabel(serialized.wingCodeSnapshot, serialized.flatNumberSnapshot);
         await notifyBusinessEvent({
           societyId,
           recipientUserId: String(bill.ownerUserId),
           type: 'BILL_GENERATED',
-          title: 'Maintenance bill generated',
-          body: `Bill ${serialized.billNumber} for ${formatFlatLabel(serialized.wingCodeSnapshot, serialized.flatNumberSnapshot)}`,
+          title: 'Monthly Maintenance Bill Generated',
+          body: `Your maintenance bill for ${month} has been generated.`,
           relatedEntityType: 'Bill',
           relatedEntityId: String(bill._id),
           idempotencyKey: `BILL_GENERATED:${String(bill._id)}`,
+          metadata: {
+            flatLabel,
+            billingMonth: month,
+            originalAmountPaise: bill.totalAmountPaise,
+            outstandingAmountPaise: bill.outstandingPrincipalPaise,
+            dueDate: bill.dueDate.toISOString(),
+            deepLink: `apnasociety://bill/${String(bill._id)}`,
+          },
         });
       }
     } catch (error) {

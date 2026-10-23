@@ -19,6 +19,7 @@ import societyRoutes from './modules/society/routes/society.routes';
 import residentRoutes from './modules/users/routes/resident.routes';
 import usersRoutes from './modules/users/routes/users.routes';
 import guardRoutes from './modules/visitors/routes/guard.routes';
+import meRoutes from './modules/notifications/routes/me.routes';
 import { getLogger } from './utils/logger';
 
 export function createApp() {
@@ -91,6 +92,7 @@ export function createApp() {
   });
 
   app.use(`${API_PREFIX}/auth`, authRoutes);
+  app.use(`${API_PREFIX}/me`, meRoutes);
   app.use(`${API_PREFIX}/admin`, adminRoutes);
   app.use(`${API_PREFIX}/resident`, residentRoutes);
   app.use(`${API_PREFIX}/guard`, guardRoutes);

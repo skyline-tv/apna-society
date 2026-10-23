@@ -3,12 +3,16 @@ import '../http/json_read.dart';
 const kNotificationTypes = [
   'ANNOUNCEMENT',
   'BILL_GENERATED',
+  'BILL_OVERDUE',
   'PAYMENT_SUCCESS',
   'PAYMENT_FAILED',
   'VISITOR_REQUEST',
   'VISITOR_APPROVED',
   'VISITOR_REJECTED',
   'VISITOR_ENTERED',
+  'VISITOR_EXPIRED',
+  'PARCEL_AWAITING_HANDOVER',
+  'PARCEL_RECEIVED',
   'COMPLAINT_ASSIGNED',
   'COMPLAINT_STATUS_CHANGED',
   'FACILITY_BOOKING_APPROVED',
@@ -24,6 +28,8 @@ String notificationTypeLabel(String type) {
       return 'Announcement';
     case 'BILL_GENERATED':
       return 'Bill';
+    case 'BILL_OVERDUE':
+      return 'Overdue bill';
     case 'PAYMENT_SUCCESS':
       return 'Payment success';
     case 'PAYMENT_FAILED':
@@ -36,6 +42,12 @@ String notificationTypeLabel(String type) {
       return 'Visitor rejected';
     case 'VISITOR_ENTERED':
       return 'Visitor entered';
+    case 'VISITOR_EXPIRED':
+      return 'Visitor expired';
+    case 'PARCEL_AWAITING_HANDOVER':
+      return 'Parcel awaiting handover';
+    case 'PARCEL_RECEIVED':
+      return 'Parcel received';
     case 'COMPLAINT_ASSIGNED':
       return 'Complaint assigned';
     case 'COMPLAINT_STATUS_CHANGED':
@@ -69,6 +81,7 @@ class AppNotification {
     this.relatedEntityType,
     this.relatedEntityId,
     this.readAt,
+    this.metadata,
   });
 
   final String id;
@@ -83,6 +96,12 @@ class AppNotification {
   final String? readAt;
   final String createdAt;
   final String updatedAt;
+  final Map<String, Object?>? metadata;
+
+  String? metadataString(String key) {
+    final value = metadata?[key];
+    return value is String ? value : value?.toString();
+  }
 
   bool get isKnownType => kNotificationTypes.contains(type);
 
@@ -101,6 +120,7 @@ class AppNotification {
       readAt: optionalString(json, 'readAt'),
       createdAt: requireString(json, 'createdAt'),
       updatedAt: requireString(json, 'updatedAt'),
+      metadata: optionalJsonMap(json, 'metadata'),
     );
   }
 }
@@ -158,6 +178,7 @@ class NotificationEventPayload {
     required this.createdAt,
     this.relatedEntityType,
     this.relatedEntityId,
+    this.metadata,
   });
 
   final String id;
@@ -170,6 +191,7 @@ class NotificationEventPayload {
   final String? relatedEntityId;
   final bool isRead;
   final String createdAt;
+  final Map<String, Object?>? metadata;
 
   factory NotificationEventPayload.fromJson(Object? data) {
     final json = requireMap(data, 'notification event');
@@ -184,6 +206,7 @@ class NotificationEventPayload {
       relatedEntityId: optionalString(json, 'relatedEntityId'),
       isRead: requireBool(json, 'isRead'),
       createdAt: requireString(json, 'createdAt'),
+      metadata: optionalJsonMap(json, 'metadata'),
     );
   }
 }

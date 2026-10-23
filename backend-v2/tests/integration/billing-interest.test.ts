@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
 import { createUser } from '../helpers/factories';
 import { createAdminContext, createWingWithFlats } from '../helpers/admin';
+import { loginByEmail } from '../helpers/auth-login';
 import { FlatModel } from '../../src/modules/society/models/flat.model';
 import { BillModel } from '../../src/modules/billing/models/bill.model';
+import { PaymentModel } from '../../src/modules/billing/models/payment.model';
 import { calculateSimpleDailyInterestPaise } from '../../src/modules/billing/utils/money';
 import { resetEnvCache, loadEnv } from '../../src/config/env';
 import { InterestJobRunModel } from '../../src/modules/billing/models/interest-job-run.model';
@@ -12,6 +14,7 @@ import {
   ensureSocietyInterestCurrent,
   runInterestAccrualPass,
 } from '../../src/modules/billing/services/interest-worker.service';
+import { amountDuePaise } from '../../src/modules/billing/services/payment.service';
 
 const app = createApp();
 
@@ -300,5 +303,308 @@ describe('Late interest', () => {
     expect(second.societiesProcessed).toBe(0);
     const afterSecond = await BillModel.findById(billId).lean();
     expect(afterSecond?.interestAccruedPaise).toBe(expected);
+  });
+});
+
+describe('Interest included at payment time', () => {
+  beforeEach(() => {
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'true';
+    resetEnvCache();
+    loadEnv();
+  });
+
+  afterEach(() => {
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
+    resetEnvCache();
+    loadEnv();
+  });
+
+  async function recordOffline(
+    token: string,
+    body: {
+      billId: string;
+      amountPaise: number;
+      paidAt: string;
+      referenceNumber: string;
+      notes?: string;
+      idempotencyKey?: string;
+    },
+  ) {
+    return request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  }
+
+  it('charges no overdue interest when payment is on or before the 10th', async () => {
+    const { ctx, billId } = await setupBill();
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: 400_000,
+      paidAt: '2026-04-10T18:00:00.000+05:30',
+      referenceNumber: `ontime-${billId}`,
+      idempotencyKey: `ontime-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const payment = await PaymentModel.findById(paid.body.data.paymentId).lean();
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(payment?.allocatedToInterestPaise).toBe(0);
+
+    const bill = await BillModel.findById(billId).lean();
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(bill?.interestAccruedPaise).toBe(0);
+    expect(bill?.status).toBe('PAID');
+  });
+
+  it('starts interest on the 11th and includes it in the payment allocation', async () => {
+    const { ctx, billId } = await setupBill();
+    const interest = calculateSimpleDailyInterestPaise(400_000, 1, 2400);
+    expect(interest).toBeGreaterThan(0);
+
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: amountDuePaise(400_000, interest),
+      paidAt: '2026-04-11T10:00:00.000+05:30',
+      referenceNumber: `day11-${billId}`,
+      idempotencyKey: `day11-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const payment = await PaymentModel.findById(paid.body.data.paymentId).lean();
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(payment?.allocatedToInterestPaise).toBe(interest);
+
+    const bill = await BillModel.findById(billId).lean();
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(bill?.interestAccruedPaise).toBe(interest);
+    expect(bill?.amountPaidPaise).toBe(400_000);
+    expect(bill?.status).toBe('PAID');
+  });
+
+  it('includes multi-day accrued interest in the amount due', async () => {
+    const { ctx, billId } = await setupBill();
+    const interest = calculateSimpleDailyInterestPaise(400_000, 10, 2400);
+
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: amountDuePaise(400_000, interest),
+      paidAt: '2026-04-20T12:00:00.000+05:30',
+      referenceNumber: `overdue-${billId}`,
+      idempotencyKey: `overdue-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const payment = await PaymentModel.findById(paid.body.data.paymentId).lean();
+    expect(payment?.amountPaise).toBe(400_000 + interest);
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(payment?.allocatedToInterestPaise).toBe(interest);
+
+    const bill = await BillModel.findById(billId).lean();
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(bill?.interestAccruedPaise).toBe(interest);
+    expect(bill?.status).toBe('PAID');
+  });
+
+  it('continues accruing on remaining principal after a partial payment', async () => {
+    const { ctx, billId } = await setupBill();
+
+    const partial = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: 100_000,
+      paidAt: '2026-04-15T10:00:00.000+05:30',
+      referenceNumber: `part-pay-${billId}`,
+      idempotencyKey: `part-pay-${billId}`,
+    });
+    expect(partial.status).toBe(201);
+
+    const payment = await PaymentModel.findById(partial.body.data.paymentId).lean();
+    expect(payment?.allocatedToPrincipalPaise).toBe(100_000);
+    expect(payment?.allocatedToInterestPaise).toBe(0);
+
+    const after = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-04-25T10:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(after.body.data.principalOutstandingPaise).toBe(300_000);
+    expect(after.body.data.accruedInterestPaise).toBe(
+      calculateSimpleDailyInterestPaise(400_000, 4, 2400) +
+        calculateSimpleDailyInterestPaise(300_000, 11, 2400),
+    );
+  });
+
+  it('stops future principal interest after full principal settlement', async () => {
+    const { ctx, billId } = await setupBill();
+    // Settlement is effective at civil midnight, so the payment day itself uses
+    // the reduced principal (here zero) and does not accrue another day.
+    const interestThroughPaymentDay = calculateSimpleDailyInterestPaise(400_000, 10, 2400);
+    const interestAfterSettlement = calculateSimpleDailyInterestPaise(400_000, 9, 2400);
+
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: amountDuePaise(400_000, interestThroughPaymentDay),
+      paidAt: '2026-04-20T09:00:00.000+05:30',
+      referenceNumber: `settled-${billId}`,
+      idempotencyKey: `settled-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const later = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-05-15T10:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(later.body.data.principalOutstandingPaise).toBe(0);
+    expect(later.body.data.accruedInterestPaise).toBe(interestAfterSettlement);
+  });
+
+  it('never compounds interest into principal', async () => {
+    const { ctx, billId } = await setupBill();
+    const interestThroughPaymentDay = calculateSimpleDailyInterestPaise(400_000, 5, 2400);
+    const simpleInterestAfterSettlement = calculateSimpleDailyInterestPaise(400_000, 4, 2400);
+
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: amountDuePaise(400_000, interestThroughPaymentDay),
+      paidAt: '2026-04-15T12:00:00.000+05:30',
+      referenceNumber: `simple-${billId}`,
+      idempotencyKey: `simple-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const payment = await PaymentModel.findById(paid.body.data.paymentId).lean();
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(payment?.allocatedToInterestPaise).toBe(interestThroughPaymentDay);
+
+    const bill = await BillModel.findById(billId).lean();
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(bill?.amountPaidPaise).toBe(400_000);
+    expect(bill?.totalAmountPaise).toBe(400_000);
+    expect(bill?.interestAccruedPaise).toBe(interestThroughPaymentDay);
+
+    const later = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-04-30T10:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(later.body.data.accruedInterestPaise).toBe(simpleInterestAfterSettlement);
+    expect(later.body.data.accruedInterestPaise).not.toBe(
+      calculateSimpleDailyInterestPaise(400_000 + interestThroughPaymentDay, 20, 2400),
+    );
+  });
+
+  it('calculates interest at payment time even if the scheduled job has not run', async () => {
+    const { ctx, billId } = await setupBill();
+    expect(await InterestJobRunModel.countDocuments({ societyId: ctx.societyId })).toBe(0);
+
+    const storedBefore = await BillModel.findById(billId).lean();
+    expect(storedBefore?.interestAccruedPaise).toBe(0);
+
+    const interest = calculateSimpleDailyInterestPaise(400_000, 15, 2400);
+    const paid = await recordOffline(ctx.token, {
+      billId,
+      amountPaise: amountDuePaise(400_000, interest),
+      paidAt: '2026-04-25T09:00:00.000+05:30',
+      referenceNumber: `nojob-${billId}`,
+      idempotencyKey: `nojob-${billId}`,
+    });
+    expect(paid.status).toBe(201);
+
+    const payment = await PaymentModel.findById(paid.body.data.paymentId).lean();
+    expect(payment?.allocatedToInterestPaise).toBe(interest);
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(await InterestJobRunModel.countDocuments({ societyId: ctx.societyId })).toBe(0);
+  });
+
+  it('does not double-allocate or double-apply interest on a duplicate request', async () => {
+    const { ctx, billId } = await setupBill();
+    const interest = calculateSimpleDailyInterestPaise(400_000, 8, 2400);
+    const payload = {
+      billId,
+      amountPaise: amountDuePaise(400_000, interest),
+      paidAt: '2026-04-18T11:00:00.000+05:30',
+      referenceNumber: `dup-${billId}`,
+      idempotencyKey: `dup-${billId}`,
+    };
+
+    const first = await recordOffline(ctx.token, payload);
+    const second = await recordOffline(ctx.token, payload);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.data.paymentId).toBe(first.body.data.paymentId);
+    expect(second.body.data.alreadySettled).toBe(true);
+
+    expect(await PaymentModel.countDocuments({ billId, status: 'SUCCESS' })).toBe(1);
+    const payment = await PaymentModel.findById(first.body.data.paymentId).lean();
+    expect(payment?.allocatedToPrincipalPaise).toBe(400_000);
+    expect(payment?.allocatedToInterestPaise).toBe(interest);
+
+    const bill = await BillModel.findById(billId).lean();
+    expect(bill?.outstandingPrincipalPaise).toBe(0);
+    expect(bill?.amountPaidPaise).toBe(400_000);
+    expect(bill?.interestAccruedPaise).toBe(interest);
+  });
+
+  it('leaves historical bills and payments unchanged', async () => {
+    const historical = await setupBill();
+    const histInterest = calculateSimpleDailyInterestPaise(400_000, 2, 2400);
+    const histPay = await recordOffline(historical.ctx.token, {
+      billId: historical.billId,
+      amountPaise: amountDuePaise(400_000, histInterest),
+      paidAt: '2026-04-12T10:00:00.000+05:30',
+      referenceNumber: `hist-${historical.billId}`,
+      idempotencyKey: `hist-${historical.billId}`,
+    });
+    expect(histPay.status).toBe(201);
+
+    const histBillBefore = await BillModel.findById(historical.billId).lean();
+    const histPaymentBefore = await PaymentModel.findById(histPay.body.data.paymentId).lean();
+
+    const current = await setupBill();
+    const currentInterest = calculateSimpleDailyInterestPaise(400_000, 12, 2400);
+    const currentPay = await recordOffline(current.ctx.token, {
+      billId: current.billId,
+      amountPaise: amountDuePaise(400_000, currentInterest),
+      paidAt: '2026-04-22T10:00:00.000+05:30',
+      referenceNumber: `new-${current.billId}`,
+      idempotencyKey: `new-${current.billId}`,
+    });
+    expect(currentPay.status).toBe(201);
+
+    const histBillAfter = await BillModel.findById(historical.billId).lean();
+    const histPaymentAfter = await PaymentModel.findById(histPay.body.data.paymentId).lean();
+    expect(histBillAfter?.monthlyRatePaise).toBe(histBillBefore?.monthlyRatePaise);
+    expect(histBillAfter?.totalAmountPaise).toBe(histBillBefore?.totalAmountPaise);
+    expect(histBillAfter?.outstandingPrincipalPaise).toBe(histBillBefore?.outstandingPrincipalPaise);
+    expect(histBillAfter?.interestAccruedPaise).toBe(histBillBefore?.interestAccruedPaise);
+    expect(histBillAfter?.amountPaidPaise).toBe(histBillBefore?.amountPaidPaise);
+    expect(histBillAfter?.status).toBe(histBillBefore?.status);
+    expect(histBillAfter?.ownerNameSnapshot).toBe(histBillBefore?.ownerNameSnapshot);
+    expect(histPaymentAfter?.amountPaise).toBe(histPaymentBefore?.amountPaise);
+    expect(histPaymentAfter?.allocatedToPrincipalPaise).toBe(
+      histPaymentBefore?.allocatedToPrincipalPaise,
+    );
+    expect(histPaymentAfter?.allocatedToInterestPaise).toBe(
+      histPaymentBefore?.allocatedToInterestPaise,
+    );
+  });
+
+  it('creates a resident payment order for principal plus current interest', async () => {
+    const { ctx, owner, billId } = await setupBill();
+    const { token: ownerToken } = await loginByEmail(app, owner.email);
+
+    const opened = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(opened.status).toBe(200);
+    expect(opened.body.data.interestAccruedPaise).toBeGreaterThan(0);
+
+    const order = await request(app)
+      .post(`/api/v1/resident/billing/bills/${billId}/payment-order`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('x-society-id', ctx.societyId);
+    expect(order.status).toBe(201);
+    expect(order.body.data.amountPaise).toBe(opened.body.data.totalPayablePaise);
+    expect(order.body.data.amountPaise).toBe(
+      opened.body.data.outstandingPrincipalPaise + opened.body.data.interestAccruedPaise,
+    );
   });
 });

@@ -9,6 +9,7 @@ import '../../data/local_database.dart' show InviteCreateResult;
 import '../../services/occupancy_access.dart';
 import '../../services/session_store.dart';
 import '../../ui/components.dart';
+import '../notifications/live_notifications_module.dart';
 import '../vehicles/live_vehicles_module.dart';
 import '../vehicles/vehicle_module.dart';
 import '../visitors/live_visitors_module.dart';
@@ -129,6 +130,7 @@ class _GuardHomeState extends State<GuardHome> {
         guardName: guardName,
         onNavigate: (i) => setState(() => tab = i),
         onOpenQueue: _openQueue,
+        headerAction: const LiveNotificationBellButton(onPine: true),
       ),
       LiveVerifyVisitorOtpPage(
         onEntered: () => setState(() => tab = 2),
@@ -151,6 +153,7 @@ class _GuardHomeState extends State<GuardHome> {
                   title: brandAppBarTitle(
                       title: _titles[tab], subtitle: kSocietyName),
                   actions: [
+                    const LiveNotificationBellButton(),
                     IconButton(
                       tooltip: 'Logout',
                       onPressed: _confirmLogout,

@@ -29,6 +29,9 @@ export type AnnouncementStatus = (typeof ANNOUNCEMENT_STATUSES)[number];
 export const AUDIENCE_TYPES = ['ALL_RESIDENTS', 'WING', 'SELECTED_FLATS'] as const;
 export type AudienceType = (typeof AUDIENCE_TYPES)[number];
 
+export const AUDIENCE_ROLES = ['ALL', 'OWNERS', 'TENANTS'] as const;
+export type AudienceRole = (typeof AUDIENCE_ROLES)[number];
+
 export const DELIVERY_STATES = ['NOT_STARTED', 'PENDING', 'COMPLETE', 'FAILED'] as const;
 export type DeliveryState = (typeof DELIVERY_STATES)[number];
 
@@ -49,6 +52,8 @@ export interface AnnouncementDocument extends Document {
   category: AnnouncementCategory;
   priority: AnnouncementPriority;
   audienceType: AudienceType;
+  /** ALL = current occupier (existing). OWNERS/TENANTS filter occupancy pointers. */
+  audienceRole: AudienceRole;
   targetWingIds: Types.ObjectId[];
   targetFlatIds: Types.ObjectId[];
   attachments: AnnouncementAttachment[];
@@ -87,6 +92,7 @@ const announcementSchema = new Schema<AnnouncementDocument>(
     category: { type: String, enum: ANNOUNCEMENT_CATEGORIES, required: true },
     priority: { type: String, enum: ANNOUNCEMENT_PRIORITIES, required: true, default: 'NORMAL' },
     audienceType: { type: String, enum: AUDIENCE_TYPES, required: true },
+    audienceRole: { type: String, enum: AUDIENCE_ROLES, required: true, default: 'ALL' },
     targetWingIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Wing' }], default: [] },
     targetFlatIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Flat' }], default: [] },
     attachments: { type: [attachmentSchema], default: [] },

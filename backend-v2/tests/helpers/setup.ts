@@ -21,6 +21,9 @@ process.env.FACILITY_PENDING_BOOKING_TTL_MS = '3600000';
 process.env.ANNOUNCEMENT_STORAGE_PROVIDER = 'memory';
 process.env.ANNOUNCEMENT_WORKER_ENABLED = 'false';
 process.env.INTEREST_WORKER_ENABLED = 'false';
+process.env.OVERDUE_REMINDER_WORKER_ENABLED = 'false';
+process.env.PUSH_RETRY_WORKER_ENABLED = 'false';
+process.env.FCM_ENABLED = 'false';
 process.env.SMS_PROVIDER = 'memory';
 process.env.SMS_OTP_ENABLED = 'false';
 process.env.SMS_OTP_DEV_BYPASS = 'false';
@@ -102,6 +105,12 @@ beforeAll(async () => {
   const { InterestJobRunModel } = await import(
     '../../src/modules/billing/models/interest-job-run.model'
   );
+  const { DeviceTokenModel } = await import(
+    '../../src/modules/notifications/models/device-token.model'
+  );
+  const { ParcelHandoverModel } = await import(
+    '../../src/modules/visitors/models/parcel-handover.model'
+  );
   await Promise.all([
     MembershipModel.syncIndexes(),
     OccupancyRecordModel.syncIndexes(),
@@ -127,6 +136,8 @@ beforeAll(async () => {
     AnnouncementReadModel.syncIndexes(),
     NotificationModel.syncIndexes(),
     InterestJobRunModel.syncIndexes(),
+    DeviceTokenModel.syncIndexes(),
+    ParcelHandoverModel.syncIndexes(),
   ]);
 
   setEmailService({
@@ -157,6 +168,10 @@ beforeEach(async () => {
     '../../src/modules/auth/providers/memory-sms.provider'
   );
   getMemorySmsProvider().clear();
+  const { resetPushSenderForTests } = await import(
+    '../../src/modules/notifications/services/push-sender'
+  );
+  resetPushSenderForTests();
   const collections = mongoose.connection.collections;
   await Promise.all(Object.values(collections).map((collection) => collection.deleteMany({})));
 });

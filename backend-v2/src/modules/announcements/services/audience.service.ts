@@ -3,7 +3,7 @@ import { parseObjectId } from '../../../utils/object-id';
 import { FlatModel } from '../../society/models/flat.model';
 import { WingModel } from '../../society/models/wing.model';
 import { MembershipModel } from '../../users/models/membership.model';
-import type { AudienceType } from '../models/announcement.model';
+import type { AudienceRole, AudienceType } from '../models/announcement.model';
 
 async function validateTargets(input: {
   societyId: string;
@@ -59,6 +59,7 @@ async function validateTargets(input: {
 export async function resolveAnnouncementRecipients(input: {
   societyId: string;
   audienceType: AudienceType;
+  audienceRole?: AudienceRole;
   targetWingIds: string[];
   targetFlatIds: string[];
 }): Promise<string[]> {
@@ -81,8 +82,19 @@ export async function resolveAnnouncementRecipients(input: {
     .select('_id occupancyStatus activeOwnerUserId activeTenantUserId')
     .lean();
 
+  const role = input.audienceRole ?? 'ALL';
   const candidateUserIds = new Set<string>();
   for (const flat of flats) {
+    if (role === 'OWNERS') {
+      if (flat.activeOwnerUserId) candidateUserIds.add(String(flat.activeOwnerUserId));
+      continue;
+    }
+    if (role === 'TENANTS') {
+      if (flat.occupancyStatus === 'TENANT_OCCUPIED' && flat.activeTenantUserId) {
+        candidateUserIds.add(String(flat.activeTenantUserId));
+      }
+      continue;
+    }
     if (flat.occupancyStatus === 'OWNER_OCCUPIED' && flat.activeOwnerUserId) {
       candidateUserIds.add(String(flat.activeOwnerUserId));
     } else if (flat.occupancyStatus === 'TENANT_OCCUPIED' && flat.activeTenantUserId) {
@@ -108,12 +120,14 @@ export async function userCanViewAnnouncement(input: {
   societyId: string;
   userId: string;
   audienceType: AudienceType;
+  audienceRole?: AudienceRole;
   targetWingIds: string[];
   targetFlatIds: string[];
 }): Promise<boolean> {
   const recipients = await resolveAnnouncementRecipients({
     societyId: input.societyId,
     audienceType: input.audienceType,
+    audienceRole: input.audienceRole,
     targetWingIds: input.targetWingIds.map(String),
     targetFlatIds: input.targetFlatIds.map(String),
   });
