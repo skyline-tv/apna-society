@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import {
   listVehicleLogs,
+  lookupRegisteredVehicle,
   recordVehicleEntry,
   recordVehicleExit,
 } from '../services/vehicle-log.service';
@@ -16,6 +17,14 @@ function actorFrom(req: Request) {
 
 function societyId(req: Request): string {
   return String(req.societyId);
+}
+
+export async function guardVehicleLookupHandler(req: Request, res: Response): Promise<void> {
+  const data = await lookupRegisteredVehicle(
+    societyId(req),
+    String(req.query.registrationNumber ?? ''),
+  );
+  res.json({ success: true, data });
 }
 
 export async function guardVehicleEntryHandler(req: Request, res: Response): Promise<void> {

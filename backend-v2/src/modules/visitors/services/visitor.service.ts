@@ -140,6 +140,41 @@ function extraResidentIds(
     .filter((id) => id !== assigned);
 }
 
+/** Stop ringing on every notified resident device, and tell the guard. */
+async function notifyWalkInResolved(
+  visitor: VisitorLogDocument,
+  type: 'VISITOR_APPROVED' | 'VISITOR_REJECTED',
+  title: string,
+  body: string,
+) {
+  const societyId = String(visitor.societyId);
+  const recipients = [
+    String(visitor.assignedResidentUserId),
+    ...extraResidentIds(visitor),
+    String(visitor.requestedByGuardId),
+  ];
+  for (const recipientUserId of [...new Set(recipients)]) {
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId,
+      type,
+      title,
+      body,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(visitor._id),
+      idempotencyKey: `${type}:${String(visitor._id)}:${recipientUserId}`,
+      metadata: {
+        visitorName: visitor.visitorName,
+        flatLabel: formatFlatLabel(visitor.wingCodeSnapshot, visitor.flatNumberSnapshot),
+        entryMode: 'WALK_IN',
+        callAction: 'stop',
+        priority: 'high',
+        deepLink: `apnasociety://visitor/${String(visitor._id)}`,
+      },
+    });
+  }
+}
+
 function residentVisibilityFilter(userId: string) {
   const uid = parseObjectId(userId, 'assignedResidentUserId');
   return {
@@ -274,7 +309,7 @@ export async function createVisitorRequest(
         expiresAt: pendingExpiresAt?.toISOString() ?? '',
         entryMode,
         priority: walkIn ? 'high' : 'normal',
-        channel: walkIn ? 'incoming_visitor' : 'visitors',
+        channel: walkIn ? 'incoming_visitor_call' : 'visitors',
         deepLink: walkIn
           ? `apnasociety://visitor-approval/${String(visitor._id)}`
           : `apnasociety://visitor/${String(visitor._id)}`,
@@ -478,6 +513,7 @@ async function notifyVisitorExpired(visitor: VisitorLogDocument) {
         visitorName: visitor.visitorName,
         flatLabel,
         entryMode: visitor.entryMode ?? 'OTP',
+        ...(visitor.entryMode === 'WALK_IN' ? { callAction: 'stop', priority: 'high' } : {}),
       },
     });
   }
@@ -550,22 +586,12 @@ export async function approveVisitor(
     emitVisitorEvent('visitor:approved', visitorEventPayloadFromDoc(updatedWalkIn), {
       extraResidentUserIds: extraResidentIds(updatedWalkIn),
     });
-    await notifyBusinessEvent({
-      societyId,
-      recipientUserId: String(updatedWalkIn.requestedByGuardId),
-      type: 'VISITOR_APPROVED',
-      title: 'Visitor approved',
-      body: `${updatedWalkIn.visitorName} was approved for ${formatFlatLabel(updatedWalkIn.wingCodeSnapshot, updatedWalkIn.flatNumberSnapshot)}. Confirm entry at the gate.`,
-      relatedEntityType: 'VisitorLog',
-      relatedEntityId: String(updatedWalkIn._id),
-      idempotencyKey: `VISITOR_APPROVED:${String(updatedWalkIn._id)}:guard`,
-      metadata: {
-        visitorName: updatedWalkIn.visitorName,
-        flatLabel: formatFlatLabel(updatedWalkIn.wingCodeSnapshot, updatedWalkIn.flatNumberSnapshot),
-        entryMode: 'WALK_IN',
-        deepLink: `apnasociety://visitor/${String(updatedWalkIn._id)}`,
-      },
-    });
+    await notifyWalkInResolved(
+      updatedWalkIn,
+      'VISITOR_APPROVED',
+      'Visitor approved',
+      `${updatedWalkIn.visitorName} was approved for ${formatFlatLabel(updatedWalkIn.wingCodeSnapshot, updatedWalkIn.flatNumberSnapshot)}. Confirm entry at the gate.`,
+    );
     return serializeVisitor(updatedWalkIn, { includeOtpMeta: true });
   }
   const otpDevBypass = env.SMS_OTP_DEV_BYPASS && env.NODE_ENV !== 'production';
@@ -727,31 +753,40 @@ export async function rejectVisitor(
     extraResidentUserIds: extraResidentIds(updated),
   });
 
-  await notifyBusinessEvent({
-    societyId,
-    recipientUserId: String(updated.assignedResidentUserId),
-    type: 'VISITOR_REJECTED',
-    title: 'Visitor rejected',
-    body: `${updated.visitorName} was rejected for ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
-    relatedEntityType: 'VisitorLog',
-    relatedEntityId: String(updated._id),
-    idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}`,
-  });
-  await notifyBusinessEvent({
-    societyId,
-    recipientUserId: String(updated.requestedByGuardId),
-    type: 'VISITOR_REJECTED',
-    title: 'Visitor denied',
-    body: `${updated.visitorName} was denied entry to ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}.`,
-    relatedEntityType: 'VisitorLog',
-    relatedEntityId: String(updated._id),
-    idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}:guard`,
-    metadata: {
-      visitorName: updated.visitorName,
-      entryMode: updated.entryMode ?? 'OTP',
-      deepLink: `apnasociety://visitor/${String(updated._id)}`,
-    },
-  });
+  if ((updated.entryMode ?? 'OTP') === 'WALK_IN') {
+    await notifyWalkInResolved(
+      updated,
+      'VISITOR_REJECTED',
+      'Visitor rejected',
+      `${updated.visitorName} was denied entry to ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}.`,
+    );
+  } else {
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId: String(updated.assignedResidentUserId),
+      type: 'VISITOR_REJECTED',
+      title: 'Visitor rejected',
+      body: `${updated.visitorName} was rejected for ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}`,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(updated._id),
+      idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}`,
+    });
+    await notifyBusinessEvent({
+      societyId,
+      recipientUserId: String(updated.requestedByGuardId),
+      type: 'VISITOR_REJECTED',
+      title: 'Visitor denied',
+      body: `${updated.visitorName} was denied entry to ${formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot)}.`,
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: String(updated._id),
+      idempotencyKey: `VISITOR_REJECTED:${String(updated._id)}:guard`,
+      metadata: {
+        visitorName: updated.visitorName,
+        entryMode: updated.entryMode ?? 'OTP',
+        deepLink: `apnasociety://visitor/${String(updated._id)}`,
+      },
+    });
+  }
 
   return serializeVisitor(updated);
 }

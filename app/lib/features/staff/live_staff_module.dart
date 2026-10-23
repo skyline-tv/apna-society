@@ -914,16 +914,19 @@ class _LiveStaffFormPageState extends State<LiveStaffFormPage> {
                     : (v) => setState(() => _category = v ?? _category),
               ),
               const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: [
-                  for (final t in kEmploymentTypes)
-                    ButtonSegment(
-                        value: t, label: Text(_employmentTypeLabel(t))),
-                ],
-                selected: {_employmentType},
-                onSelectionChanged: _submitting
-                    ? null
-                    : (s) => setState(() => _employmentType = s.first),
+              ScaleToWidth(
+                child: SegmentedButton<String>(
+                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
+                  segments: [
+                    for (final t in kEmploymentTypes)
+                      ButtonSegment(
+                          value: t, label: Text(_employmentTypeLabel(t))),
+                  ],
+                  selected: {_employmentType},
+                  onSelectionChanged: _submitting
+                      ? null
+                      : (s) => setState(() => _employmentType = s.first),
+                ),
               ),
               if (!editing) ...[
                 const SizedBox(height: 12),

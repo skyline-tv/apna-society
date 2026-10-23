@@ -321,81 +321,54 @@ class _ReportsOverviewTabState extends State<_ReportsOverviewTab> {
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Total flats',
-                          value: '${s['flats'] ?? 0}',
-                          icon: Icons.apartment_outlined)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Bills generated',
-                          value: '${s['bills'] ?? 0}',
-                          icon: Icons.receipt_long_outlined)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Paid bills',
-                          value: '${s['paid'] ?? 0}',
-                          icon: Icons.check_circle_outline,
-                          accent: C.green)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Unpaid bills',
-                          value: '${s['unpaidBills'] ?? 0}',
-                          icon: Icons.pending_actions_outlined,
-                          accent: C.amber)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Overdue bills',
-                          value: '${s['overdue'] ?? 0}',
-                          icon: Icons.warning_amber_rounded,
-                          accent: C.error)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Amount billed',
-                          value: money(s['billedAmount'] ?? 0),
-                          icon: Icons.request_quote_outlined)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Amount collected',
-                          value: money(s['collection'] ?? 0),
-                          icon: Icons.payments_outlined,
-                          accent: C.green)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Outstanding',
-                          value: money(s['outstandingAmount'] ?? 0),
-                          icon: Icons.account_balance_wallet_outlined,
-                          accent: C.error)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                      child: StatCard(
-                          title: 'Principal due',
-                          value: money(s['outstandingPrincipal'] ?? 0),
-                          icon: Icons.request_quote_outlined,
-                          accent: C.amber)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: StatCard(
-                          title: 'Late interest due',
-                          value: money(s['outstandingInterest'] ?? 0),
-                          icon: Icons.percent,
-                          accent: C.error)),
+                StatGrid(children: [
+                  StatCard(
+                      title: 'Total flats',
+                      value: '${s['flats'] ?? 0}',
+                      icon: Icons.apartment_outlined),
+                  StatCard(
+                      title: 'Bills generated',
+                      value: '${s['bills'] ?? 0}',
+                      icon: Icons.receipt_long_outlined),
+                  StatCard(
+                      title: 'Paid bills',
+                      value: '${s['paid'] ?? 0}',
+                      icon: Icons.check_circle_outline,
+                      accent: C.green),
+                  StatCard(
+                      title: 'Unpaid bills',
+                      value: '${s['unpaidBills'] ?? 0}',
+                      icon: Icons.pending_actions_outlined,
+                      accent: C.amber),
+                  StatCard(
+                      title: 'Overdue bills',
+                      value: '${s['overdue'] ?? 0}',
+                      icon: Icons.warning_amber_rounded,
+                      accent: C.error),
+                  StatCard(
+                      title: 'Amount billed',
+                      value: money(s['billedAmount'] ?? 0),
+                      icon: Icons.request_quote_outlined),
+                  StatCard(
+                      title: 'Amount collected',
+                      value: money(s['collection'] ?? 0),
+                      icon: Icons.payments_outlined,
+                      accent: C.green),
+                  StatCard(
+                      title: 'Outstanding',
+                      value: money(s['outstandingAmount'] ?? 0),
+                      icon: Icons.account_balance_wallet_outlined,
+                      accent: C.error),
+                  StatCard(
+                      title: 'Principal due',
+                      value: money(s['outstandingPrincipal'] ?? 0),
+                      icon: Icons.request_quote_outlined,
+                      accent: C.amber),
+                  StatCard(
+                      title: 'Late interest due',
+                      value: money(s['outstandingInterest'] ?? 0),
+                      icon: Icons.percent,
+                      accent: C.error),
                 ]),
                 const SizedBox(height: 18),
                 const SectionTitle('Export reports'),

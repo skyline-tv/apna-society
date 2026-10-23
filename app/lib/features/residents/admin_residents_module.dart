@@ -483,24 +483,27 @@ class _AdminProvisionResidentPageState
 
   List<Widget> _formBody() => [
         const FormSectionLabel('Role in this society'),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(
-                value: 'OWNER',
-                label: Text('Owner'),
-                icon: Icon(Icons.home_outlined, size: 18)),
-            ButtonSegment(
-                value: 'TENANT',
-                label: Text('Tenant'),
-                icon: Icon(Icons.person_pin_circle_outlined, size: 18)),
-          ],
-          selected: {role},
-          onSelectionChanged: saving
-              ? null
-              : (s) => setState(() {
-                    role = s.first;
-                    flatId = null;
-                  }),
+        ScaleToWidth(
+          child: SegmentedButton<String>(
+            showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
+            segments: const [
+              ButtonSegment(
+                  value: 'OWNER',
+                  label: Text('Owner'),
+                  icon: Icon(Icons.home_outlined, size: 18)),
+              ButtonSegment(
+                  value: 'TENANT',
+                  label: Text('Tenant'),
+                  icon: Icon(Icons.person_pin_circle_outlined, size: 18)),
+            ],
+            selected: {role},
+            onSelectionChanged: saving
+                ? null
+                : (s) => setState(() {
+                      role = s.first;
+                      flatId = null;
+                    }),
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -1520,9 +1523,10 @@ class _VehicleEditorDialogState extends State<_VehicleEditorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(widget.existing == null ? 'Add vehicle' : 'Edit vehicle'),
-      content: SizedBox(
-        width: 420,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

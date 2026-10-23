@@ -12,6 +12,9 @@ export interface PushMessage {
   androidChannelId?: string;
   priority?: PushPriority;
   collapseKey?: string;
+  /** When true, Android receives a data-only high-priority message (CallStyle is posted by the app). */
+  androidDataOnly?: boolean;
+  ttlSeconds?: number;
 }
 
 export type PushErrorCode =
@@ -125,23 +128,38 @@ class FirebasePushSender implements PushSender {
     const payload = messages.map((message) => {
       const androidChannelId = message.androidChannelId ?? 'general';
       const high = message.priority === 'high';
+      const dataOnly = Boolean(message.androidDataOnly);
+      const ttlSeconds = message.ttlSeconds ?? (dataOnly ? 120 : undefined);
       return {
         token: message.token,
-        notification: {
+        ...(dataOnly
+          ? {}
+          : {
+              notification: {
+                title: message.title,
+                body: message.body,
+              },
+            }),
+        data: {
+          ...message.data,
           title: message.title,
           body: message.body,
         },
-        data: message.data,
         android: {
-          priority: high ? 'high' : 'normal',
+          priority: high || dataOnly ? 'high' : 'normal',
           collapseKey: message.collapseKey,
-          notification: {
-            channelId: androidChannelId,
-            defaultSound: true,
-            defaultVibrateTimings: true,
-            priority: high ? 'high' : 'default',
-            visibility: high ? 'public' : 'private',
-          },
+          ...(ttlSeconds ? { ttl: ttlSeconds * 1000 } : {}),
+          ...(dataOnly
+            ? {}
+            : {
+                notification: {
+                  channelId: androidChannelId,
+                  defaultSound: true,
+                  defaultVibrateTimings: true,
+                  priority: high ? 'high' : 'default',
+                  visibility: high ? 'public' : 'private',
+                },
+              }),
         },
         apns: {
           headers: high

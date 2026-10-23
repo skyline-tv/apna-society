@@ -22,6 +22,7 @@ const ALLOWED_KEYS = new Set([
   'dueDate',
   'channel',
   'priority',
+  'callAction',
   'deepLink',
   'parcelStatus',
   'parcelId',

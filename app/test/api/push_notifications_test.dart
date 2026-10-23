@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:apna_society/api/apna_api.dart';
@@ -39,6 +40,32 @@ void main() {
         NotificationLinkKind.parcel,
       );
       expect(NotificationDeepLink.parse('https://example.com'), isNull);
+    });
+
+    test('incoming visitor call screen copy is call-style', () {
+      final src =
+          File('lib/features/visitors/incoming_visitor_page.dart').readAsStringSync();
+      expect(src.contains('VISITOR AT MAIN GATE'), isTrue);
+      expect(src.contains("'APPROVE'"), isTrue);
+      expect(src.contains("'REJECT'"), isTrue);
+      expect(src.contains('Leave parcel'), isFalse);
+    });
+
+    test('socket visitor events carry walk-in entryMode', () {
+      final event = VisitorEventPayload.fromJson({
+        'visitorId': visitorId,
+        'societyId': societyId,
+        'flatId': flatId,
+        'flatNumberSnapshot': '101',
+        'wingCodeSnapshot': 'A',
+        'visitorName': 'Guest',
+        'visitorType': 'GUEST',
+        'approvalStatus': 'PENDING',
+        'entryStatus': 'NOT_ENTERED',
+        'entryMode': 'WALK_IN',
+      });
+      expect(event.entryMode, 'WALK_IN');
+      expect(event.flatLabel, 'A-101');
     });
 
     test('maps FCM data to the walk-in approval screen', () {

@@ -18,7 +18,7 @@ const RETRY_BACKOFF_MS = [30_000, 120_000, 300_000, 900_000, 1_800_000];
 function channelForType(type: NotificationType, metadata?: Record<string, unknown>): string {
   if (typeof metadata?.channel === 'string' && metadata.channel) return metadata.channel;
   if (type === 'VISITOR_REQUEST' && metadata?.entryMode === 'WALK_IN') {
-    return 'incoming_visitor';
+    return 'incoming_visitor_call';
   }
   if (type === 'BILL_GENERATED' || type === 'BILL_OVERDUE' || type.startsWith('PAYMENT_')) {
     return 'billing';
@@ -118,8 +118,14 @@ export async function deliverPushForNotification(notificationId: string): Promis
     type: notification.type,
     relatedEntityType: notification.relatedEntityType ?? '',
     relatedEntityId: notification.relatedEntityId ?? '',
+    title: notification.title,
+    body: notification.body,
     ...(deepLink ? { deepLink } : {}),
   };
+  const androidChannelId = channelForType(notification.type, metadata);
+  const incomingCall =
+    androidChannelId === 'incoming_visitor_call' ||
+    (notification.type === 'VISITOR_REQUEST' && metadata?.entryMode === 'WALK_IN');
 
   const results = await sender.send(
     tokens.map((row) => ({
@@ -127,9 +133,11 @@ export async function deliverPushForNotification(notificationId: string): Promis
       title: notification.title,
       body: notification.body,
       data,
-      androidChannelId: channelForType(notification.type, metadata),
+      androidChannelId,
       priority: priorityFor(notification.type, metadata),
       collapseKey: notification.idempotencyKey.slice(0, 64),
+      androidDataOnly: incomingCall,
+      ttlSeconds: incomingCall ? 120 : undefined,
     })),
   );
 

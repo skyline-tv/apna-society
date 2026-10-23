@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../api/auth/auth_session.dart';
-import '../../api/auth/home_resolver.dart';
 import '../../api/models/flat_label.dart';
 import '../../app_core.dart';
 import '../../data/local_database.dart' show InviteCreateResult;
 import '../../services/occupancy_access.dart';
 import '../../services/session_store.dart';
 import '../../ui/components.dart';
-import '../notifications/live_notifications_module.dart';
-import '../vehicles/live_vehicles_module.dart';
-import '../vehicles/vehicle_module.dart';
-import '../visitors/live_visitors_module.dart';
+import 'guard_desk.dart';
 import 'voice_visitor_registration.dart';
 
 const kVisitorCategories = [
@@ -66,128 +61,12 @@ String _whatsAppInviteMessage({
 
 // ─── Guard shell ─────────────────────────────────────────────────────────────
 
-class GuardHome extends StatefulWidget {
+class GuardHome extends StatelessWidget {
   const GuardHome({super.key, required this.guard});
   final dynamic guard;
-  @override
-  State<GuardHome> createState() => _GuardHomeState();
-}
-
-class _GuardHomeState extends State<GuardHome> {
-  int tab = 0;
-  int get guardId => widget.guard.read<int>('id');
-
-  static const _titles = ['Gate desk', 'Verify Visitor', 'Inside', 'Account'];
-
-  void refresh() {
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _confirmLogout() async {
-    final ok = await confirmDialog(
-      context,
-      title: 'Log out?',
-      message: 'You will need your username and password to sign in again.',
-      confirmLabel: 'Log out',
-      icon: Icons.logout_rounded,
-    );
-    if (ok) await logout();
-  }
-
-  void _openQueue() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(
-            title: brandAppBarTitle(
-              title: 'Gate queue',
-              subtitle: kSocietyName,
-            ),
-          ),
-          body: const LiveGateVisitorBoardPage(),
-        ),
-      ),
-    );
-  }
-
-  Future<void> logout() async {
-    final session = authSession;
-    if (session != null) {
-      await performLogout(session);
-    } else {
-      await SessionStore.clear();
-    }
-    if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
-  }
 
   @override
-  Widget build(BuildContext context) {
-    final guardName = widget.guard.read<String>('name');
-    final pages = [
-      LiveGuardDashboardPage(
-        guardName: guardName,
-        onNavigate: (i) => setState(() => tab = i),
-        onOpenQueue: _openQueue,
-        headerAction: const LiveNotificationBellButton(onPine: true),
-      ),
-      LiveVerifyVisitorOtpPage(
-        onEntered: () => setState(() => tab = 2),
-      ),
-      const LiveInsideVisitorsPage(),
-      GuardProfilePage(
-          guard: widget.guard, onLogout: _confirmLogout, guardId: guardId),
-    ];
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: tab == 0 ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-      child: PopScope(
-        canPop: tab == 0,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) setState(() => tab = 0);
-        },
-        child: Scaffold(
-          appBar: tab == 0
-              ? null
-              : AppBar(
-                  title: brandAppBarTitle(
-                      title: _titles[tab], subtitle: kSocietyName),
-                  actions: [
-                    const LiveNotificationBellButton(),
-                    IconButton(
-                      tooltip: 'Logout',
-                      onPressed: _confirmLogout,
-                      icon: const Icon(Icons.logout_rounded),
-                    ),
-                  ],
-                ),
-          body: IndexedStack(index: tab, children: pages),
-          bottomNavigationBar: AppBottomNav(
-            selectedIndex: tab,
-            onDestinationSelected: (v) => setState(() => tab = v),
-            destinations: const [
-              NavigationDestination(
-                  icon: Icon(Icons.sensor_door_outlined),
-                  selectedIcon: Icon(Icons.sensor_door_rounded),
-                  label: 'Desk'),
-              NavigationDestination(
-                  icon: Icon(Icons.pin_outlined),
-                  selectedIcon: Icon(Icons.pin_rounded),
-                  label: 'Verify'),
-              NavigationDestination(
-                  icon: Icon(Icons.meeting_room_outlined),
-                  selectedIcon: Icon(Icons.meeting_room_rounded),
-                  label: 'Inside'),
-              NavigationDestination(
-                  icon: Icon(Icons.person_outline_rounded),
-                  selectedIcon: Icon(Icons.person_rounded),
-                  label: 'Account'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => GuardDeskHome(guard: guard);
 }
 
 class GuardDashboardPage extends StatelessWidget {
@@ -370,20 +249,6 @@ class GuardDashboardPage extends StatelessWidget {
                     icon: Icons.pin_outlined,
                     label: 'Verify Visitor OTP',
                     onTap: () => onNavigate(1)),
-                QuickActionTile(
-                    icon: Icons.logout_outlined,
-                    label: 'Visitor Exit',
-                    onTap: () => onNavigate(3)),
-                QuickActionTile(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Vehicle Verification',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => VehicleVerificationPage(
-                            guardId: guard.read<int>('id'))),
-                  ),
-                ),
                 const SizedBox(height: 12),
                 const InfoNote(
                   'Same-device demo: owner approval notifications appear when you switch to the owner account on this device. Production needs a shared backend and push notifications.',
@@ -430,19 +295,6 @@ class GuardProfilePage extends StatelessWidget {
               icon: Icons.apartment_outlined,
               title: 'Society',
               value: kSocietyName),
-        ]),
-        SettingsGroup(title: 'Gate tools', children: [
-          SettingsRow(
-            icon: Icons.directions_car_outlined,
-            title: 'Vehicle gate',
-            value: 'Log vehicle entry and exit',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LiveGuardVehiclesPage(),
-              ),
-            ),
-          ),
         ]),
         const SizedBox(height: 8),
         SettingsGroup(title: 'Session', children: [

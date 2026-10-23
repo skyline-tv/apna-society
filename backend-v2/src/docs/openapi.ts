@@ -1174,6 +1174,24 @@ export function buildOpenApiSpec() {
             responses: { 200: { description: 'Released' }, ...errorResponses },
           },
         },
+        [`${API_PREFIX}/guard/vehicles/lookup`]: {
+          get: {
+            tags: ['Guard Vehicles'],
+            summary: 'Check whether a plate is a registered society vehicle',
+            description:
+              'Returns only { registrationNumber, registered }. Never includes owner, flat, or contact details.',
+            security: adminSecurity,
+            parameters: [
+              {
+                name: 'registrationNumber',
+                in: 'query',
+                required: true,
+                schema: { type: 'string' },
+              },
+            ],
+            responses: { 200: { description: 'Lookup result' }, ...errorResponses },
+          },
+        },
         [`${API_PREFIX}/guard/vehicles/entry`]: {
           post: {
             tags: ['Guard Vehicles'],

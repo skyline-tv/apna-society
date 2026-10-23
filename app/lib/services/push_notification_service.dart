@@ -1,18 +1,21 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../api/auth/app_role.dart';
 import '../api/auth/auth_session.dart';
+import 'incoming_visitor_call.dart';
 import 'notification_deep_link.dart';
 
 /// Global navigator used for notification deep links across app states.
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-const _incomingChannelId = 'incoming_visitor';
+const _incomingChannelId = 'incoming_visitor_call';
 const _visitorsChannelId = 'visitors';
 const _billingChannelId = 'billing';
 const _noticesChannelId = 'notices';
@@ -66,13 +69,24 @@ class PushNotificationService {
     if (!session.isAuthenticated) return;
     await _ensureFirebase();
     if (!_firebaseReady) return;
+    if (session.appRole == AppRole.owner || session.appRole == AppRole.tenant) {
+      IncomingVisitorCallCoordinator.instance.onOpenLink = openDeepLink;
+      IncomingVisitorCallCoordinator.instance.onIncomingClosed =
+          clearOpenedVisitorApproval;
+    }
     await _ensureHandlers();
     await _requestPermissionAndRegister(session);
     await _consumeLaunchMessage();
+    if (session.appRole == AppRole.owner || session.appRole == AppRole.tenant) {
+      await IncomingVisitorCallCoordinator.instance.bind();
+    }
     flushPending();
   }
 
   Future<void> stop() async {
+    IncomingVisitorCallCoordinator.instance.onOpenLink = null;
+    IncomingVisitorCallCoordinator.instance.onIncomingClosed = null;
+    await IncomingVisitorCallCoordinator.instance.unbind();
     await _tokenSub?.cancel();
     await _foregroundSub?.cancel();
     await _openedSub?.cancel();
@@ -106,6 +120,12 @@ class PushNotificationService {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       openDeepLink(link);
     });
+  }
+
+  void clearOpenedVisitorApproval(String visitorId) {
+    if (_lastOpenedVisitorApprovalId == visitorId) {
+      _lastOpenedVisitorApprovalId = null;
+    }
   }
 
   bool openDeepLink(NotificationDeepLink link) {
@@ -187,13 +207,16 @@ class PushNotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
     await android.createNotificationChannel(
-      const AndroidNotificationChannel(
+      AndroidNotificationChannel(
         _incomingChannelId,
         'Incoming visitors',
         description: 'Call-style visitor approval requests',
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
+        sound: const RawResourceAndroidNotificationSound('incoming_visitor'),
+        audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+        vibrationPattern: Int64List.fromList([0, 500, 400, 500]),
       ),
     );
     await android.createNotificationChannel(
@@ -294,12 +317,11 @@ class PushNotificationService {
       'FCM foreground message id=${message.messageId} type=${message.data['type']}',
     );
     final data = _stringData(message.data);
+    IncomingVisitorCallCoordinator.instance.handleFcmData(data);
     final link = NotificationDeepLink.fromFcmData(data);
     final incoming = link?.kind == NotificationLinkKind.visitorApproval;
-    if (incoming && link != null) {
-      openDeepLink(link);
-    }
-    await _showLocal(message, data, incoming: incoming);
+    if (incoming || data['callAction'] == 'stop') return;
+    await _showLocal(message, data, incoming: false);
   }
 
   Future<void> _showLocal(

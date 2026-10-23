@@ -1,13 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/models/visitor_models.dart';
 import '../../api/repositories/live_repositories.dart';
+import '../../api/socket/visitor_socket.dart';
+import '../../services/incoming_visitor_call.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
-import '../parcels/live_parcels_module.dart';
 import 'visitor_messages.dart';
 
 /// Call-style resident screen for walk-in visitors waiting at the gate.
@@ -22,15 +24,22 @@ class IncomingVisitorPage extends StatefulWidget {
 
 class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
   late Future<Visitor> _future = _load();
+  StreamSubscription<VisitorEventPayload>? _sub;
   bool _busy = false;
   Timer? _tick;
 
   Future<Visitor> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api)
+    final visitor = await ensureLiveRepositories(session.api)
         .visitors
         .residentVisitor(widget.visitorId, force: force);
+    if (visitor.approvalStatus != 'PENDING') {
+      unawaited(
+        IncomingVisitorCallCoordinator.instance.stopIncoming(visitor.id),
+      );
+    }
+    return visitor;
   }
 
   @override
@@ -39,11 +48,25 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    _sub = VisitorSocket.instance.events.listen((event) {
+      if (event.visitorId != widget.visitorId) return;
+      if (!mounted) return;
+      setState(() => _future = _load(force: true));
+      if (event.approvalStatus == 'APPROVED' ||
+          event.approvalStatus == 'REJECTED' ||
+          event.approvalStatus == 'EXPIRED') {
+        unawaited(
+          IncomingVisitorCallCoordinator.instance.stopIncoming(widget.visitorId),
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    _sub?.cancel();
+    IncomingVisitorCallCoordinator.instance.noteClosed(widget.visitorId);
     super.dispose();
   }
 
@@ -56,7 +79,7 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
     if (expires == null) return 'Waiting for your response';
     final remaining = expires.difference(DateTime.now());
     if (remaining.isNegative || v.approvalStatus == 'EXPIRED') {
-      return 'This request has expired. Keep the visitor outside.';
+      return 'No response. The request stays pending for later review.';
     }
     final seconds = remaining.inSeconds;
     final mm = (seconds ~/ 60).toString().padLeft(2, '0');
@@ -75,12 +98,11 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
       if (session == null) throw StateError('Not signed in.');
       final updated =
           await ensureLiveRepositories(session.api).visitors.approve(v.id);
+      await IncomingVisitorCallCoordinator.instance.stopIncoming(v.id);
       if (!mounted) return;
       showSuccessSnack(
         context,
-        v.isWalkIn
-            ? '${updated.visitorName} approved. The guard must confirm actual entry.'
-            : '${updated.visitorName} approved. Entry OTP sent by email.',
+        '${updated.visitorName} approved. The guard must confirm they entered.',
       );
       _reload();
     } catch (e) {
@@ -92,67 +114,26 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
     }
   }
 
-  Future<void> _deny(Visitor v) async {
-    if (_busy) return;
-    final reason = await promptTextDialog(
-      context,
-      title: 'Deny ${v.visitorName}?',
-      message: 'The guard will be notified. The visitor stays outside.',
-      label: 'Reason (optional)',
-      confirmLabel: 'Deny',
-      destructive: true,
-      maxLines: 2,
-    );
-    if (reason == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final session = authSession;
-      if (session == null) throw StateError('Not signed in.');
-      await ensureLiveRepositories(session.api).visitors.reject(
-            v.id,
-            reason: reason.isEmpty ? null : reason,
-          );
-      if (!mounted) return;
-      showAppSnack(context, 'Visitor denied', tone: SnackTone.warning);
-      _reload();
-    } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, visitorErrorMessage(e));
-      _reload();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _leaveParcel(Visitor v) async {
+  Future<void> _reject(Visitor v) async {
     if (_busy) return;
     final ok = await confirmDialog(
       context,
-      title: 'Leave a parcel?',
-      message:
-          'This authorizes parcel handover only. It does not allow ${v.visitorName} to enter.',
-      confirmLabel: 'Authorize parcel',
-      icon: Icons.inventory_2_outlined,
+      title: 'Reject ${v.visitorName}?',
+      message: 'The guard will be told immediately. The visitor stays outside.',
+      confirmLabel: 'REJECT',
+      destructive: true,
+      icon: Icons.close_rounded,
     );
     if (!ok || !mounted) return;
     setState(() => _busy = true);
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
-      final result =
-          await ensureLiveRepositories(session.api).visitors.leaveParcel(v.id);
+      await ensureLiveRepositories(session.api).visitors.reject(v.id);
+      await IncomingVisitorCallCoordinator.instance.stopIncoming(v.id);
       if (!mounted) return;
-      showSuccessSnack(
-        context,
-        'Parcel handover authorized. The guard will accept the parcel at the gate.',
-      );
-      await Navigator.pushReplacement(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              LiveResidentParcelDetailPage(parcelId: result.parcel.id),
-        ),
-      );
+      showAppSnack(context, 'Visitor rejected', tone: SnackTone.warning);
+      _reload();
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, visitorErrorMessage(e));
@@ -164,151 +145,185 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Visitor>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: FutureBuilder<Visitor>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            return const Scaffold(
+              backgroundColor: Color(0xFF102033),
+              body: LoadingView(label: 'Visitor at the gate…'),
+            );
+          }
+          if (snapshot.hasError) {
+            return Scaffold(
+              appBar: AppBar(title: const Text('Incoming visitor')),
+              body: LoadFailure(error: snapshot.error!, onRetry: _reload),
+            );
+          }
+          final v = snapshot.data!;
+          final canAct = _canAct(v);
           return Scaffold(
-            backgroundColor: C.blueDark,
-            appBar: AppBar(
-              backgroundColor: C.blueDark,
-              foregroundColor: Colors.white,
-              title: const Text('Incoming visitor'),
-            ),
-            body: const LoadingView(label: 'Loading visitor…'),
-          );
-        }
-        if (snapshot.hasError) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Incoming visitor')),
-            body: LoadFailure(error: snapshot.error!, onRetry: _reload),
-          );
-        }
-        final v = snapshot.data!;
-        final canAct = _canAct(v);
-        return Scaffold(
-          backgroundColor: C.bg,
-          appBar: AppBar(
-            backgroundColor: C.blueDark,
-            foregroundColor: Colors.white,
-            title: const Text('Incoming visitor'),
-          ),
-          body: Column(children: [
-            Container(
-              width: double.infinity,
-              color: C.blueDark,
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(children: [
-                const AppAvatar(
-                  icon: Icons.person_outline_rounded,
-                  color: Colors.white,
-                  size: 72,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  v.visitorName,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${v.flatLabel} · ${visitorTypeLabel(v.visitorType)}',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _expiryLabel(v),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: canAct ? const Color(0xFFFFD56A) : Colors.white70,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ]),
-            ),
-            Expanded(
-              child: ListView(
-                padding: Sp.pagePadding,
-                children: [
-                  DetailCard(title: 'Visitor', children: [
-                    DetailRow('Name', v.visitorName),
-                    if (v.visitorPhone.trim().isNotEmpty)
-                      DetailRow('Mobile', v.visitorPhone),
-                    DetailRow('Type', visitorTypeLabel(v.visitorType)),
-                    DetailRow('Purpose', v.purpose),
-                    DetailRow('Flat', v.flatLabel),
-                    DetailRow('Requested', fmtIsoDateTime(v.createdAt)),
-                    if (v.pendingExpiresAt != null)
-                      DetailRow(
-                          'Expires', fmtIsoDateTime(v.pendingExpiresAt)),
-                    if (v.requestState != null)
-                      DetailRow(
-                          'Status', requestStateLabel(v.requestState!)),
-                  ]),
-                  if (!canAct)
-                    InfoNote(
-                      v.approvalStatus == 'EXPIRED'
-                          ? 'This request expired. The visitor must remain outside.'
-                          : v.resolution == 'PARCEL'
-                              ? 'Parcel handover was authorized. Visitor entry is not allowed.'
-                              : 'This request is no longer waiting for a decision.',
-                      tone: v.approvalStatus == 'APPROVED'
-                          ? NoteTone.success
-                          : NoteTone.warning,
+            backgroundColor: const Color(0xFF102033),
+            body: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final pad = constraints.maxWidth < 360 ? 16.0 : 24.0;
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(pad, 20, pad, 24),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: (constraints.maxHeight - 44).clamp(0, 4000),
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: [
+                            const Text(
+                              'VISITOR AT MAIN GATE',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            const CircleAvatar(
+                              radius: 48,
+                              backgroundColor: Colors.white24,
+                              child: Icon(
+                                Icons.person_rounded,
+                                size: 56,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 22),
+                            Text(
+                              v.visitorName,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Flat ${v.flatLabel}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              v.purpose,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              _expiryLabel(v),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: canAct
+                                    ? const Color(0xFFFFD56A)
+                                    : Colors.white70,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                            if (!canAct) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                v.approvalStatus == 'APPROVED'
+                                    ? 'Approved. The guard must confirm they entered.'
+                                    : v.approvalStatus == 'REJECTED'
+                                        ? 'Rejected. The visitor stays outside.'
+                                        : v.approvalStatus == 'EXPIRED'
+                                            ? 'No one answered. Review this request from Visitors if needed.'
+                                            : 'This request is no longer waiting.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const Spacer(),
+                            if (canAct) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                height: 64,
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: C.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  onPressed: _busy ? null : () => _approve(v),
+                                  child: Text(
+                                    _busy ? 'Please wait…' : 'APPROVE',
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 64,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: const BorderSide(
+                                        color: Colors.white70, width: 2),
+                                  ),
+                                  onPressed: _busy ? null : () => _reject(v),
+                                  child: const Text(
+                                    'REJECT',
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else
+                              SizedBox(
+                                width: double.infinity,
+                                height: 56,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.white54),
+                                  ),
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Close'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                ],
+                  );
+                },
               ),
             ),
-            if (canAct)
-              BottomActionBar(children: [
-                PrimaryButton(
-                  label: 'Approve entry',
-                  icon: Icons.check_rounded,
-                  color: C.green,
-                  busy: _busy,
-                  onPressed: () => _approve(v),
-                ),
-                const SizedBox(height: 8),
-                SecondaryButton(
-                  label: 'Deny',
-                  icon: Icons.close_rounded,
-                  destructive: true,
-                  onPressed: _busy ? null : () => _deny(v),
-                ),
-                const SizedBox(height: 8),
-                SecondaryButton(
-                  label: 'Leave parcel',
-                  icon: Icons.inventory_2_outlined,
-                  onPressed: _busy ? null : () => _leaveParcel(v),
-                ),
-              ]),
-          ]),
-        );
-      },
+          );
+        },
+      ),
     );
-  }
-}
-
-String requestStateLabel(String state) {
-  switch (state) {
-    case 'PENDING':
-      return 'Pending';
-    case 'APPROVED':
-      return 'Approved';
-    case 'DENIED':
-      return 'Denied';
-    case 'EXPIRED':
-      return 'Expired';
-    case 'ENTRY_COMPLETED':
-      return 'Entry completed';
-    case 'CANCELLED':
-      return 'Cancelled';
-    default:
-      return state;
   }
 }

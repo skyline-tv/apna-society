@@ -302,6 +302,18 @@ class VehicleApi {
 
   // ─── Guard gate logs ─────────────────────────────────────────────────────
 
+  Future<VehicleLookup> lookup({
+    required String registrationNumber,
+    String? societyId,
+  }) {
+    return _client.get(
+      '$_guard/vehicles/lookup',
+      query: {'registrationNumber': registrationNumber},
+      societyId: societyId,
+      decode: VehicleLookup.fromJson,
+    );
+  }
+
   Future<VehicleLog> recordEntry({
     required String registrationNumber,
     String? vehicleType,

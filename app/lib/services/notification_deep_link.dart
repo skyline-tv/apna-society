@@ -6,6 +6,7 @@ import '../api/models/notification_models.dart';
 import '../features/announcements/live_announcements_module.dart';
 import '../features/billing/live_billing_module.dart';
 import '../features/parcels/live_parcels_module.dart';
+import '../features/security/guard_desk.dart';
 import '../features/visitors/incoming_visitor_page.dart';
 import '../features/visitors/live_visitors_module.dart';
 
@@ -132,7 +133,7 @@ Widget? widgetForNotificationDeepLink(NotificationDeepLink link) {
         case AppRole.tenant:
           return LiveResidentVisitorDetailPage(visitorId: id);
         case AppRole.guard:
-          return LiveGuardVisitorDetailPage(visitorId: id);
+          return GuardVisitorStatusPage(visitorId: id);
         case AppRole.admin:
           return LiveAdminVisitorDetailPage(visitorId: id);
       }
@@ -152,7 +153,7 @@ Widget? widgetForNotificationDeepLink(NotificationDeepLink link) {
         case AppRole.tenant:
           return LiveResidentParcelDetailPage(parcelId: id);
         case AppRole.guard:
-          return LiveGuardParcelDetailPage(parcelId: id);
+          return null;
         case AppRole.admin:
           return LiveResidentParcelDetailPage(parcelId: id);
       }

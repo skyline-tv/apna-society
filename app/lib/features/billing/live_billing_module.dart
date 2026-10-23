@@ -637,6 +637,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
+          scrollable: true,
           icon: const Icon(Icons.check_circle_outline_rounded,
               color: C.green, size: 32),
           title: const Text('Bills generated'),
@@ -796,14 +797,16 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
               ),
               const SizedBox(height: 16),
               const FormSectionLabel('Months covered'),
-              SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 1, label: Text('1 month')),
-                  ButtonSegment(value: 3, label: Text('3 months')),
-                ],
-                selected: {months},
-                onSelectionChanged:
-                    busy ? null : (s) => setState(() => months = s.first),
+              ScaleToWidth(
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('1 month')),
+                    ButtonSegment(value: 3, label: Text('3 months')),
+                  ],
+                  selected: {months},
+                  onSelectionChanged:
+                      busy ? null : (s) => setState(() => months = s.first),
+                ),
               ),
               const SizedBox(height: 12),
               Text('Selected: $_periodLabel', style: T.secondary),
@@ -935,6 +938,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
+          scrollable: true,
           title: const Text('Adjust bill'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(

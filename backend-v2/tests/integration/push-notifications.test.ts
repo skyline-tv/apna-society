@@ -9,6 +9,7 @@ import { NotificationModel } from '../../src/modules/notifications/models/notifi
 import { DeviceTokenModel } from '../../src/modules/notifications/models/device-token.model';
 import { createNotification } from '../../src/modules/notifications/services/notification.service';
 import {
+  clearCapturedPushMessages,
   getCapturedPushMessages,
   setPushSenderForTests,
   type PushSender,
@@ -141,6 +142,49 @@ describe('Device tokens and push delivery', () => {
       }),
     ).toBe(1);
     expect(created.notification.metadata?.otp).toBeUndefined();
+  });
+
+  it('sends data-only high-priority Android FCM for walk-in visitor requests', async () => {
+    clearCapturedPushMessages();
+    const setup = await setupOwner('wcall');
+    await request(app)
+      .post('/api/v1/me/device-tokens')
+      .set('Authorization', `Bearer ${setup.token}`)
+      .send({ token: 'fcm-token-walkin-call-iiiiiiii', platform: 'android' });
+
+    const created = await createNotification({
+      societyId: setup.societyId,
+      recipientUserId: String(setup.owner._id),
+      type: 'VISITOR_REQUEST',
+      title: 'Incoming visitor',
+      body: 'Guest is at the gate for A-101',
+      relatedEntityType: 'VisitorLog',
+      relatedEntityId: 'bbbbbbbbbbbbbbbbbbbbbbbb',
+      idempotencyKey: 'VISITOR_REQUEST:bbbbbbbbbbbbbbbbbbbbbbbb',
+      metadata: {
+        visitorName: 'Guest',
+        purpose: 'Family visit',
+        flatLabel: 'A-101',
+        entryMode: 'WALK_IN',
+        priority: 'high',
+        channel: 'incoming_visitor_call',
+        otp: '999999',
+      },
+      deliverPush: false,
+    });
+    expect(created.notification.metadata?.otp).toBeUndefined();
+    await deliverPushForNotification(created.notification.id);
+    const messages = getCapturedPushMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.androidDataOnly).toBe(true);
+    expect(messages[0]?.priority).toBe('high');
+    expect(messages[0]?.androidChannelId).toBe('incoming_visitor_call');
+    expect(messages[0]?.ttlSeconds).toBe(120);
+    expect(messages[0]?.data.entryMode).toBe('WALK_IN');
+    expect(messages[0]?.data.visitorName).toBe('Guest');
+    expect(messages[0]?.data.purpose).toBe('Family visit');
+    expect(messages[0]?.data.title).toBe('Incoming visitor');
+    expect(JSON.stringify(messages[0]?.data)).not.toMatch(/999999|otp/i);
   });
 
   it('deactivates unregistered FCM tokens', async () => {

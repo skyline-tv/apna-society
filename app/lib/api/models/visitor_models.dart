@@ -357,6 +357,7 @@ class VisitorEventPayload {
     required this.approvalStatus,
     required this.entryStatus,
     this.assignedResidentUserId,
+    this.entryMode = 'OTP',
   });
 
   final String visitorId;
@@ -369,6 +370,10 @@ class VisitorEventPayload {
   final String approvalStatus;
   final String entryStatus;
   final String? assignedResidentUserId;
+  final String entryMode;
+
+  String get flatLabel =>
+      formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
 
   factory VisitorEventPayload.fromJson(Object? data) {
     final json = requireMap(data, 'visitor event');
@@ -384,6 +389,7 @@ class VisitorEventPayload {
       entryStatus: requireString(json, 'entryStatus'),
       assignedResidentUserId:
           optionalString(json, 'assignedResidentUserId') ?? '',
+      entryMode: optionalString(json, 'entryMode') ?? 'OTP',
     );
   }
 }

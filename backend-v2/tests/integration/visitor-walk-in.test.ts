@@ -121,6 +121,12 @@ describe('Visitor without OTP', () => {
       relatedEntityId: visitorId,
     }).lean();
     expect(guardNote).toBeTruthy();
+    const ownerStop = await NotificationModel.findOne({
+      recipientUserId: setup.owner._id,
+      type: 'VISITOR_APPROVED',
+      relatedEntityId: visitorId,
+    }).lean();
+    expect(ownerStop?.metadata).toMatchObject({ entryMode: 'WALK_IN', callAction: 'stop' });
 
     const entered = await request(app)
       .post(`/api/v1/guard/visitors/${visitorId}/confirm-entry`)

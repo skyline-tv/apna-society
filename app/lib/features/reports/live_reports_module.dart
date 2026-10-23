@@ -431,16 +431,20 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(moneyPaise(f.outstandingPrincipalPaise),
-                            style: T.money.copyWith(fontSize: 13)),
-                        if (f.accruedInterestPaise > 0)
-                          Text(
-                              '+${moneyPaise(f.accruedInterestPaise)} interest',
-                              style: T.caption),
-                      ],
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(moneyPaise(f.outstandingPrincipalPaise),
+                              style: T.money.copyWith(fontSize: 13),
+                              textAlign: TextAlign.end),
+                          if (f.accruedInterestPaise > 0)
+                            Text(
+                                '+${moneyPaise(f.accruedInterestPaise)} interest',
+                                style: T.caption,
+                                textAlign: TextAlign.end),
+                        ],
+                      ),
                     ),
                   ]),
                 );

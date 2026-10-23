@@ -5,11 +5,13 @@ import {
   guardListVehicleLogsHandler,
   guardVehicleEntryHandler,
   guardVehicleExitHandler,
+  guardVehicleLookupHandler,
 } from '../controllers/vehicle-log.controller';
 import {
   listVehicleLogsQuerySchema,
   vehicleEntrySchema,
   vehicleExitSchema,
+  vehicleLookupQuerySchema,
 } from '../validators/vehicle.validators';
 
 /**
@@ -17,6 +19,11 @@ import {
  */
 const router = Router();
 
+router.get(
+  '/vehicles/lookup',
+  validateQuery(vehicleLookupQuerySchema),
+  asyncHandler(guardVehicleLookupHandler),
+);
 router.post(
   '/vehicles/entry',
   validateBody(vehicleEntrySchema),

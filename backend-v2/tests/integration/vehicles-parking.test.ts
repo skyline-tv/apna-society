@@ -635,3 +635,41 @@ describe('Guard vehicle logs', () => {
     );
   });
 });
+
+describe('Guard vehicle lookup', () => {
+  it('tells the guard only whether a plate is a building vehicle', async () => {
+    const setup = await setupSociety('vlook');
+    const created = await adminRegisterVehicle(setup.ctx.token, {
+      flatId: setup.ownerFlatId,
+      registeredUserId: String(setup.owner._id),
+      vehicleType: 'FOUR_WHEELER',
+      registrationNumber: 'MH12XY9999',
+      make: 'Honda',
+    });
+    expect(created.status).toBe(201);
+
+    const hit = await request(app)
+      .get('/api/v1/guard/vehicles/lookup')
+      .set('Authorization', `Bearer ${setup.guardToken}`)
+      .query({ registrationNumber: 'mh12 xy-9999' });
+    expect(hit.status).toBe(200);
+    expect(hit.body.data.registered).toBe(true);
+    expect(hit.body.data.registrationNumber).toBe('MH12XY9999');
+    expect(JSON.stringify(hit.body)).not.toMatch(
+      /owner|tenant|email|phone|flatId|registeredUser|Honda|make|model/i,
+    );
+
+    const miss = await request(app)
+      .get('/api/v1/guard/vehicles/lookup')
+      .set('Authorization', `Bearer ${setup.guardToken}`)
+      .query({ registrationNumber: 'MH12ZZ0001' });
+    expect(miss.status).toBe(200);
+    expect(miss.body.data.registered).toBe(false);
+
+    const ownerDenied = await request(app)
+      .get('/api/v1/guard/vehicles/lookup')
+      .set('Authorization', `Bearer ${setup.ownerToken}`)
+      .query({ registrationNumber: 'MH12XY9999' });
+    expect(ownerDenied.status).toBe(403);
+  });
+});

@@ -274,3 +274,26 @@ export async function listVehicleLogs(
     },
   };
 }
+
+/** Guard vehicle check: registered or not. Never returns owner, flat, or contact fields. */
+export async function lookupRegisteredVehicle(societyId: string, raw: string) {
+  let registrationNumber: string;
+  try {
+    registrationNumber = assertValidRegistrationNumber(raw);
+  } catch {
+    throw badRequest('Invalid Indian vehicle registration number', 'INVALID_REGISTRATION_NUMBER');
+  }
+
+  const registered = await VehicleModel.findOne({
+    societyId: parseObjectId(societyId, 'societyId'),
+    registrationNumber,
+    isActive: true,
+  })
+    .select('_id')
+    .lean();
+
+  return {
+    registrationNumber,
+    registered: Boolean(registered),
+  };
+}

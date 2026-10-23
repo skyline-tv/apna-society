@@ -363,6 +363,10 @@ class VehicleRepository {
 
   // ─── Guard ───────────────────────────────────────────────────────────────
 
+  Future<VehicleLookup> lookup({required String registrationNumber}) {
+    return _api.lookup(registrationNumber: registrationNumber);
+  }
+
   Future<VehicleLog> recordEntry({
     required String registrationNumber,
     String? vehicleType,

@@ -41,6 +41,8 @@ String visitorErrorMessage(Object error) {
         return 'Parcel authorization cannot be used for visitor entry.';
       case 'RATE_LIMITED':
         return 'Too many OTP attempts. Wait and try again.';
+      case 'INVALID_REGISTRATION_NUMBER':
+        return 'Enter a valid vehicle number.';
       case 'FORBIDDEN_ROLE':
         return 'You do not have access to this visitor action.';
       default:

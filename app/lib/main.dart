@@ -122,6 +122,18 @@ class ApnaSocietyApp extends StatelessWidget {
         navigatorKey: appNavigatorKey,
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
+        builder: (context, child) {
+          final mq = MediaQuery.of(context);
+          return MediaQuery(
+            data: mq.copyWith(
+              textScaler: mq.textScaler.clamp(
+                minScaleFactor: 0.9,
+                maxScaleFactor: 1.3,
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const AppBootstrap(),
         routes: {
           '/login': (_) => const LoginScreen(),
@@ -455,6 +467,7 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         icon: const Icon(Icons.lock_reset_rounded, color: C.blue),
         title: const Text('Forgot password?'),
         content: const Text(
@@ -479,8 +492,10 @@ class _LoginScreenState extends State<LoginScreen> {
               child: SingleChildScrollView(
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                  vertical: 24,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Column(
@@ -753,8 +768,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           child: SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                  vertical: 24,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Column(
@@ -3610,21 +3627,24 @@ class _FlatEditorPageState extends State<FlatEditorPage> {
                 'Owner Occupied: owner has full resident access. Tenant Occupied: owner keeps financial access only; the active tenant handles visitors and residential features.',
               ),
               const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                      value: kOccupancyOwnerOccupied,
-                      label: Text('Owner Occupied'),
-                      icon: Icon(Icons.home_outlined)),
-                  ButtonSegment(
-                      value: kOccupancyTenantOccupied,
-                      label: Text('Tenant Occupied'),
-                      icon: Icon(Icons.person_pin_circle_outlined)),
-                ],
-                selected: {occupancyType},
-                onSelectionChanged: saving
-                    ? null
-                    : (s) => setState(() => occupancyType = s.first),
+              ScaleToWidth(
+                child: SegmentedButton<String>(
+                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
+                  segments: const [
+                    ButtonSegment(
+                        value: kOccupancyOwnerOccupied,
+                        label: Text('Owner Occupied'),
+                        icon: Icon(Icons.home_outlined)),
+                    ButtonSegment(
+                        value: kOccupancyTenantOccupied,
+                        label: Text('Tenant Occupied'),
+                        icon: Icon(Icons.person_pin_circle_outlined)),
+                  ],
+                  selected: {occupancyType},
+                  onSelectionChanged: saving
+                      ? null
+                      : (s) => setState(() => occupancyType = s.first),
+                ),
               ),
               if (occupancyType == kOccupancyTenantOccupied) ...[
                 const SizedBox(height: 14),
@@ -4960,6 +4980,7 @@ Future<void> _updateChequeStatusSheet(
   final choice = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
+    useSafeArea: true,
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),

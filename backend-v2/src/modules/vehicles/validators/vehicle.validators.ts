@@ -174,6 +174,10 @@ export const vehicleExitSchema = z
     message: 'logId or registrationNumber is required',
   });
 
+export const vehicleLookupQuerySchema = z.object({
+  registrationNumber: z.string().trim().min(6).max(20),
+});
+
 export const listVehicleLogsQuerySchema = z.object({
   status: z.enum(VEHICLE_LOG_STATUSES).optional(),
   registrationNumber: z.string().trim().max(20).optional(),

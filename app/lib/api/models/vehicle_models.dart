@@ -35,6 +35,25 @@ bool isValidIndianRegistrationNumber(String normalized) {
   return stateSeries.hasMatch(normalized) || bharatSeries.hasMatch(normalized);
 }
 
+/// Guard vehicle check. Never includes owner or resident details.
+class VehicleLookup {
+  const VehicleLookup({
+    required this.registrationNumber,
+    required this.registered,
+  });
+
+  final String registrationNumber;
+  final bool registered;
+
+  factory VehicleLookup.fromJson(Object? data) {
+    final json = requireMap(data, 'vehicle lookup');
+    return VehicleLookup(
+      registrationNumber: requireString(json, 'registrationNumber'),
+      registered: requireBool(json, 'registered'),
+    );
+  }
+}
+
 class Vehicle {
   const Vehicle({
     required this.id,

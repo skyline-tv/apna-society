@@ -1461,22 +1461,25 @@ class _LiveAdminComplaintDetailPageState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                        value: 'INTERNAL',
-                        label: Text('Internal'),
-                        icon: Icon(Icons.badge_outlined, size: 18)),
-                    ButtonSegment(
-                        value: 'EXTERNAL',
-                        label: Text('External'),
-                        icon: Icon(Icons.handyman_outlined, size: 18)),
-                  ],
-                  selected: {type},
-                  onSelectionChanged: (s) => setLocal(() {
-                    type = s.first;
-                    localError = null;
-                  }),
+                ScaleToWidth(
+                  child: SegmentedButton<String>(
+                    showSelectedIcon: MediaQuery.sizeOf(ctx).width >= 400,
+                    segments: const [
+                      ButtonSegment(
+                          value: 'INTERNAL',
+                          label: Text('Internal'),
+                          icon: Icon(Icons.badge_outlined, size: 18)),
+                      ButtonSegment(
+                          value: 'EXTERNAL',
+                          label: Text('External'),
+                          icon: Icon(Icons.handyman_outlined, size: 18)),
+                    ],
+                    selected: {type},
+                    onSelectionChanged: (s) => setLocal(() {
+                      type = s.first;
+                      localError = null;
+                    }),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 if (type == 'INTERNAL')

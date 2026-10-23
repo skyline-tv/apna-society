@@ -1477,35 +1477,42 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
                     : (v) => setState(() => _category = v ?? _category),
               ),
               const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: [
-                  for (final p in kAnnouncementPriorities)
-                    ButtonSegment(value: p, label: Text(_priorityLabel(p))),
-                ],
-                selected: {_priority},
-                onSelectionChanged: _submitting
-                    ? null
-                    : (s) => setState(() => _priority = s.first),
+              ScaleToWidth(
+                child: SegmentedButton<String>(
+                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
+                  segments: [
+                    for (final p in kAnnouncementPriorities)
+                      ButtonSegment(value: p, label: Text(_priorityLabel(p))),
+                  ],
+                  selected: {_priority},
+                  onSelectionChanged: _submitting
+                      ? null
+                      : (s) => setState(() => _priority = s.first),
+                ),
               ),
               const SizedBox(height: 20),
               const FormSectionLabel('Audience'),
-              SegmentedButton<String>(
-                segments: [
-                  for (final a in kAudienceTypes)
-                    ButtonSegment(value: a, label: Text(audienceTypeLabel(a))),
-                ],
-                selected: {_audience},
-                onSelectionChanged: _submitting
-                    ? null
-                    : (s) {
-                        final next = s.first;
-                        setState(() => _audience = next);
-                        if (next == 'SELECTED_FLATS' &&
-                            _flatPicker.allFlats.isEmpty &&
-                            !_loadingFlats) {
-                          _loadAllFlats();
-                        }
-                      },
+              ScaleToWidth(
+                child: SegmentedButton<String>(
+                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
+                  segments: [
+                    for (final a in kAudienceTypes)
+                      ButtonSegment(
+                          value: a, label: Text(audienceTypeLabel(a))),
+                  ],
+                  selected: {_audience},
+                  onSelectionChanged: _submitting
+                      ? null
+                      : (s) {
+                          final next = s.first;
+                          setState(() => _audience = next);
+                          if (next == 'SELECTED_FLATS' &&
+                              _flatPicker.allFlats.isEmpty &&
+                              !_loadingFlats) {
+                            _loadAllFlats();
+                          }
+                        },
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(

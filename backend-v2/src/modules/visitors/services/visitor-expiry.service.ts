@@ -39,6 +39,9 @@ async function notifyExpired(visitor: VisitorLogDocument, reason: string) {
         visitorName: visitor.visitorName,
         flatLabel,
         entryMode: visitor.entryMode ?? 'OTP',
+        ...(visitor.entryMode === 'WALK_IN'
+          ? { callAction: 'stop', priority: 'high' }
+          : {}),
       },
     });
   }

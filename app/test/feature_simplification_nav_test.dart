@@ -103,6 +103,29 @@ void main() {
       expect(src.contains('Verify & allow entry'), isFalse);
     });
 
+    test('guard desk is three large actions without extra modules', () {
+      final desk = File('lib/features/security/guard_desk.dart').readAsStringSync();
+      expect(desk.contains("'New Visitor'"), isTrue);
+      expect(desk.contains("'Verify OTP'"), isTrue);
+      expect(desk.contains("'Check Vehicle'"), isTrue);
+      expect(desk.contains('SEND FOR APPROVAL'), isTrue);
+      expect(desk.contains('Waiting for Approval'), isTrue);
+      expect(desk.contains('BUILDING VEHICLE'), isTrue);
+      expect(desk.contains('NOT REGISTERED'), isTrue);
+      expect(desk.contains('verifyEntryOtpByCode'), isTrue);
+      expect(desk.contains('confirmVisitorEntry'), isTrue);
+      expect(desk.contains("entryMode: 'WALK_IN'"), isTrue);
+      expect(desk.contains('checkout'), isFalse);
+      expect(desk.contains('LiveInsideVisitorsPage'), isFalse);
+      expect(desk.contains('LiveGuardVehiclesPage'), isFalse);
+
+      final home =
+          File('lib/features/security/security_module.dart').readAsStringSync();
+      expect(home.contains('GuardDeskHome(guard: guard)'), isTrue);
+      expect(home.contains('LiveInsideVisitorsPage'), isFalse);
+      expect(home.contains('Vehicle gate'), isFalse);
+    });
+
     test('reports UI no longer exposes a Complaints tab', () {
       final src = File('lib/features/reports/live_reports_module.dart')
           .readAsStringSync();

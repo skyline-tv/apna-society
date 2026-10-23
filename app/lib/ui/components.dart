@@ -56,6 +56,54 @@ class Sp {
   /// Standard list/page padding.
   static const EdgeInsets pagePadding = EdgeInsets.fromLTRB(20, 12, 20, 32);
   static const EdgeInsets listPadding = EdgeInsets.fromLTRB(16, 8, 16, 32);
+
+  /// Width-aware page padding. Narrow phones get a tighter gutter; tablets
+  /// keep the same visual inset because content is centered separately.
+  static EdgeInsets pageInsets(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 360) return const EdgeInsets.fromLTRB(12, 12, 12, 32);
+    if (width < 600) return const EdgeInsets.fromLTRB(16, 12, 16, 32);
+    return pagePadding;
+  }
+}
+
+/// Centers page content on tablets without changing phone layouts.
+class ConstrainedContent extends StatelessWidget {
+  const ConstrainedContent({
+    super.key,
+    required this.child,
+    this.maxWidth = 840,
+  });
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: SizedBox(width: double.infinity, child: child),
+      ),
+    );
+  }
+}
+
+/// Scales a child down when its intrinsic width exceeds the parent.
+class ScaleToWidth extends StatelessWidget {
+  const ScaleToWidth({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: child,
+    );
+  }
 }
 
 /// Corner radii.
@@ -399,6 +447,7 @@ ThemeData buildAppTheme() {
       surfaceTintColor: Colors.transparent,
       titleTextStyle: T.h3,
       contentTextStyle: T.body,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
     ),
     bottomSheetTheme: const BottomSheetThemeData(
@@ -408,6 +457,7 @@ ThemeData buildAppTheme() {
           borderRadius: BorderRadius.vertical(top: Radius.circular(Rd.xxl))),
       showDragHandle: true,
       dragHandleColor: C.lineStrong,
+      constraints: BoxConstraints(maxWidth: 640),
     ),
     popupMenuTheme: PopupMenuThemeData(
       color: C.surface,
@@ -908,29 +958,38 @@ class StatGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = <Widget>[];
-    for (var i = 0; i < children.length; i += columns) {
-      final slice = children.sublist(
-          i, i + columns > children.length ? children.length : i + columns);
-      // IntrinsicHeight bounds the row so CrossAxisAlignment.stretch is safe
-      // inside a ListView (unbounded max height). IndexedStack still lays out
-      // offstage tabs, so this must not throw on AdminHome.
-      rows.add(IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var j = 0; j < columns; j++) ...[
-              if (j > 0) const SizedBox(width: 10),
-              Expanded(
-                  child:
-                      j < slice.length ? slice[j] : const SizedBox.shrink()),
+    return LayoutBuilder(builder: (context, constraints) {
+      var cols = columns;
+      final width = constraints.maxWidth;
+      if (width < 360 && columns > 1) {
+        cols = 1;
+      } else if (width >= 840 && columns == 2 && children.length >= 4) {
+        cols = 4;
+      }
+      final rows = <Widget>[];
+      for (var i = 0; i < children.length; i += cols) {
+        final slice = children.sublist(
+            i, i + cols > children.length ? children.length : i + cols);
+        // IntrinsicHeight bounds the row so CrossAxisAlignment.stretch is safe
+        // inside a ListView (unbounded max height). IndexedStack still lays out
+        // offstage tabs, so this must not throw on AdminHome.
+        rows.add(IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var j = 0; j < cols; j++) ...[
+                if (j > 0) const SizedBox(width: 10),
+                Expanded(
+                    child:
+                        j < slice.length ? slice[j] : const SizedBox.shrink()),
+              ],
             ],
-          ],
-        ),
-      ));
-      if (i + columns < children.length) rows.add(const SizedBox(height: 10));
-    }
-    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+          ),
+        ));
+        if (i + cols < children.length) rows.add(const SizedBox(height: 10));
+      }
+      return Column(mainAxisSize: MainAxisSize.min, children: rows);
+    });
   }
 }
 
@@ -990,10 +1049,11 @@ class PineHeader extends StatelessWidget {
     final onPine = color.computeLuminance() < 0.45;
     final titleColor = onPine ? Colors.white : C.navy;
     final mute = onPine ? Colors.white.withValues(alpha: 0.62) : C.muted;
+    final inset = Sp.pageInsets(context);
     return Container(
       width: double.infinity,
       color: color,
-      padding: EdgeInsets.fromLTRB(20, 16, 16, bottomPadding),
+      padding: EdgeInsets.fromLTRB(inset.left, 16, inset.right, bottomPadding),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -1042,23 +1102,26 @@ class OverlapHero extends StatelessWidget {
   final double sidePadding;
 
   @override
-  Widget build(BuildContext context) => Column(
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              header,
-              Positioned(
-                left: sidePadding,
-                right: sidePadding,
-                bottom: -overlap,
-                child: hero,
-              ),
-            ],
-          ),
-          SizedBox(height: overlap + 12),
-        ],
-      );
+  Widget build(BuildContext context) {
+    final pad = MediaQuery.sizeOf(context).width < 360 ? 12.0 : sidePadding;
+    return Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            header,
+            Positioned(
+              left: pad,
+              right: pad,
+              bottom: -overlap,
+              child: hero,
+            ),
+          ],
+        ),
+        SizedBox(height: overlap + 12),
+      ],
+    );
+  }
 }
 
 /// One destination in a [QuickAccessGrid].
@@ -1154,9 +1217,22 @@ class CollectionBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(title, style: T.title)),
-          if (valueLabel != null)
-            Text(valueLabel!, style: T.bodyStrong.copyWith(color: C.blue)),
+          Expanded(
+            child: Text(title,
+                style: T.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
+          if (valueLabel != null) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                valueLabel!,
+                style: T.bodyStrong.copyWith(color: C.blue),
+                textAlign: TextAlign.end,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ]),
         const SizedBox(height: 10),
         ClipRRect(
@@ -1289,13 +1365,17 @@ class MiniStat extends StatelessWidget {
       margin: EdgeInsets.zero,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value,
-            style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: fg,
-                fontSize: 18,
-                height: 1.1,
-                fontFeatures: const [FontFeature.tabularFigures()])),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value,
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: fg,
+                  fontSize: 18,
+                  height: 1.1,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
         const SizedBox(height: 3),
         Text(label,
             style: T.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -1455,25 +1535,39 @@ class DetailRow extends StatelessWidget {
   final double? labelWidth;
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) {
+    final valueChild = valueWidget ??
+        Text(
+          value.isEmpty ? '—' : value,
+          style: emphasize ? T.bodyStrong.copyWith(fontSize: 15) : T.bodyStrong,
+        );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    // Avoid LayoutBuilder here: scrollable AlertDialogs measure intrinsics.
+    if (screenWidth < 340 && labelWidth == null) {
+      return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: labelWidth ?? 128,
-            child: Text(label, style: T.caption),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: valueWidget ??
-                Text(
-                  value.isEmpty ? '—' : value,
-                  style: emphasize
-                      ? T.bodyStrong.copyWith(fontSize: 15)
-                      : T.bodyStrong,
-                ),
-          ),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: T.caption),
+            const SizedBox(height: 2),
+            valueChild,
+          ],
+        ),
       );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: labelWidth ?? (screenWidth < 360 ? 96.0 : 128.0),
+          child: Text(label, style: T.caption),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: valueChild),
+      ]),
+    );
+  }
 }
 
 /// Grouped detail rows inside a card with optional heading.
@@ -1537,7 +1631,10 @@ class KeyValueTile extends StatelessWidget {
               Text(title, style: T.caption),
               if (value != null) ...[
                 const SizedBox(height: 2),
-                Text(value!.isEmpty ? '—' : value!, style: T.bodyStrong),
+                Text(
+                  value!.isEmpty ? '—' : value!,
+                  style: T.bodyStrong,
+                ),
               ],
             ]),
           ),
@@ -1648,8 +1745,10 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
-          padding:
-              EdgeInsets.symmetric(horizontal: 32, vertical: compact ? 20 : 40),
+          padding: EdgeInsets.symmetric(
+            horizontal: MediaQuery.sizeOf(context).width < 360 ? 16 : 32,
+            vertical: compact ? 20 : 40,
+          ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: compact ? 48 : 64,
@@ -2152,7 +2251,7 @@ class FormScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base =
-        (padding ?? Sp.pagePadding).resolve(Directionality.of(context));
+        (padding ?? Sp.pageInsets(context)).resolve(Directionality.of(context));
     // Leave room to scroll the last field above the sticky bar (button +
     // bar padding + home-indicator zone). Keyboard inset is handled by the
     // Scaffold shrinking the body when the IME opens.
@@ -2174,7 +2273,9 @@ class FormScaffold extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(title), actions: actions),
       resizeToAvoidBottomInset: true,
-      body: KeyboardDismissOnTap(child: formBody),
+      body: KeyboardDismissOnTap(
+        child: ConstrainedContent(child: formBody),
+      ),
       bottomNavigationBar:
           bottom == null ? null : BottomActionBar(children: [bottom!]),
     );
@@ -2776,11 +2877,13 @@ Future<bool> confirmDialog(
   final result = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+      scrollable: true,
       icon: icon == null
           ? null
           : Icon(icon, color: destructive ? C.error : C.blue, size: 32),
       title: Text(title),
       content: message == null ? null : Text(message),
+      actionsOverflowAlignment: OverflowBarAlignment.end,
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2821,7 +2924,9 @@ Future<String?> promptTextDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) => AlertDialog(
+        scrollable: true,
         title: Text(title),
+        actionsOverflowAlignment: OverflowBarAlignment.end,
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           if (message != null) ...[
             Text(message, style: T.secondary),
@@ -2882,23 +2987,26 @@ Future<R?> showAppSheet<R>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (title != null) ...[
-              Text(title, style: T.h3),
-              const SizedBox(height: 14),
+    builder: (ctx) {
+      final inset = Sp.pageInsets(ctx);
+      return Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(inset.left, 4, inset.right, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (title != null) ...[
+                Text(title, style: T.h3),
+                const SizedBox(height: 14),
+              ],
+              builder(ctx),
             ],
-            builder(ctx),
-          ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
