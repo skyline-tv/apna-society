@@ -19,6 +19,7 @@ import {
   offlineCollectionPaymentHandler,
   previewAddCollectionFlatsHandler,
   previewCollectionHandler,
+  removeCollectionFlatsHandler,
   updateCollectionHandler,
 } from '../controllers/admin-collection.controller';
 import {
@@ -35,6 +36,7 @@ import {
   listCollectionsQuerySchema,
   offlineCollectionPaymentSchema,
   previewCollectionSchema,
+  removeCollectionFlatsSchema,
   updateCollectionSchema,
 } from '../validators/collection.validators';
 
@@ -103,6 +105,12 @@ router.post(
   validateParams(collectionIdParamSchema),
   validateBody(addCollectionFlatsSchema),
   asyncHandler(addCollectionFlatsHandler),
+);
+router.post(
+  '/collections/:collectionId/flats/remove',
+  validateParams(collectionIdParamSchema),
+  validateBody(removeCollectionFlatsSchema),
+  asyncHandler(removeCollectionFlatsHandler),
 );
 router.post(
   '/collections/:collectionId/close',

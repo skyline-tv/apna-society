@@ -140,6 +140,28 @@ void main() {
       expect(order.order.provider, 'razorpay-mock');
       expect(order.amountPaise, 10000);
     });
+
+    test('removes unpaid flats from a collection', () async {
+      final adapter = ScriptedAdapter((options) async {
+        if (options.path.endsWith('/collections/$collectionId/flats/remove') &&
+            options.method == 'POST') {
+          return jsonBody(200, {
+            'success': true,
+            'data': _collection(collectionId)
+              ..['assignedFlatCount'] = 139
+              ..['expectedTotalPaise'] = 1390000,
+          });
+        }
+        return notFound(options.path);
+      });
+      final repo = CollectionRepository(_api(adapter, societyId).collections);
+      final updated = await repo.removeFlats(
+        collectionId,
+        const RemoveCollectionFlatsRequest(flatIds: [flatId]),
+      );
+      expect(updated.assignedFlatCount, 139);
+      expect(updated.expectedTotalPaise, 1390000);
+    });
   });
 }
 

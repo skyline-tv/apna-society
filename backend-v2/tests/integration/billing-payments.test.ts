@@ -242,27 +242,8 @@ describe('Billing payments', () => {
     expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(1);
   });
 
-  it('requires offline payments configuration and preserves refund audit history', async () => {
-    process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
-    resetEnvCache();
-    loadEnv();
-
+  it('records admin offline payments and preserves refund audit history', async () => {
     const setup = await setupOccupiedBill('pay4');
-    const denied = await request(app)
-      .post('/api/v1/admin/payments/offline')
-      .set('Authorization', `Bearer ${setup.ctx.token}`)
-      .send({
-        billId: setup.billId,
-        amountPaise: 400_000,
-        paidAt: '2026-07-05T10:00:00.000Z',
-        referenceNumber: 'OFF-1',
-      });
-    expect(denied.status).toBe(403);
-
-    process.env.OFFLINE_PAYMENTS_ENABLED = 'true';
-    resetEnvCache();
-    loadEnv();
-
     const recorded = await request(app)
       .post('/api/v1/admin/payments/offline')
       .set('Authorization', `Bearer ${setup.ctx.token}`)

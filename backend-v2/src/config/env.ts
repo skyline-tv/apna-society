@@ -41,7 +41,11 @@ const envSchema = z
       .default('info'),
     // Billing / payments
     BILLING_ANNUAL_INTEREST_BPS: z.coerce.number().int().min(0).max(100_000).default(2400),
-    OFFLINE_PAYMENTS_ENABLED: boolFromEnv,
+    /** Kept for compatibility. Admin cash/cheque recording is always allowed. */
+    OFFLINE_PAYMENTS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
     PAYMENT_GATEWAY_PROVIDER: z.enum(['razorpay', 'mock']).default('mock'),
     RAZORPAY_KEY_ID: z.string().optional().default(''),
     RAZORPAY_KEY_SECRET: z.string().optional().default(''),

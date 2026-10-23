@@ -793,7 +793,7 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/admin/payments/offline`]: {
           post: {
             tags: ['Admin Payments'],
-            summary: 'Record offline payment (requires OFFLINE_PAYMENTS_ENABLED=true)',
+            summary: 'Record offline payment (cash, cheque, or bank transfer)',
             security: adminSecurity,
             responses: { 201: { description: 'Settled payment' }, ...errorResponses },
           },

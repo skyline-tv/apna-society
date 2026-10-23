@@ -175,6 +175,36 @@ describe('One-time collections', () => {
       .send({ flatIds: [String(flatsA[0]._id)], amountPaise: 50_000 });
     expect(again.status).toBe(409);
     expect(again.body.error.code).toBe('DUPLICATE_FLAT_ASSIGNMENT');
+
+    const removed = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats/remove`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        flatIds: [String(flatsA[3]._id), String(flatsB[1]._id)],
+      });
+    expect(removed.status).toBe(200);
+    expect(removed.body.data.assignedFlatCount).toBe(2);
+    expect(removed.body.data.expectedTotalPaise).toBe(100_000);
+    expect(
+      await CollectionChargeModel.countDocuments({ collectionId: selected.body.data.id }),
+    ).toBe(2);
+
+    const missing = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats/remove`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ flatIds: [String(flatsB[1]._id)] });
+    expect(missing.status).toBe(404);
+    expect(missing.body.error.code).toBe('FLAT_NOT_ASSIGNED');
+
+    const readded = await request(app)
+      .post(`/api/v1/admin/collections/${selected.body.data.id}/flats`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        flatIds: [String(flatsA[3]._id)],
+        amountPaise: 50_000,
+      });
+    expect(readded.status).toBe(200);
+    expect(readded.body.data.assignedFlatCount).toBe(3);
   });
 
   it('settles full payment, unique receipts, and ignores pending or failed attempts', async () => {
@@ -446,6 +476,13 @@ describe('One-time collections', () => {
 
     const receiptCount = await CollectionReceiptModel.countDocuments({ collectionId });
     expect(receiptCount).toBe(2);
+
+    const removePaid = await request(app)
+      .post(`/api/v1/admin/collections/${collectionId}/flats/remove`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ flatIds: [String(flats[0]._id)] });
+    expect(removePaid.status).toBe(409);
+    expect(removePaid.body.error.code).toBe('CHARGE_HAS_PAYMENT');
 
     const cancelled = await request(app)
       .post(`/api/v1/admin/collections/${collectionId}/cancel`)

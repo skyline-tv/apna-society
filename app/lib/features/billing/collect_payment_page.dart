@@ -353,13 +353,13 @@ class _CollectPaymentPageState extends State<CollectPaymentPage> {
                   TextField(
                     controller: amountCtrl,
                     enabled: !saving,
-                    readOnly: true,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Amount collected (all outstanding bills)',
-                      prefixIcon: Icon(Icons.currency_rupee),
-                      helperText: 'Locked to the consolidated total payable',
+                      prefixIcon: const Icon(Icons.currency_rupee),
+                      helperText:
+                          'Total outstanding is ${money(stmt.totalPayable)}. You can type the collected amount.',
                     ),
                   ),
                   if (!widget.ownerMode && method == 'Cheque') ...[

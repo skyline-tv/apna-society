@@ -33,6 +33,8 @@ String billingErrorMessage(Object error) {
         return 'Cannot cancel a bill that already has payments.';
       case 'PAYMENTS_LIVE_DISABLED':
         return 'Online payments are not enabled on the server yet.';
+      case 'OFFLINE_PAYMENTS_DISABLED':
+        return 'Offline collection recording is not enabled on the server.';
       case 'DEMO_PAYMENTS_DISABLED':
         return 'Payment simulation is not available while live payments are enabled.';
       case 'DEMO_PROVIDER_REQUIRED':

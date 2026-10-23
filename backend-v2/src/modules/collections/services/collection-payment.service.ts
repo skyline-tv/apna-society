@@ -1,5 +1,5 @@
 import type { ClientSession } from 'mongoose';
-import { getEnv, isLivePaymentsEnabled } from '../../../config/env';
+import { isLivePaymentsEnabled } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
   AppError,
@@ -469,9 +469,6 @@ export async function recordOfflineCollectionPayment(
   },
   actor: Actor,
 ) {
-  if (!getEnv().OFFLINE_PAYMENTS_ENABLED) {
-    throw forbidden('Offline payments are disabled', 'OFFLINE_PAYMENTS_DISABLED');
-  }
   const charge = await CollectionChargeModel.findOne({
     _id: parseObjectId(input.chargeId, 'chargeId'),
     societyId: parseObjectId(societyId, 'societyId'),

@@ -104,6 +104,23 @@ export const addCollectionFlatsSchema = z
   });
 export type AddCollectionFlatsInput = z.infer<typeof addCollectionFlatsSchema>;
 
+export const removeCollectionFlatsSchema = z
+  .object({
+    flatIds: z.array(objectId).max(200).optional(),
+    chargeIds: z.array(objectId).max(200).optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (!(data.flatIds?.length) && !(data.chargeIds?.length)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Select at least one unpaid flat to remove',
+        path: ['flatIds'],
+      });
+    }
+  });
+export type RemoveCollectionFlatsInput = z.infer<typeof removeCollectionFlatsSchema>;
+
 export const cancelCollectionSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });

@@ -96,6 +96,17 @@ class CollectionApi {
     );
   }
 
+  Future<CollectionSummary> removeFlats(
+    String collectionId,
+    RemoveCollectionFlatsRequest request,
+  ) {
+    return _client.post(
+      '$_admin/collections/$collectionId/flats/remove',
+      body: request.toJson(),
+      decode: CollectionSummary.fromJson,
+    );
+  }
+
   Future<CollectionSummary> close(String collectionId) {
     return _client.post(
       '$_admin/collections/$collectionId/close',

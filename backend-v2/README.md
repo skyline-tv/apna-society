@@ -62,7 +62,7 @@ npm install
 | `EMAIL_FROM` | From address for OTP emails |
 | `CORS_ORIGINS` | Comma-separated allowed origins |
 | `BILLING_ANNUAL_INTEREST_BPS` | Annual late interest in basis points (default `2400` = 24%) |
-| `OFFLINE_PAYMENTS_ENABLED` | `true` / `false` — allow admin offline payment recording |
+| `OFFLINE_PAYMENTS_ENABLED` | Compatibility flag. Admin cash/cheque recording is always allowed. |
 | `PAYMENT_GATEWAY_PROVIDER` | `mock` (default) or `razorpay` |
 | `PAYMENTS_LIVE_ENABLED` | `true` only when ready for live Razorpay charges (explicit opt-in) |
 | `RAZORPAY_KEY_ID` | Razorpay key id — never commit real values |
@@ -348,7 +348,7 @@ Role middleware is provided for coarse gates. Flat-level authorization must stil
 - Owner creates a payment order for **outstanding principal** (server-side amount). Signature verification or webhook is required before `SUCCESS`.
 - Settlement is transactional: payment → bill balance → immutable receipt.
 - Allocation: principal first; any remainder to interest is recorded explicitly (`allocatedToInterestPaise`).
-- Offline admin recording requires `OFFLINE_PAYMENTS_ENABLED=true` and a reference / idempotency key.
+- Offline admin recording (cash, cheque, bank transfer) is always available and requires a reference / idempotency key.
 - Webhook: `POST /api/v1/webhooks/payments` with `x-razorpay-signature` (HMAC SHA256 of raw body).
 
 ### Example: generate April bills

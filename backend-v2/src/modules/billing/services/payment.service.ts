@@ -1,5 +1,5 @@
 import type { ClientSession } from 'mongoose';
-import { getEnv, isLivePaymentsEnabled } from '../../../config/env';
+import { isLivePaymentsEnabled } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
   AppError,
@@ -687,9 +687,6 @@ export async function recordOfflinePayment(
   },
   actor: Actor,
 ) {
-  if (!getEnv().OFFLINE_PAYMENTS_ENABLED) {
-    throw forbidden('Offline payments are disabled', 'OFFLINE_PAYMENTS_DISABLED');
-  }
   if (input.amountPaise <= 0) {
     throw badRequest('amountPaise must be positive', 'INVALID_AMOUNT');
   }

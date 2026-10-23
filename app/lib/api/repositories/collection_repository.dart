@@ -76,6 +76,16 @@ class CollectionRepository {
     return result;
   }
 
+  Future<CollectionSummary> removeFlats(
+    String id,
+    RemoveCollectionFlatsRequest request,
+  ) async {
+    final result = await _api.removeFlats(id, request);
+    lastAdminCollections = null;
+    lastResidentCharges = null;
+    return result;
+  }
+
   Future<CollectionSummary> close(String id) async {
     final result = await _api.close(id);
     lastAdminCollections = null;

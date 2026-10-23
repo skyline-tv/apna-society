@@ -14,6 +14,7 @@ import {
   listCollections,
   previewAddCollectionFlats,
   previewCollection,
+  removeCollectionFlats,
   updateCollection,
 } from '../services/collection.service';
 import {
@@ -32,6 +33,7 @@ import type {
   ListCollectionsQuery,
   OfflineCollectionPaymentInput,
   PreviewCollectionInput,
+  RemoveCollectionFlatsInput,
   UpdateCollectionInput,
 } from '../validators/collection.validators';
 
@@ -97,6 +99,16 @@ export async function addCollectionFlatsHandler(req: Request, res: Response): Pr
     getRequestSocietyId(req),
     String(req.params.collectionId),
     req.body as AddCollectionFlatsInput,
+    actorFrom(req),
+  );
+  res.json({ success: true, data });
+}
+
+export async function removeCollectionFlatsHandler(req: Request, res: Response): Promise<void> {
+  const data = await removeCollectionFlats(
+    getRequestSocietyId(req),
+    String(req.params.collectionId),
+    req.body as RemoveCollectionFlatsInput,
     actorFrom(req),
   );
   res.json({ success: true, data });

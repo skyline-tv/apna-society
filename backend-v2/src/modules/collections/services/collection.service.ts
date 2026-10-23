@@ -11,6 +11,7 @@ import {
   type CollectionChargeDocument,
   type CollectionChargeStatus,
 } from '../models/collection-charge.model';
+import { CollectionPaymentModel } from '../models/collection-payment.model';
 import { CollectionModel, type CollectionDocument } from '../models/collection.model';
 import type {
   AddCollectionFlatsInput,
@@ -19,6 +20,7 @@ import type {
   CreateCollectionInput,
   ListChargesQuery,
   ListCollectionsQuery,
+  RemoveCollectionFlatsInput,
   UpdateCollectionInput,
 } from '../validators/collection.validators';
 import { resolveCollectionAssignments } from './assignment.service';
@@ -423,6 +425,138 @@ export async function addCollectionFlats(
           addedFlatCount: preview.assignedFlatCount,
           addedTotalPaise: preview.expectedTotalPaise,
           flatIds: preview.allocations.map((row) => row.flatId),
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+  });
+
+  return serializeCollection(collection);
+}
+
+export async function removeCollectionFlats(
+  societyId: string,
+  collectionId: string,
+  input: RemoveCollectionFlatsInput,
+  actor: Actor,
+) {
+  const collection = await CollectionModel.findOne({
+    _id: parseObjectId(collectionId, 'collectionId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!collection) throw notFound('Collection not found');
+  if (collection.status !== 'ACTIVE') {
+    throw badRequest('Only active collections can be edited', 'COLLECTION_NOT_EDITABLE');
+  }
+
+  const or: FilterQuery<CollectionChargeDocument>[] = [];
+  if (input.flatIds?.length) {
+    or.push({
+      flatId: { $in: input.flatIds.map((id) => parseObjectId(id, 'flatId')) },
+    });
+  }
+  if (input.chargeIds?.length) {
+    or.push({
+      _id: { $in: input.chargeIds.map((id) => parseObjectId(id, 'chargeId')) },
+    });
+  }
+  const charges = await CollectionChargeModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    collectionId: collection._id,
+    $or: or,
+  });
+
+  const foundFlatIds = new Set(charges.map((row) => String(row.flatId)));
+  const foundChargeIds = new Set(charges.map((row) => String(row._id)));
+  const missing = [
+    ...(input.flatIds ?? []).filter((id) => !foundFlatIds.has(id)),
+    ...(input.chargeIds ?? []).filter((id) => !foundChargeIds.has(id)),
+  ];
+  if (charges.length === 0 || missing.length > 0) {
+    throw notFound(
+      'One or more selected flats are not assigned to this collection',
+      'FLAT_NOT_ASSIGNED',
+    );
+  }
+
+  const paid = charges.filter(
+    (row) =>
+      row.amountPaidPaise > 0 ||
+      row.status === 'PAID' ||
+      row.status === 'PARTIALLY_PAID',
+  );
+  if (paid.length > 0) {
+    throw conflict(
+      'Cannot remove a flat after a payment has been recorded',
+      'CHARGE_HAS_PAYMENT',
+    );
+  }
+
+  const uniqueCharges = [
+    ...new Map(charges.map((row) => [String(row._id), row])).values(),
+  ];
+  const chargeObjectIds = uniqueCharges.map((row) => row._id);
+  const removedExpected = uniqueCharges.reduce(
+    (sum, row) => sum + row.amountPaise + row.adjustmentsPaise,
+    0,
+  );
+
+  await withTransaction(async (session) => {
+    const settledCount = await CollectionPaymentModel.countDocuments({
+      chargeId: { $in: chargeObjectIds },
+      status: { $in: ['SUCCESS', 'REFUNDED'] },
+    }).session(session);
+    if (settledCount > 0) {
+      throw conflict(
+        'Cannot remove a flat after a payment has been recorded',
+        'CHARGE_HAS_PAYMENT',
+      );
+    }
+
+    await CollectionPaymentModel.updateMany(
+      { chargeId: { $in: chargeObjectIds }, status: 'PENDING' },
+      {
+        $set: {
+          status: 'FAILED',
+          notes: 'Flat removed from collection before payment',
+        },
+      },
+      { session },
+    );
+    await CollectionAdjustmentModel.deleteMany(
+      { chargeId: { $in: chargeObjectIds } },
+      { session },
+    );
+    await CollectionChargeModel.deleteMany(
+      { _id: { $in: chargeObjectIds } },
+      { session },
+    );
+
+    collection.expectedTotalPaise = Math.max(0, collection.expectedTotalPaise - removedExpected);
+    collection.assignedFlatCount = Math.max(
+      0,
+      collection.assignedFlatCount - uniqueCharges.length,
+    );
+    if (collection.assignmentType !== 'SELECTED_FLATS') {
+      collection.assignmentType = 'SELECTED_FLATS';
+    }
+    collection.updatedBy = parseObjectId(actor.userId, 'userId');
+    await collection.save({ session });
+
+    await writeAuditLog(
+      {
+        action: 'COLLECTION_FLATS_REMOVED',
+        actorUserId: actor.userId,
+        societyId,
+        targetType: 'SpecialCollection',
+        targetId: String(collection._id),
+        metadata: {
+          removedFlatCount: uniqueCharges.length,
+          removedTotalPaise: removedExpected,
+          flatIds: uniqueCharges.map((row) => String(row.flatId)),
+          chargeIds: uniqueCharges.map((row) => String(row._id)),
         },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,

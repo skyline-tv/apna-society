@@ -308,6 +308,18 @@ class AddCollectionFlatsRequest {
       });
 }
 
+class RemoveCollectionFlatsRequest {
+  const RemoveCollectionFlatsRequest({this.flatIds, this.chargeIds});
+
+  final List<String>? flatIds;
+  final List<String>? chargeIds;
+
+  Map<String, Object?> toJson() => omitNulls({
+        'flatIds': flatIds,
+        'chargeIds': chargeIds,
+      });
+}
+
 class CollectionPayment {
   const CollectionPayment({
     required this.id,

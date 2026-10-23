@@ -39,6 +39,10 @@ String collectionErrorMessage(Object error) {
         return 'Partial payment is not enabled for this collection.';
       case 'DUPLICATE_FLAT_ASSIGNMENT':
         return 'A flat cannot be assigned twice to the same collection.';
+      case 'CHARGE_HAS_PAYMENT':
+        return 'This flat already has a payment, so it cannot be removed.';
+      case 'FLAT_NOT_ASSIGNED':
+        return 'That flat is not assigned to this collection.';
       case 'NO_FLATS_ASSIGNED':
         return 'No configured flats matched this assignment.';
       case 'MISSING_FLAT_AMOUNT':
@@ -64,6 +68,53 @@ String collectionErrorMessage(Object error) {
   }
   if (error is StateError) return error.message;
   return '$error';
+}
+
+Future<bool> _removeUnpaidCollectionFlats({
+  required BuildContext context,
+  required String collectionId,
+  List<String>? flatIds,
+  List<String>? chargeIds,
+  required String confirmTitle,
+  required String successMessage,
+}) async {
+  final ok = await confirmDialog(
+    context,
+    title: confirmTitle,
+    message:
+        'This flat will be taken off the collection and will no longer owe this charge. Flats that already paid cannot be removed.',
+    confirmLabel: 'Remove',
+    destructive: true,
+    icon: Icons.delete_outline_rounded,
+  );
+  if (!ok) return false;
+  try {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final repos = ensureLiveRepositories(session.api);
+    await repos.collections.removeFlats(
+      collectionId,
+      RemoveCollectionFlatsRequest(flatIds: flatIds, chargeIds: chargeIds),
+    );
+    repos.invalidateAfterFinancialMutation();
+    if (context.mounted) showSuccessSnack(context, successMessage);
+    return true;
+  } catch (e) {
+    if (context.mounted) showErrorSnack(context, collectionErrorMessage(e));
+    return false;
+  }
+}
+
+bool _canRemoveCollectionCharge(CollectionCharge row) {
+  if (row.amountPaidPaise > 0) return false;
+  switch (row.status.toUpperCase()) {
+    case 'PAID':
+    case 'PARTIALLY_PAID':
+    case 'CANCELLED':
+      return false;
+    default:
+      return true;
+  }
 }
 
 String _collectionStatusLabel(String status) {
@@ -868,10 +919,12 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
   late bool allowPartial = widget.collection.allowPartialPayment;
   bool busy = false;
   bool addingFlats = false;
+  bool removingFlats = false;
   String? error;
   bool includeRemaining = false;
   final selectedWingIds = <String>{};
   final selectedFlatIds = <String>{};
+  final selectedRemoveFlatIds = <String>{};
   CollectionPreview? addPreview;
   late Future<_EditLookups> _lookups = _loadLookups();
 
@@ -888,6 +941,7 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
     return _EditLookups(
       wings: wings,
       flats: flats,
+      assignedCharges: assigned.items,
       assignedFlatIds: assigned.items.map((row) => row.flatId).toSet(),
     );
   }
@@ -982,6 +1036,50 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
     }
   }
 
+  Future<void> _confirmRemove() async {
+    if (selectedRemoveFlatIds.isEmpty) {
+      setState(() => error = 'Select unpaid flats to remove.');
+      return;
+    }
+    final ok = await confirmDialog(
+      context,
+      title: 'Remove ${selectedRemoveFlatIds.length} unpaid ${selectedRemoveFlatIds.length == 1 ? 'flat' : 'flats'}?',
+      message:
+          'Those flats will be taken off this collection and will no longer owe this charge. Flats that already paid stay.',
+      confirmLabel: 'Remove flats',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      removingFlats = true;
+      error = null;
+    });
+    try {
+      final session = authSession!;
+      final repos = ensureLiveRepositories(session.api);
+      await repos.collections.removeFlats(
+        widget.collection.id,
+        RemoveCollectionFlatsRequest(
+          flatIds: selectedRemoveFlatIds.toList(),
+        ),
+      );
+      repos.invalidateAfterFinancialMutation();
+      if (!mounted) return;
+      showSuccessSnack(
+        context,
+        selectedRemoveFlatIds.length == 1
+            ? 'Flat removed from the collection.'
+            : '${selectedRemoveFlatIds.length} flats removed.',
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => error = collectionErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => removingFlats = false);
+    }
+  }
+
   Future<void> _save() async {
     if (!(_form.currentState?.validate() ?? false)) return;
     setState(() {
@@ -1006,6 +1104,68 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _pickRemovable(List<CollectionCharge> removable) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        var query = '';
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final filtered = removable
+                .where((row) =>
+                    query.isEmpty ||
+                    row.flatLabel.toLowerCase().contains(query.toLowerCase()) ||
+                    row.ownerNameSnapshot
+                        .toLowerCase()
+                        .contains(query.toLowerCase()))
+                .toList();
+            return SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.75,
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SearchField(
+                    hint: 'Search unpaid flats',
+                    onChanged: (v) => setSheet(() => query = v.trim()),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final row = filtered[i];
+                      final selected =
+                          selectedRemoveFlatIds.contains(row.flatId);
+                      return CheckboxListTile(
+                        value: selected,
+                        title: Text(row.flatLabel),
+                        subtitle: Text(
+                          '${moneyPaise(row.assignedAmountPaise)} · ${row.ownerNameSnapshot}',
+                        ),
+                        onChanged: (on) {
+                          setSheet(() {
+                            if (on == true) {
+                              selectedRemoveFlatIds.add(row.flatId);
+                            } else {
+                              selectedRemoveFlatIds.remove(row.flatId);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ]),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _pickFlats(List<FlatSummary> available) async {
@@ -1078,6 +1238,14 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
             : lookups.flats
                 .where((flat) => !lookups.assignedFlatIds.contains(flat.id))
                 .toList();
+        final removable = lookups == null
+            ? const <CollectionCharge>[]
+            : lookups.assignedCharges
+                .where(_canRemoveCollectionCharge)
+                .toList();
+        final paidCount = lookups == null
+            ? 0
+            : lookups.assignedCharges.length - removable.length;
         return FormScaffold(
           title: 'Edit collection',
           formKey: _form,
@@ -1085,11 +1253,11 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
             label: 'Save changes',
             icon: Icons.check_rounded,
             busy: busy,
-            onPressed: busy || addingFlats ? null : _save,
+            onPressed: busy || addingFlats || removingFlats ? null : _save,
           ),
           children: [
             const InfoNote(
-              'Existing flat amounts stay unchanged. Add more flats below, or correct one assigned amount with an adjustment.',
+              'Existing paid amounts stay unchanged. Add more flats, or remove unpaid flats before any payment is recorded.',
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -1280,6 +1448,44 @@ class _LiveEditCollectionPageState extends State<LiveEditCollectionPage> {
                 ),
               ],
             ],
+            if (lookups != null) ...[
+              const SizedBox(height: 20),
+              const SectionTitle('Remove unpaid flats'),
+              if (removable.isEmpty)
+                InfoNote(
+                  paidCount == 0
+                      ? 'No flats are assigned yet.'
+                      : 'Every assigned flat already has a payment, so none can be removed.',
+                )
+              else ...[
+                Text(
+                  '${removable.length} unpaid ${removable.length == 1 ? 'flat' : 'flats'} can be removed'
+                  '${paidCount > 0 ? ' · $paidCount already paid stay on the collection' : ''}',
+                  style: T.caption,
+                ),
+                const SizedBox(height: 12),
+                PickerField(
+                  label: 'Unpaid flats to remove',
+                  icon: Icons.delete_outline_rounded,
+                  value: selectedRemoveFlatIds.isEmpty
+                      ? 'Select flats'
+                      : '${selectedRemoveFlatIds.length} selected',
+                  enabled: !removingFlats,
+                  onTap: () => _pickRemovable(removable),
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: selectedRemoveFlatIds.isEmpty
+                      ? 'Remove selected flats'
+                      : 'Remove ${selectedRemoveFlatIds.length} unpaid ${selectedRemoveFlatIds.length == 1 ? 'flat' : 'flats'}',
+                  icon: Icons.delete_outline_rounded,
+                  busy: removingFlats,
+                  onPressed: removingFlats || selectedRemoveFlatIds.isEmpty
+                      ? null
+                      : _confirmRemove,
+                ),
+              ],
+            ],
             InlineError(error),
           ],
         );
@@ -1292,10 +1498,12 @@ class _EditLookups {
   const _EditLookups({
     required this.wings,
     required this.flats,
+    required this.assignedCharges,
     required this.assignedFlatIds,
   });
   final List<WingSummary> wings;
   final List<FlatSummary> flats;
+  final List<CollectionCharge> assignedCharges;
   final Set<String> assignedFlatIds;
 }
 
@@ -1668,6 +1876,23 @@ class _LiveAdminCollectionDetailPageState
                             StatusBadge(row.status),
                           ],
                         ),
+                        if (c.status == 'ACTIVE' &&
+                            _canRemoveCollectionCharge(row))
+                          IconButton(
+                            tooltip: 'Remove unpaid flat',
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            onPressed: () async {
+                              final removed = await _removeUnpaidCollectionFlats(
+                                context: context,
+                                collectionId: widget.collectionId,
+                                chargeIds: [row.id],
+                                confirmTitle: 'Remove ${row.flatLabel}?',
+                                successMessage:
+                                    '${row.flatLabel} removed from the collection.',
+                              );
+                              if (removed && mounted) reload();
+                            },
+                          ),
                       ]),
                     ),
                   ),
@@ -1913,6 +2138,27 @@ class _LiveAdminCollectionChargePageState
               icon: Icons.tune_rounded,
               onPressed: busy ? null : _adjust,
             ),
+            if (_canRemoveCollectionCharge(charge)) ...[
+              const SizedBox(height: 8),
+              SecondaryButton(
+                label: 'Remove this unpaid flat',
+                icon: Icons.delete_outline_rounded,
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final removed = await _removeUnpaidCollectionFlats(
+                          context: context,
+                          collectionId: widget.collectionId,
+                          chargeIds: [charge.id],
+                          confirmTitle: 'Remove ${charge.flatLabel}?',
+                          successMessage:
+                              '${charge.flatLabel} removed from the collection.',
+                        );
+                        if (!removed || !mounted) return;
+                        Navigator.pop(context, true);
+                      },
+              ),
+            ],
           ],
         ],
       ),

@@ -22,6 +22,7 @@ services:
       COMPLAINT_STORAGE_LOCAL_DIR: /data/storage/complaints
       ANNOUNCEMENT_STORAGE_LOCAL_DIR: /data/storage/announcements
       FCM_ENABLED: ${FCM_ENABLED:-false}
+      OFFLINE_PAYMENTS_ENABLED: 'true'
       FIREBASE_SERVICE_ACCOUNT_PATH: /app/secrets/firebase-service-account.json
     ports:
       - "${PORT:-4000}:4000"
