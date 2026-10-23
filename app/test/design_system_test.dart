@@ -3,6 +3,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_society/ui/components.dart';
 
 void main() {
+  testWidgets('OverlapHero keeps header text visible above a tall due card',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: OverlapHero(
+              header: PineHeader(
+                eyebrow: 'Good evening · Owner',
+                title: 'Priya',
+                subtitle: 'Monarch Solitaire A to E',
+                bottomPadding: 28,
+                child: Text('Flat E-303 · Wing E'),
+              ),
+              hero: SizedBox(
+                height: 220,
+                child: ColoredBox(
+                  color: C.surface,
+                  child: Center(child: Text('MAINTENANCE DUE')),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Priya'), findsOneWidget);
+    expect(find.text('Flat E-303 · Wing E'), findsOneWidget);
+    expect(find.text('MAINTENANCE DUE'), findsOneWidget);
+    final headerTop = tester.getTopLeft(find.text('Priya')).dy;
+    final chipTop = tester.getTopLeft(find.text('Flat E-303 · Wing E')).dy;
+    final cardTop = tester.getTopLeft(find.text('MAINTENANCE DUE')).dy;
+    expect(headerTop, lessThan(chipTop));
+    expect(chipTop, lessThan(cardTop));
+  });
+
   testWidgets('PineHeader shows greeting, title and trailing', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

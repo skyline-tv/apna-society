@@ -11,7 +11,8 @@ class _Kv {
   final bool total;
 }
 
-/// Official Apna Society payment receipt (A4, brand blue).
+/// Official society payment receipt (A4, brand blue).
+/// Society name leads; Apna Society is only a tiny AS mark.
 class ReceiptPdf {
   ReceiptPdf._();
 
@@ -293,8 +294,8 @@ class ReceiptPdf {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Container(
-                      width: 34,
-                      height: 34,
+                      width: 28,
+                      height: 28,
                       alignment: pw.Alignment.center,
                       decoration: pw.BoxDecoration(
                         border: pw.Border.all(color: brandBlue, width: 1.2),
@@ -302,7 +303,7 @@ class ReceiptPdf {
                       child: pw.Text('AS',
                           style: pw.TextStyle(
                               font: pw.Font.timesBold(),
-                              fontSize: 13,
+                              fontSize: 11,
                               color: brandBlue)),
                     ),
                     pw.SizedBox(width: 10),
@@ -310,16 +311,16 @@ class ReceiptPdf {
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Text('Apna Society',
+                          pw.Text(societyName,
                               style: pw.TextStyle(
                                   font: pw.Font.timesBold(),
-                                  fontSize: 20,
+                                  fontSize: 16,
                                   color: brandBlue)),
-                          pw.Text('OFFICIAL PAYMENT RECEIPT',
+                          pw.Text('AS  -  Apna Society',
                               style: pw.TextStyle(
                                   font: pw.Font.helvetica(),
                                   fontSize: 8,
-                                  letterSpacing: 1.4,
+                                  letterSpacing: 0.4,
                                   color: muted)),
                         ],
                       ),
@@ -357,10 +358,6 @@ class ReceiptPdf {
                 ),
                 pw.SizedBox(height: 12),
                 pw.Container(height: 1, color: brandBlue),
-                pw.SizedBox(height: 12),
-                pw.Text(societyName,
-                    style: pw.TextStyle(
-                        font: pw.Font.helvetica(), fontSize: 11, color: ink)),
                 pw.SizedBox(height: 12),
                 pw.Row(children: [
                   pw.Expanded(child: _meta('Payment date', paidAt)),

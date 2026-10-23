@@ -1104,21 +1104,18 @@ class OverlapHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.sizeOf(context).width < 360 ? 12.0 : sidePadding;
+    // Sit the card just under the header. A bottom-pinned Stack would grow
+    // upward and hide greeting / flat details behind a tall due card.
     return Column(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            header,
-            Positioned(
-              left: pad,
-              right: pad,
-              bottom: -overlap,
-              child: hero,
-            ),
-          ],
+        header,
+        Transform.translate(
+          offset: Offset(0, -overlap),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(pad, 0, pad, 12 + overlap),
+            child: hero,
+          ),
         ),
-        SizedBox(height: overlap + 12),
       ],
     );
   }

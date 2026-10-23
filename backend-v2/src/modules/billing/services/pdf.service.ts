@@ -180,7 +180,8 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
 }
 
 /**
- * Official Apna Society payment receipt (A4, brand blue).
+ * Official society payment receipt (A4, brand blue).
+ * Society name leads; Apna Society is only a tiny AS mark.
  * Dependency-free PDF 1.4 using standard Type1 fonts.
  */
 export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
@@ -189,7 +190,7 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const status = (input.paymentStatus ?? 'SUCCESSFUL').trim() || 'SUCCESSFUL';
   const payerLines = wrapText(input.ownerName || '-', 42);
   const towards = wrapText(towardsLine(input), 78);
-  const society = wrapText(input.societyName || 'Monarch Solitaire', 70);
+  const society = wrapText(input.societyName || 'Monarch Solitaire A to E', 28);
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
   const paidAt = formatPaidAtIst(input.paidAt);
   const lines = amountLines(input);
@@ -222,12 +223,16 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   // Inner border
   ops.push(`${RULE} RG 0.8 w 28 28 539 786 re S`);
 
-  // AS mark
-  ops.push(`${BLUE} RG 1.2 w 50 742 34 34 re S`);
-  text('F4', 13, 56.5, 753, 'AS', BLUE);
+  // Tiny AS mark — product branding stays small; society name leads.
+  ops.push(`${BLUE} RG 1.2 w 50 748 28 28 re S`);
+  text('F4', 11, 55.4, 757, 'AS', BLUE);
 
-  text('F4', 20, 94, 762, 'Apna Society', BLUE);
-  text('F1', 8, 94, 746, 'OFFICIAL PAYMENT RECEIPT', MUTED);
+  let titleY = 766;
+  for (const line of society) {
+    text('F4', 16, 88, titleY, line, BLUE);
+    titleY -= 16;
+  }
+  text('F1', 7, 88, titleY + 2, 'AS  -  Apna Society', MUTED);
 
   rightText('F2', 8, 772, 'RECEIPT', BLUE, true);
   rightText('F4', 14, 754, pdfLatin(input.receiptNumber), INK, true);
@@ -242,12 +247,6 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   ops.push(`${BLUE} RG 1 w ${LEFT} 726 m ${RIGHT} 726 l S`);
 
   let y = 706;
-  for (const line of society) {
-    text('F1', 11, LEFT, y, line, INK);
-    y -= 14;
-  }
-
-  y -= 8;
   text('F1', 8, LEFT, y, 'PAYMENT DATE', MUTED);
   text('F1', 8, 320, y, 'PAYMENT METHOD', MUTED);
   y -= 14;
@@ -314,7 +313,7 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   );
   text('F1', 9, LEFT, footerY, 'No signature is required for digitally issued receipts.', MUTED);
   ops.push(`${RULE} RG 0.6 w 365 ${footerY + 28} m 545 ${footerY + 28} l S`);
-  const societyFooter = wrapText(input.societyName || 'Monarch Solitaire', 32);
+  const societyFooter = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
   rightText('F1', 8, footerY + 16, 'AUTHORIZED', MUTED);
   let authY = footerY;
   for (const line of [...societyFooter].reverse()) {

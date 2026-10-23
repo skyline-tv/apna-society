@@ -252,8 +252,9 @@ Future<Uint8List> _collectionReportPdf({
   doc.addPage(
     pw.MultiPage(
       build: (_) => [
-        pw.Text('APNA SOCIETY',
+        pw.Text(kSocietyName,
             style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.Text('AS  -  Apna Society', style: const pw.TextStyle(fontSize: 8)),
         pw.SizedBox(height: 4),
         pw.Text('One-time collection report',
             style: const pw.TextStyle(fontSize: 12)),
@@ -2273,6 +2274,25 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
                 subtitle: open.isEmpty
                     ? 'Nothing due on special collections.'
                     : '${open.length} open ${open.length == 1 ? 'charge' : 'charges'}',
+                child: open.isEmpty
+                    ? null
+                    : PrimaryButton(
+                        label: 'Pay now',
+                        icon: Icons.payments_outlined,
+                        onPressed: () async {
+                          await Navigator.push<void>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => LiveOwnerCollectionChargePage(
+                                chargeId: open.first.id,
+                              ),
+                            ),
+                          );
+                          if (mounted) {
+                            setState(() => _future = _load(force: true));
+                          }
+                        },
+                      ),
               ),
               const SizedBox(height: 14),
               if (rows.isEmpty)

@@ -77,7 +77,7 @@ describe('receipt pdf', () => {
   it('builds a PDF with branding, flat, status and paid total', () => {
     const pdf = buildReceiptPdf({
       receiptNumber: 'RCPT-2026-000001',
-      societyName: 'Monarch Solitaire',
+      societyName: 'Monarch Solitaire A to E',
       flatNumber: '303',
       wingCode: 'E',
       ownerName: 'Owner One',
@@ -94,7 +94,8 @@ describe('receipt pdf', () => {
     const text = pdf.toString('utf8');
     expect(text.startsWith('%PDF-1.4')).toBe(true);
     expect(text).toContain('Apna Society');
-    expect(text).toContain('Monarch Solitaire');
+    expect(text).toContain('AS  -  Apna Society');
+    expect(text).toContain('Monarch Solitaire A to E');
     expect(text).toContain('E-303');
     expect(text).toContain('RCPT-2026-000001');
     expect(text).toContain('SUCCESSFUL');
@@ -107,7 +108,7 @@ describe('receipt pdf', () => {
   it('omits empty transaction references and wraps long payer names', () => {
     const pdf = buildReceiptPdf({
       receiptNumber: 'COLRCPT-2026-000013',
-      societyName: 'Monarch Solitaire',
+      societyName: 'Monarch Solitaire A to E',
       flatNumber: '303',
       wingCode: 'E',
       ownerName: 'Rajeshkumar Venkateshwaran Subramaniam',
@@ -130,7 +131,7 @@ describe('receipt pdf', () => {
   it('shows applied principal on a partial payment instead of the full bill base', () => {
     const pdf = buildReceiptPdf({
       receiptNumber: 'RCPT-2026-000042',
-      societyName: 'Monarch Solitaire',
+      societyName: 'Monarch Solitaire A to E',
       flatNumber: '303',
       wingCode: 'E',
       ownerName: 'Priya Sharma',

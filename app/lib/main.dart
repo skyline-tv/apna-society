@@ -19,6 +19,7 @@ import 'api/models/billing_models.dart'
         canAddActiveAdditionalService,
         kAdditionalServiceLimitMessage,
         kMaxActiveAdditionalServicesPerFlat;
+import 'api/models/collection_models.dart' show CollectionCharge;
 import 'api/models/common.dart' show Paged;
 import 'api/models/resident_home_context.dart';
 import 'api/models/resident_models.dart';
@@ -992,6 +993,7 @@ class _OwnerHomeState extends State<OwnerHome> {
   late ResidentHomeContext home;
   late Future<ResidentProfileBundle> _profileFuture;
   Future<List<Bill>>? _duesFuture;
+  Future<List<CollectionCharge>>? _collectionsFuture;
 
   OccupancyAccess get access => home.access;
 
@@ -1003,6 +1005,7 @@ class _OwnerHomeState extends State<OwnerHome> {
     authSession?.selectResidentFlat(home.selectedFlat.flat.id);
     _profileFuture = _loadProfileBundle();
     _duesFuture = access.canFinance ? _loadDues() : null;
+    _collectionsFuture = access.canFinance ? _loadCollectionDues() : null;
   }
 
   void _selectFlat(ResidentFlat next) {
@@ -1017,6 +1020,8 @@ class _OwnerHomeState extends State<OwnerHome> {
       tab = 0;
       _profileFuture = _loadProfileBundle(force: true);
       _duesFuture = home.access.canFinance ? _loadDues(force: true) : null;
+      _collectionsFuture =
+          home.access.canFinance ? _loadCollectionDues(force: true) : null;
     });
   }
 
@@ -1068,11 +1073,29 @@ class _OwnerHomeState extends State<OwnerHome> {
     }).toList();
   }
 
+  Future<List<CollectionCharge>> _loadCollectionDues({bool force = false}) async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final items = await ensureLiveRepositories(session.api)
+        .collections
+        .listResident(force: force);
+    final flatId = home.selectedFlat.flat.id;
+    return items
+        .where((row) => row.flatId == flatId)
+        .where((row) =>
+            row.outstandingPaise > 0 &&
+            row.status != 'PAID' &&
+            row.status != 'CANCELLED')
+        .toList();
+  }
+
   void refresh() {
     if (!mounted) return;
     setState(() {
       _profileFuture = _loadProfileBundle(force: true);
       _duesFuture = access.canFinance ? _loadDues(force: true) : null;
+      _collectionsFuture =
+          access.canFinance ? _loadCollectionDues(force: true) : null;
     });
   }
 
@@ -1354,6 +1377,7 @@ class _OwnerHomeState extends State<OwnerHome> {
             padding: EdgeInsets.zero,
             children: [
               OverlapHero(
+                overlap: 16,
                 header: ColoredBox(
                   color: C.blue,
                   child: SafeArea(
@@ -1365,7 +1389,7 @@ class _OwnerHomeState extends State<OwnerHome> {
                       trailing: access.canResidential
                           ? const LiveNotificationBellButton(onPine: true)
                           : null,
-                      bottomPadding: 52,
+                      bottomPadding: 28,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 12),
@@ -1401,7 +1425,15 @@ class _OwnerHomeState extends State<OwnerHome> {
                     ),
                   ),
                 ),
-                hero: ctx.access.canFinance ? _duesHero(flat) : _flatCard(ctx),
+                hero: ctx.access.canFinance
+                    ? Column(
+                        children: [
+                          _duesHero(flat),
+                          const SizedBox(height: 10),
+                          _collectionsHero(),
+                        ],
+                      )
+                    : _flatCard(ctx),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
@@ -1478,7 +1510,8 @@ class _OwnerHomeState extends State<OwnerHome> {
 
   /// Home already leads with dues (owner) or visitor actions (tenant).
   bool _showOnHome(String key) {
-    if (access.canFinance && (key == 'bills' || key == 'payments')) {
+    if (access.canFinance &&
+        (key == 'bills' || key == 'payments' || key == 'collections')) {
       return false;
     }
     if (!access.canFinance && key == 'visitors') {
@@ -1601,6 +1634,114 @@ class _OwnerHomeState extends State<OwnerHome> {
         );
       },
     );
+  }
+
+  Widget _collectionsHero() {
+    return FutureBuilder<List<CollectionCharge>>(
+      future: _collectionsFuture,
+      builder: (context, snap) {
+        final loading =
+            snap.connectionState == ConnectionState.waiting && !snap.hasData;
+        if (snap.hasError) {
+          return AppCard(
+            margin: EdgeInsets.zero,
+            padding: const EdgeInsets.all(16),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('ONE-TIME COLLECTION',
+                  style: T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
+              const SizedBox(height: 6),
+              const Text('Special collection dues could not be loaded.',
+                  style: T.secondary),
+              const SizedBox(height: 14),
+              SecondaryButton(
+                label: 'Retry',
+                icon: Icons.refresh_rounded,
+                onPressed: () => setState(
+                    () => _collectionsFuture = _loadCollectionDues(force: true)),
+              ),
+            ]),
+          );
+        }
+        final charges = snap.data ?? const <CollectionCharge>[];
+        final duePaise =
+            charges.fold<int>(0, (sum, row) => sum + row.outstandingPaise);
+        final overdue = charges.where((row) => row.overdue).length;
+        final due = duePaise > 0;
+        return AppCard(
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text('ONE-TIME COLLECTION',
+                    style:
+                        T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
+              ),
+              if (loading)
+                const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                StatusBadge(
+                  charges.isEmpty
+                      ? 'Settled'
+                      : (overdue > 0 ? 'Overdue' : 'Pending'),
+                  tone: charges.isEmpty
+                      ? BadgeTone.success
+                      : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              loading ? '—' : moneyPaise(duePaise),
+              style: T.display.copyWith(
+                color: due ? C.error : C.navy,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              loading
+                  ? 'Checking special collections…'
+                  : charges.isEmpty
+                      ? 'No special collection is due on this flat.'
+                      : charges.length == 1
+                          ? '${charges.first.collectionTitle ?? 'Collection'} · due ${fmtIsoDate(charges.first.dueDate)}'
+                          : '${charges.length} open charges'
+                              '${overdue > 0 ? ' · $overdue overdue' : ''}',
+              style: T.caption,
+            ),
+            const SizedBox(height: 14),
+            PrimaryButton(
+              label: charges.isEmpty ? 'View collections' : 'Pay now',
+              icon: Icons.celebration_outlined,
+              onPressed: () => _openCollectionPay(charges),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  Future<void> _openCollectionPay(List<CollectionCharge> charges) async {
+    if (charges.length == 1) {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              LiveOwnerCollectionChargePage(chargeId: charges.first.id),
+        ),
+      );
+      if (mounted) {
+        setState(() =>
+            _collectionsFuture = _loadCollectionDues(force: true));
+      }
+      return;
+    }
+    _open('collections');
   }
 
   Widget _flatCard(ResidentHomeContext ctx) => AppCard(
