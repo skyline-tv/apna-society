@@ -93,7 +93,7 @@ describe('receipt pdf', () => {
     });
     const text = pdf.toString('utf8');
     expect(text.startsWith('%PDF-1.4')).toBe(true);
-    expect(text).toContain('APNA SOCIETY');
+    expect(text).toContain('Apna Society');
     expect(text).toContain('Monarch Solitaire');
     expect(text).toContain('E-303');
     expect(text).toContain('RCPT-2026-000001');
@@ -101,6 +101,55 @@ describe('receipt pdf', () => {
     expect(text).toContain('BILL-2026-000001');
     expect(text).toContain('pay_abc');
     expect(text).toContain('authorized receipt');
+    expect(text).toContain('MediaBox [0 0 595 842]');
+  });
+
+  it('omits empty transaction references and wraps long payer names', () => {
+    const pdf = buildReceiptPdf({
+      receiptNumber: 'COLRCPT-2026-000013',
+      societyName: 'Monarch Solitaire',
+      flatNumber: '303',
+      wingCode: 'E',
+      ownerName: 'Rajeshkumar Venkateshwaran Subramaniam',
+      amountPaise: 1_250_000,
+      paymentMethod: 'CASH',
+      paidAt: new Date('2026-07-15T10:30:00.000+05:30'),
+      collectionNumber: 'COL-2026-0004',
+      collectionTitle: 'External plaster, terrace waterproofing and compound drainage repair',
+      paymentStatus: 'SUCCESSFUL',
+    });
+    const text = pdf.toString('utf8');
+    expect(text).toContain('One-time collection');
+    expect(text).toContain('Special collection');
+    expect(text).toContain('COL-2026-0004');
+    expect(text).toContain('Rajeshkumar');
+    expect(text).not.toContain('Transaction reference');
+    expect(text).not.toContain('Base maintenance');
+  });
+
+  it('shows applied principal on a partial payment instead of the full bill base', () => {
+    const pdf = buildReceiptPdf({
+      receiptNumber: 'RCPT-2026-000042',
+      societyName: 'Monarch Solitaire',
+      flatNumber: '303',
+      wingCode: 'E',
+      ownerName: 'Priya Sharma',
+      amountPaise: 202_630,
+      paymentMethod: 'BANK_TRANSFER',
+      transactionReference: 'NEFT-441902',
+      paidAt: new Date('2026-07-15T10:30:00.000+05:30'),
+      billNumber: 'BILL-2026-000001',
+      billingPeriod: 'Apr 2026',
+      baseAmountPaise: 400_000,
+      additionalServicesPaise: 50_000,
+      principalAmountPaise: 200_000,
+      interestAmountPaise: 2_630,
+      paymentStatus: 'SUCCESSFUL',
+    });
+    const text = pdf.toString('utf8');
+    expect(text).toContain('Applied to principal');
+    expect(text).toContain('Interest');
+    expect(text).not.toContain('Base maintenance');
   });
 });
 

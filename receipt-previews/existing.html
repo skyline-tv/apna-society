@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Existing receipt designs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .helvetica {
+      font-family: Helvetica, Arial, sans-serif;
+      padding: 48px 50px;
+      color: #000;
+      width: 612px;
+      min-height: 792px;
+      margin: 18px auto 40px;
+      background: #fff;
+      box-shadow: 0 18px 50px rgba(28, 25, 23, 0.12);
+    }
+    .helvetica .t { font-size: 16px; margin-bottom: 8px; }
+    .helvetica .s { font-size: 12px; margin-bottom: 28px; }
+    .helvetica p { font-size: 10px; line-height: 16px; margin: 0; white-space: pre; }
+    .local {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 18px auto 40px;
+      background: #fff;
+      padding: 36px 40px;
+      box-shadow: 0 18px 50px rgba(28, 25, 23, 0.12);
+      font-family: Helvetica, Arial, sans-serif;
+    }
+    .local-head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .local-brand { color: #1E4DB7; font-size: 18px; font-weight: 700; }
+    .local-sub { color: #64748B; font-size: 10px; margin-top: 4px; }
+    .local h3 { color: #1E4DB7; font-size: 16px; margin: 18px 0 4px; }
+    .local .rule { height: 2px; background: #1E4DB7; margin: 12px 0 18px; }
+    .kv { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; }
+    .kv .k { color: #64748B; width: 38%; }
+    .amt { background: #F1F5F9; padding: 12px 14px; margin: 16px 0; }
+    .amt .lab { color: #64748B; font-size: 10px; }
+    .amt .val { color: #1E4DB7; font-size: 22px; font-weight: 700; }
+    .foot { margin-top: 40px; font-size: 9px; color: #64748B; }
+    table.batch { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 12px; }
+    table.batch th, table.batch td { border-bottom: 1px solid #E2E8F0; padding: 6px 4px; text-align: left; }
+    .phone {
+      width: 390px;
+      margin: 18px auto 40px;
+      background: #F4F0EA;
+      border-radius: 28px;
+      padding: 18px 16px 28px;
+      box-shadow: 0 18px 50px rgba(28, 25, 23, 0.12);
+    }
+    .phone .appbar { font-weight: 700; margin-bottom: 16px; }
+    .avatar { width: 72px; height: 72px; border-radius: 50%; background: #E5F4EC; color: #1F7A4D; display: grid; place-items: center; font-size: 28px; margin: 8px auto 12px; }
+    .card { background: #FFFCF8; border: 1px solid #E6E1D6; border-radius: 16px; padding: 14px; margin-bottom: 10px; }
+    .row { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #F0EBE3; }
+    .btn { background: #1B4F8A; color: #fff; text-align: center; padding: 12px; border-radius: 12px; font-weight: 700; margin-top: 10px; }
+    .btn.ghost { background: #fff; color: #1B4F8A; border: 1px solid #1B4F8A; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Existing designs</h1>
+    <p class="lead">Faithful reconstructions of current layouts. Production PDF generators were not modified.</p>
+    <nav>
+      <a href="index.html">Inventory</a>
+      <a class="active" href="existing.html">Existing designs</a>
+      <a href="proposed.html">Proposed common design</a>
+    </nav>
+
+    <p class="caption">A · Live backend PDF — monthly maintenance (US Letter, Helvetica)</p>
+    <div class="helvetica">
+      <div class="t">APNA SOCIETY</div>
+      <div class="s">Payment Receipt</div>
+      <p>----------------------------------------------</p>
+      <p>Society: Monarch Solitaire A to E</p>
+      <p>Receipt number: RCPT-2026-000041</p>
+      <p>Payment status: SUCCESSFUL</p>
+      <p>Payment date: 23 Oct 2026, 06:12:04 PM IST</p>
+      <p>Wing / flat: E-303</p>
+      <p>Resident / payer: Priya Sharma</p>
+      <p>Bill number: BILL-2026-04-E-303</p>
+      <p>Billing period: Apr 2026</p>
+      <p>----------------------------------------------</p>
+      <p>Base maintenance: Rs 4,000.00</p>
+      <p>Additional services: Rs 500.00</p>
+      <p>Applied to principal: Rs 4,500.00</p>
+      <p>Interest: Rs 26.30</p>
+      <p>Total amount paid: Rs 4,526.30</p>
+      <p>Payment method: UPI</p>
+      <p>Transaction / reference: pay_N8k2mQ91</p>
+      <p>----------------------------------------------</p>
+      <p>This is an authorized receipt for a confirmed payment.</p>
+      <p>This document is generated from verified society records.</p>
+      <p>Thank you for paying your maintenance on time.</p>
+    </div>
+
+    <p class="caption">B · Live backend PDF — one-time collection (same generator)</p>
+    <div class="helvetica">
+      <div class="t">APNA SOCIETY</div>
+      <div class="s">Payment Receipt</div>
+      <p>----------------------------------------------</p>
+      <p>Society: Monarch Solitaire A to E</p>
+      <p>Receipt number: COLRCPT-2026-000012</p>
+      <p>Payment status: SUCCESSFUL</p>
+      <p>Payment date: 23 Oct 2026, 07:40:11 PM IST</p>
+      <p>Wing / flat: E-303</p>
+      <p>Resident / payer: Priya Sharma</p>
+      <p>Bill number: COL-2026-0003 · Compound waterproofing</p>
+      <p>----------------------------------------------</p>
+      <p>Total amount paid: Rs 8,000.00</p>
+      <p>Payment method: Cash</p>
+      <p>Transaction / reference: -</p>
+      <p>----------------------------------------------</p>
+      <p>This is an authorized receipt for a confirmed payment.</p>
+      <p>This document is generated from verified society records.</p>
+      <p>Thank you for paying your maintenance on time.</p>
+    </div>
+
+    <p class="caption">C · Local Flutter PDF — cash / cheque (A4, navy)</p>
+    <div class="local">
+      <div class="local-head">
+        <div>
+          <div class="local-brand">Apna Society</div>
+          <div class="local-sub">Monarch Solitaire A to E</div>
+        </div>
+        <div style="text-align:right;font-size:10px;color:#64748B">RECEIPT<br /><strong style="color:#0F172A">MS-RC-1042</strong></div>
+      </div>
+      <div class="rule"></div>
+      <h3>Payment receipt</h3>
+      <div class="kv"><span class="k">Date</span><span>23 Oct 2026</span></div>
+      <div class="kv"><span class="k">Received from</span><span>Priya Sharma · E-303</span></div>
+      <div class="kv"><span class="k">Towards</span><span>Maintenance Apr 2026</span></div>
+      <div class="kv"><span class="k">Mode</span><span>Cash</span></div>
+      <div class="amt">
+        <div class="lab">Amount received</div>
+        <div class="val">₹ 4,000.00</div>
+      </div>
+      <div class="foot">This is a computer-generated receipt for a confirmed collection. No signature is required.</div>
+    </div>
+
+    <p class="caption">D · Local Flutter PDF — batch settlement</p>
+    <div class="local">
+      <div class="local-brand">Apna Society</div>
+      <div class="local-sub">Monarch Solitaire A to E · Settlement receipt</div>
+      <div class="rule"></div>
+      <div class="kv"><span class="k">Received from</span><span>Priya Sharma · E-303</span></div>
+      <div class="kv"><span class="k">Date</span><span>23 Oct 2026</span></div>
+      <div class="kv"><span class="k">Mode</span><span>Cash</span></div>
+      <table class="batch">
+        <thead><tr><th>Bill</th><th>Period</th><th>Paid</th></tr></thead>
+        <tbody>
+          <tr><td>BILL-2026-03</td><td>Mar 2026</td><td>₹ 4,000.00</td></tr>
+          <tr><td>BILL-2026-04</td><td>Apr 2026</td><td>₹ 4,000.00</td></tr>
+        </tbody>
+      </table>
+      <div class="amt">
+        <div class="lab">Total received</div>
+        <div class="val">₹ 8,000.00</div>
+      </div>
+    </div>
+
+    <p class="caption">E · In-app Flutter screen (not a PDF)</p>
+    <div class="phone">
+      <div class="appbar">Receipt</div>
+      <div class="avatar">✓</div>
+      <div style="text-align:center;font-weight:700">Payment successful</div>
+      <div style="text-align:center;color:#78716C;font-size:13px;margin-bottom:14px">RCPT-2026-000041</div>
+      <div class="card">
+        <div class="row"><span>Flat</span><strong>E-303</strong></div>
+        <div class="row"><span>Amount</span><strong>₹ 4,526.30</strong></div>
+        <div class="row"><span>Method</span><strong>UPI</strong></div>
+        <div class="row" style="border:0"><span>Status</span><strong>SUCCESSFUL</strong></div>
+      </div>
+      <div class="btn">Download receipt</div>
+      <div class="btn ghost">Share</div>
+    </div>
+  </div>
+</body>
+</html>

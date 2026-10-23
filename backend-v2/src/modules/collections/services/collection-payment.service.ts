@@ -628,7 +628,11 @@ export async function getCollectionReceipt(
     paymentMethod: receipt.paymentMethod,
     transactionReference: receipt.transactionReference,
     paidAt: receipt.paidAt,
-    billNumber: `${receipt.collectionNumberSnapshot} · ${receipt.collectionTitleSnapshot}`,
+    description: receipt.collectionTitleSnapshot
+      ? `One-time collection - ${receipt.collectionTitleSnapshot}`
+      : 'One-time collection',
+    collectionNumber: receipt.collectionNumberSnapshot,
+    collectionTitle: receipt.collectionTitleSnapshot,
     paymentStatus: 'SUCCESSFUL',
   });
   return {

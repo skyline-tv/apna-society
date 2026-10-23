@@ -2324,7 +2324,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
                       Text(r.receiptNumber, style: T.secondary),
                       const SizedBox(height: 14),
                       Text(moneyPaise(r.amountPaise),
-                          style: T.display.copyWith(color: C.green)),
+                          style: T.display.copyWith(color: C.blue)),
                     ]),
                   ),
                   const SizedBox(height: 24),

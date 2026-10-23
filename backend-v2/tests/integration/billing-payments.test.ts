@@ -505,7 +505,7 @@ describe('Billing payments', () => {
     const pdf = Buffer.from(receipt.body.data.pdfBase64, 'base64').toString('utf8');
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain('SUCCESSFUL');
-    expect(pdf).toContain('APNA SOCIETY');
+    expect(pdf).toContain('Apna Society');
     expect(pdf).toContain(receipt.body.data.receipt.receiptNumber);
 
     const otherToken = await login(`${setup.otherOwner.email}`);

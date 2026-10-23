@@ -875,6 +875,7 @@ export async function getReceipt(
     throw forbidden('Receipt access denied', 'RECEIPT_ACCESS_DENIED');
   }
 
+  const billingPeriod = billingPeriodLabel(bill?.billingPeriodStart, bill?.billingPeriodEnd);
   const pdf = buildReceiptPdf({
     receiptNumber: receipt.receiptNumber,
     societyName: receipt.societyNameSnapshot,
@@ -886,7 +887,10 @@ export async function getReceipt(
     transactionReference: receipt.transactionReference || payment?.gatewayPaymentId || payment?.referenceNumber,
     paidAt: receipt.paidAt,
     billNumber: bill?.billNumber,
-    billingPeriod: billingPeriodLabel(bill?.billingPeriodStart, bill?.billingPeriodEnd),
+    billingPeriod,
+    description: billingPeriod
+      ? `Monthly maintenance - ${billingPeriod}`
+      : 'Monthly maintenance',
     baseAmountPaise: bill?.baseAmountPaise,
     additionalServicesPaise: bill?.additionalServicesTotalPaise,
     principalAmountPaise: payment?.allocatedToPrincipalPaise,

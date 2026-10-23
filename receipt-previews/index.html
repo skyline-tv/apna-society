@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apna Society — Receipt design review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="preview.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Apna Society receipt designs</h1>
+    <p class="lead">Phase 1 inventory of every receipt generation path, plus local previews of the current layouts and a proposed common design. Production generators were not changed.</p>
+    <nav>
+      <a class="active" href="index.html">Inventory</a>
+      <a href="existing.html">Existing designs</a>
+      <a href="proposed.html">Proposed common design</a>
+    </nav>
+
+    <div class="note">
+      <strong>Approval gate.</strong> Review the proposed design, then approve before it is applied to live PDF generators, Flutter local receipts, or in-app receipt screens.
+    </div>
+
+    <h2>Receipt types found</h2>
+    <table class="inv">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Who uses it</th>
+          <th>Template / generator</th>
+          <th>Numbering</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Monthly maintenance payment receipt</td>
+          <td>Residents and admin after SUCCESS payments</td>
+          <td><code>backend-v2/src/modules/billing/services/pdf.service.ts</code> → <code>buildReceiptPdf</code><br />called from <code>payment.service.ts</code> <code>getReceipt</code> / <code>getReceiptForPayment</code></td>
+          <td><code>RCPT-YEAR-######</code></td>
+          <td>Shared Helvetica PDF. Fields: base, additional services, principal, interest, method, txn ref.</td>
+        </tr>
+        <tr>
+          <td>One-time / special collection receipt</td>
+          <td>Residents and admin after SUCCESS collection payments</td>
+          <td>Same <code>buildReceiptPdf</code>, called from <code>collection-payment.service.ts</code> <code>getCollectionReceipt</code></td>
+          <td><code>COLRCPT-YEAR-######</code></td>
+          <td>Collection title is stuffed into <code>billNumber</code>. No base/interest breakdown.</td>
+        </tr>
+        <tr>
+          <td>Additional-charge receipt</td>
+          <td>—</td>
+          <td>None</td>
+          <td>—</td>
+          <td>Additional services roll into the monthly bill. No independent receipt type.</td>
+        </tr>
+        <tr>
+          <td>Local SQLite cash / cheque receipt</td>
+          <td>Offline Flutter collect-payment flow</td>
+          <td><code>app/lib/services/receipt_pdf.dart</code> <code>ReceiptPdf.buildBytes</code><br />opened from <code>main.dart</code> <code>showReceipt</code></td>
+          <td>Local <code>receiptNo</code></td>
+          <td>Navy/blue A4 via <code>package:pdf</code>. Separate visual language from live PDFs.</td>
+        </tr>
+        <tr>
+          <td>Local batch settlement receipt</td>
+          <td>Offline Flutter collect-payment</td>
+          <td><code>app/lib/services/receipt_pdf.dart</code> <code>buildBatchBytes</code></td>
+          <td>Local batch id</td>
+          <td>Table of bills settled in one cash collection.</td>
+        </tr>
+        <tr>
+          <td>In-app live receipt screens</td>
+          <td>Flutter live billing / collections</td>
+          <td><code>LiveReceiptPage</code>, <code>LiveCollectionReceiptPage</code></td>
+          <td>Server receipt number</td>
+          <td>Material UI, not the PDF layout. Download/share uses server <code>pdfBase64</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>PDF generation methods</h2>
+    <table class="inv">
+      <thead>
+        <tr><th>Method</th><th>Location</th><th>Output</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Dependency-free PDF 1.4, Helvetica Type1, US Letter 612×792</td>
+          <td><code>pdf.service.ts</code></td>
+          <td>Plain left-aligned text. No colour, no table, no HTML.</td>
+        </tr>
+        <tr>
+          <td><code>package:pdf</code> + <code>printing</code> + SharePlus</td>
+          <td><code>app/lib/services/receipt_pdf.dart</code></td>
+          <td>A4, navy header, grey amount box. Used only for local SQLite receipts.</td>
+        </tr>
+        <tr>
+          <td>No HTML templates exist in the repo</td>
+          <td><code>recepit.html</code> was empty (0 bytes)</td>
+          <td>These preview files are reconstructions for review only.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Duplicates and inconsistencies</h2>
+    <ul>
+      <li><span class="badge warn">Layout</span> Live PDFs are unstyled Helvetica text. Local Flutter PDFs are navy/blue cards. In-app screens are a third Material layout.</li>
+      <li><span class="badge warn">Page size</span> Backend uses US Letter (612×792). Flutter local receipts use A4.</li>
+      <li><span class="badge warn">Brand colour</span> App tokens are deep blue <code>#1B4F8A</code>. Local receipts use <code>#1E4DB7</code>. Live PDFs have no colour. Proposed design now uses brand blue.</li>
+      <li><span class="badge warn">Collections</span> Reuse the maintenance PDF builder and overload <code>billNumber</code> with the collection title.</li>
+      <li><span class="badge ok">Safety</span> Receipts are issued only for SUCCESS payments. FAILED / PENDING never get a receipt. Receipt numbers are unique per society.</li>
+      <li><span class="badge ok">Interest</span> Maintenance receipts can show allocated interest. Collection receipts do not. Billing math is unchanged in this review.</li>
+    </ul>
+
+    <h2>Not payment receipts</h2>
+    <p class="lead"><code>bill_pdf.dart</code> (bills), <code>report_pdf.dart</code>, and collection admin report PDFs are reports or invoices, not payment receipts.</p>
+  </div>
+</body>
+</html>
