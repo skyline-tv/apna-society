@@ -49,6 +49,7 @@ services:
       start_period: 40s
     networks:
       - apna-internal
+      - skyline-proxy
 
   # MongoDB is intentionally NOT published to the host by default.
   mongo:
@@ -122,3 +123,6 @@ volumes:
 networks:
   apna-internal:
     driver: bridge
+  skyline-proxy:
+    external: true
+    name: skyline-proxy
