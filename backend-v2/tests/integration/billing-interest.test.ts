@@ -20,7 +20,7 @@ const app = createApp();
 
 let interestSuite = 0;
 
-async function setupBill() {
+async function setupBill(overrides?: { dueDate?: string }) {
   interestSuite += 1;
   const suffix = `${interestSuite}${Date.now().toString(36).slice(-4)}`;
   const ctx = await createAdminContext(app, `int-${suffix}@example.com`, `INT${suffix}`);
@@ -42,7 +42,11 @@ async function setupBill() {
   const gen = await request(app)
     .post('/api/v1/admin/billing/generate')
     .set('Authorization', `Bearer ${ctx.token}`)
-    .send({ billingPeriodStart: '2026-04-01T00:00:00.000+05:30', numberOfMonths: 1 });
+    .send({
+      billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
+      numberOfMonths: 1,
+      ...(overrides?.dueDate ? { dueDate: overrides.dueDate } : {}),
+    });
 
   const billId = gen.body.data.created[0].id as string;
   return { ctx, owner, billId, flatId: String(flats[0]._id) };
@@ -72,6 +76,57 @@ describe('Late interest', () => {
     expect(day11.body.data.rounding).toBe('floor_via_bigint_division');
     expect(day11.body.data.principalEffectiveConvention).toBe(
       'civil_midnight_of_settlement_date',
+    );
+  });
+
+  it('uses the stored due date so interest starts the day after the 15th', async () => {
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'true';
+    resetEnvCache();
+    loadEnv();
+
+    const { ctx, billId } = await setupBill({ dueDate: '2026-04-15T00:00:00.000+05:30' });
+    const stored = await BillModel.findById(billId).lean();
+    expect(stored?.dueDate.toISOString()).toBe(
+      new Date('2026-04-15T23:59:59.999+05:30').toISOString(),
+    );
+
+    const onDue = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-04-15T23:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(onDue.status).toBe(200);
+    expect(onDue.body.data.overdueDays).toBe(0);
+    expect(onDue.body.data.accruedInterestPaise).toBe(0);
+
+    const dayAfter = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-04-16T10:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(dayAfter.body.data.overdueDays).toBe(1);
+    expect(dayAfter.body.data.accruedInterestPaise).toBe(
+      calculateSimpleDailyInterestPaise(400_000, 1, 2400),
+    );
+
+    const partial = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billId,
+        amountPaise: 100_000,
+        paidAt: '2026-04-18T10:00:00.000+05:30',
+        referenceNumber: `partial-15-${billId}`,
+        idempotencyKey: `partial-15-${billId}`,
+      });
+    expect(partial.status).toBe(201);
+
+    const afterPartial = await request(app)
+      .get(`/api/v1/admin/billing/bills/${billId}/interest`)
+      .query({ asOf: '2026-04-20T12:00:00.000+05:30' })
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(afterPartial.body.data.principalOutstandingPaise).toBe(300_000);
+    expect(afterPartial.body.data.accruedInterestPaise).toBe(
+      calculateSimpleDailyInterestPaise(400_000, 2, 2400) +
+        calculateSimpleDailyInterestPaise(300_000, 3, 2400),
     );
   });
 

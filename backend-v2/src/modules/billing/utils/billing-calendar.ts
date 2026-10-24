@@ -81,20 +81,34 @@ export function billingPeriodBounds(
   return { periodStart, periodEnd, startCivil };
 }
 
-/** Due date is the 10th of the billing period's first month (end of that day IST). */
+/** Default due date: the 10th of the billing period's first month (end of that day IST). */
 export function dueDateForBillingPeriod(periodStart: Date, timeZone = 'Asia/Kolkata'): Date {
   const civil = civilDateInTimeZone(periodStart, timeZone);
   return endOfZonedDay(civil.year, civil.month, 10);
 }
 
-/** End of the civil day of `dueDate` in the society timezone. */
+/**
+ * Due date stored on every bill in a generation batch.
+ * Defaults to the 10th when the admin does not supply one. A supplied date is
+ * normalized to end-of-day in the society timezone and must fall on a civil
+ * day within the billing period.
+ */
 export function resolveBillDueDate(
   periodStart: Date,
-  dueDate: Date | undefined,
+  periodEnd: Date,
+  requested: Date | undefined,
   timeZone = 'Asia/Kolkata',
 ): Date {
-  if (!dueDate) return dueDateForBillingPeriod(periodStart, timeZone);
-  const civil = civilDateInTimeZone(dueDate, timeZone);
+  if (!requested) {
+    return dueDateForBillingPeriod(periodStart, timeZone);
+  }
+  const civil = civilDateInTimeZone(requested, timeZone);
+  const dueStart = zonedMidnight(civil.year, civil.month, civil.day);
+  const startDay = startOfCivilDay(periodStart, timeZone);
+  const endDay = startOfCivilDay(periodEnd, timeZone);
+  if (dueStart.getTime() < startDay.getTime() || dueStart.getTime() > endDay.getTime()) {
+    throw new Error('dueDate must fall within the billing period');
+  }
   return endOfZonedDay(civil.year, civil.month, civil.day);
 }
 

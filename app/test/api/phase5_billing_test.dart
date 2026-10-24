@@ -90,6 +90,35 @@ void main() {
       }
     });
 
+    test('omits dueDate so the server defaults to the 10th', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(options.path.endsWith('/billing/generate'), isTrue);
+        expect(options.data.containsKey('dueDate'), isFalse);
+        return jsonBody(201, {
+          'success': true,
+          'data': {
+            'periodStart': '2026-04-01T00:00:00.000Z',
+            'periodEnd': '2026-04-30T00:00:00.000Z',
+            'dueDate': '2026-04-10T18:29:59.999Z',
+            'numberOfMonths': 1,
+            'createdCount': 1,
+            'skippedCount': 0,
+            'conflictCount': 0,
+            'totalBilledPaise': 400000,
+            'created': [_bill(billId, flatId)],
+            'skipped': <Object>[],
+            'conflicts': <Object>[],
+          },
+        });
+      });
+      final repo = BillingRepository(_api(adapter).billing);
+      final result = await repo.generateBills(
+        billingPeriodStart: '2026-04-01T00:00:00.000Z',
+        numberOfMonths: 1,
+      );
+      expect(result.createdCount, 1);
+    });
+
     test('parses unassigned bills and additional service line items', () async {
       final adapter = ScriptedAdapter((options) async {
         expect(options.path.endsWith('/billing/bills'), isTrue);

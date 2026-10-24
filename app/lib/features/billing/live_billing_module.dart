@@ -696,6 +696,9 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
 
   String get _dueLabel => fmtIsoDate(civilDateToIso(dueDate));
 
+  DateTime get _periodEndDate =>
+      DateTime(periodStart.year, periodStart.month + months, 0);
+
   String get _periodLabel {
     if (months == 1) return monthName(periodStart);
     final end = DateTime(periodStart.year, periodStart.month + months - 1, 1);
@@ -930,9 +933,11 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                 onTap: () async {
                   final picked = await showDatePicker(
                     context: context,
-                    initialDate: dueDate,
+                    initialDate: dueDate.isAfter(_periodEndDate)
+                        ? _periodEndDate
+                        : dueDate,
                     firstDate: periodStart,
-                    lastDate: DateTime(2100),
+                    lastDate: _periodEndDate,
                     helpText: 'Select due date',
                   );
                   if (picked != null) {
@@ -954,8 +959,17 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                     ButtonSegment(value: 3, label: Text('3 months')),
                   ],
                   selected: {months},
-                  onSelectionChanged:
-                      busy ? null : (s) => setState(() => months = s.first),
+                  onSelectionChanged: busy
+                      ? null
+                      : (s) => setState(() {
+                            months = s.first;
+                            final last = DateTime(
+                              periodStart.year,
+                              periodStart.month + months,
+                              0,
+                            );
+                            if (dueDate.isAfter(last)) dueDate = last;
+                          }),
                 ),
               ),
               const SizedBox(height: 12),

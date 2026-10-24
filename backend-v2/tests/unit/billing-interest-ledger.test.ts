@@ -127,6 +127,52 @@ describe('segment interest from principal ledger', () => {
     );
   });
 
+  it('uses the stored due date so interest starts the day after a 15th due date', () => {
+    const customDue = new Date('2026-04-15T23:59:59.999+05:30');
+    const onDue = computeInterestFromPrincipalTimeline({
+      dueDate: customDue,
+      openingPrincipalPaise: opening,
+      events: [
+        {
+          deltaPrincipalPaise: opening,
+          principalAfterPaise: opening,
+          effectiveAt: zonedMidnight(2026, 4, 1),
+        },
+      ],
+      asOf: new Date('2026-04-15T23:00:00+05:30'),
+      timeZone: 'Asia/Kolkata',
+      annualRateBps: 2400,
+    });
+    expect(onDue.overdueDays).toBe(0);
+    expect(onDue.accruedInterestPaise).toBe(0);
+
+    const afterPartial = computeInterestFromPrincipalTimeline({
+      dueDate: customDue,
+      openingPrincipalPaise: opening,
+      events: [
+        {
+          deltaPrincipalPaise: opening,
+          principalAfterPaise: opening,
+          effectiveAt: zonedMidnight(2026, 4, 1),
+        },
+        {
+          deltaPrincipalPaise: -100_000,
+          principalAfterPaise: 300_000,
+          effectiveAt: zonedMidnight(2026, 4, 18),
+        },
+      ],
+      asOf: new Date('2026-04-20T12:00:00+05:30'),
+      timeZone: 'Asia/Kolkata',
+      annualRateBps: 2400,
+    });
+    expect(afterPartial.overdueDays).toBe(5);
+    expect(afterPartial.accruedInterestPaise).toBe(
+      calculateSimpleDailyInterestPaise(400_000, 2, 2400) + // 16-17
+        calculateSimpleDailyInterestPaise(300_000, 3, 2400), // 18-20
+    );
+    expect(afterPartial.principalOutstandingPaise).toBe(300_000);
+  });
+
   it('applies refund restoration to future interest only', () => {
     const result = computeInterestFromPrincipalTimeline({
       dueDate,

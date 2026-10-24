@@ -14,6 +14,7 @@ import {
   billingPeriodBounds,
   dueDateForBillingPeriod,
   overdueDaysAsOf,
+  resolveBillDueDate,
   zonedMidnight,
 } from '../../src/modules/billing/utils/billing-calendar';
 
@@ -170,6 +171,26 @@ describe('billing calendar', () => {
 
     const due = dueDateForBillingPeriod(start);
     expect(due.toISOString()).toBe(new Date('2026-04-10T23:59:59.999+05:30').toISOString());
+    expect(resolveBillDueDate(one.periodStart, one.periodEnd, undefined).toISOString()).toBe(
+      due.toISOString(),
+    );
+    expect(
+      resolveBillDueDate(
+        one.periodStart,
+        one.periodEnd,
+        new Date('2026-04-15T00:00:00.000+05:30'),
+      ).toISOString(),
+    ).toBe(new Date('2026-04-15T23:59:59.999+05:30').toISOString());
+    expect(() =>
+      resolveBillDueDate(
+        one.periodStart,
+        one.periodEnd,
+        new Date('2026-03-31T00:00:00.000+05:30'),
+      ),
+    ).toThrow(/billing period/);
+    expect(() =>
+      resolveBillDueDate(one.periodStart, one.periodEnd, new Date('2026-05-01T00:00:00.000+05:30')),
+    ).toThrow(/billing period/);
   });
 
   it('counts overdue days from the 11th', () => {

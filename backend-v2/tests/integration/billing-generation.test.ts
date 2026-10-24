@@ -76,13 +76,13 @@ describe('Bill generation', () => {
     expect(audits).toBe(3);
   });
 
-  it('uses the admin-selected due date when provided', async () => {
-    const ctx = await createAdminContext(app, 'bill-due@example.com', 'BILL_DUE');
+  it('stores the admin-selected due date on every bill in the batch', async () => {
+    const ctx = await createAdminContext(app, 'bill-due-15@example.com', 'BILL_DUE15');
     await createWingWithFlats({
       societyId: ctx.societyId,
       code: 'D',
-      flatRates: [4000],
-      occupancyStatuses: ['VACANT'],
+      flatRates: [4000, 5000],
+      occupancyStatuses: ['VACANT', 'VACANT'],
     });
 
     const res = await request(app)
@@ -91,15 +91,103 @@ describe('Bill generation', () => {
       .send({
         billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
         numberOfMonths: 1,
-        dueDate: '2026-04-20T00:00:00.000+05:30',
+        dueDate: '2026-04-15T00:00:00.000+05:30',
       });
 
+    const expectedDue = new Date('2026-04-15T23:59:59.999+05:30').toISOString();
     expect(res.status).toBe(201);
-    expect(res.body.data.createdCount).toBe(1);
-    expect(res.body.data.dueDate).toBe(new Date('2026-04-20T23:59:59.999+05:30').toISOString());
-    expect(res.body.data.created[0].dueDate).toBe(
-      new Date('2026-04-20T23:59:59.999+05:30').toISOString(),
+    expect(res.body.data.createdCount).toBe(2);
+    expect(res.body.data.dueDate).toBe(expectedDue);
+    expect(res.body.data.created).toHaveLength(2);
+    for (const bill of res.body.data.created as Array<{ dueDate: string }>) {
+      expect(bill.dueDate).toBe(expectedDue);
+    }
+
+    const stored = await BillModel.find({ societyId: ctx.societyId }).lean();
+    expect(stored).toHaveLength(2);
+    for (const bill of stored) {
+      expect(bill.dueDate.toISOString()).toBe(expectedDue);
+    }
+  });
+
+  it('rejects due dates outside the billing period or that are not valid dates', async () => {
+    const ctx = await createAdminContext(app, 'bill-due-bad@example.com', 'BILL_DUEB');
+    await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'E',
+      flatRates: [4000],
+      occupancyStatuses: ['VACANT'],
+    });
+
+    const before = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
+        numberOfMonths: 1,
+        dueDate: '2026-03-31T00:00:00.000+05:30',
+      });
+    expect(before.status).toBe(400);
+    expect(before.body.error.code).toBe('INVALID_DUE_DATE');
+
+    const after = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
+        numberOfMonths: 1,
+        dueDate: '2026-05-01T00:00:00.000+05:30',
+      });
+    expect(after.status).toBe(400);
+    expect(after.body.error.code).toBe('INVALID_DUE_DATE');
+
+    const invalid = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
+        numberOfMonths: 1,
+        dueDate: 'not-a-date',
+      });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+
+    expect(await BillModel.countDocuments({ societyId: ctx.societyId })).toBe(0);
+  });
+
+  it('leaves historical bill due dates unchanged when a later run uses another due date', async () => {
+    const ctx = await createAdminContext(app, 'bill-due-hist@example.com', 'BILL_DUEH');
+    await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'H',
+      flatRates: [4000],
+      occupancyStatuses: ['VACANT'],
+    });
+
+    const first = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ billingPeriodStart: '2026-04-01T00:00:00.000+05:30', numberOfMonths: 1 });
+    expect(first.status).toBe(201);
+    const historicalDue = first.body.data.created[0].dueDate as string;
+    expect(historicalDue).toBe(new Date('2026-04-10T23:59:59.999+05:30').toISOString());
+    const historicalId = first.body.data.created[0].id as string;
+
+    const second = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-05-01T00:00:00.000+05:30',
+        numberOfMonths: 1,
+        dueDate: '2026-05-15T00:00:00.000+05:30',
+      });
+    expect(second.status).toBe(201);
+    expect(second.body.data.created[0].dueDate).toBe(
+      new Date('2026-05-15T23:59:59.999+05:30').toISOString(),
     );
+
+    const historical = await BillModel.findById(historicalId).lean();
+    expect(historical?.dueDate.toISOString()).toBe(historicalDue);
   });
 
   it('bills inactive flats and unassigned flats against the flat id', async () => {

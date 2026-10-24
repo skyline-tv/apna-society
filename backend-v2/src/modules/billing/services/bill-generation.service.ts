@@ -18,10 +18,11 @@ import { appendPrincipalEvent } from '../models/principal-ledger.model';
 import { nextSequence } from '../models/sequence.model';
 import {
   billingPeriodBounds,
-  resolveBillDueDate,
   periodsOverlap,
+  resolveBillDueDate,
   startOfCivilDay,
 } from '../utils/billing-calendar';
+import type { GenerateBillsInput } from '../validators/billing.validators';
 import { billComputedTotalPaise, billOutstandingPayablePaise, unpaidInterestPaise } from '../utils/bill-totals';
 import { multiplyPaise, rupeesIntegerToPaise } from '../utils/money';
 import { getBillInterest } from './interest.service';
@@ -29,12 +30,6 @@ import { ensureSocietyInterestCurrent } from './interest-worker.service';
 import { chargeAdditionalServiceForPeriod } from '../utils/additional-service-proration';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
-
-export interface GenerateBillsInput {
-  billingPeriodStart: Date;
-  numberOfMonths: 1 | 3;
-  notes?: string;
-}
 
 const UNASSIGNED_OWNER_NAME = 'Unassigned';
 
@@ -224,7 +219,15 @@ export async function generateBills(
     );
   }
 
-  const dueDate = resolveBillDueDate(periodStart, input.dueDate, timeZone);
+  let dueDate: Date;
+  try {
+    dueDate = resolveBillDueDate(periodStart, periodEnd, input.dueDate, timeZone);
+  } catch {
+    throw badRequest(
+      'dueDate must fall within the billing period (Asia/Kolkata civil days)',
+      'INVALID_DUE_DATE',
+    );
+  }
   const flats = await FlatModel.find({ societyId }).sort({ number: 1 }).lean();
 
   const wings = await WingModel.find({ societyId }).lean();
