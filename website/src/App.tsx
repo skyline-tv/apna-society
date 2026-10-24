@@ -1,12 +1,18 @@
-import { useEffect } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
-  APP, DEVELOPER, DEVELOPER_SITE, home, landing, mainNav, pages,
+  APP, DEVELOPER, DEVELOPER_SITE, SUPPORT_EMAIL, home, landing, mainNav, pages,
   type Block, type PageDef,
 } from './content'
 
+const EMAIL_OR_MARK = /(\[TO CONFIRM[^\]]*\]|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
+
 function Text({ t }: { t: string }) {
-  return <>{t.split(/(\[TO CONFIRM[^\]]*\])/).map((s, i) => s.startsWith('[TO CONFIRM') ? <mark key={i}>{s}</mark> : s)}</>
+  return <>{t.split(EMAIL_OR_MARK).map((s, i) => {
+    if (s.startsWith('[TO CONFIRM')) return <mark key={i}>{s}</mark>
+    if (/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(s)) return <a key={i} href={`mailto:${s}`}>{s}</a>
+    return s
+  })}</>
 }
 function Blocks({ body }: { body: Block[] }) {
   return <>{body.map((b, i) => Array.isArray(b)
@@ -14,6 +20,47 @@ function Blocks({ body }: { body: Block[] }) {
     : <p key={i}><Text t={b} /></p>)}</>
 }
 function useTitle(t: string) { useEffect(() => { document.title = t }, [t]) }
+
+function DeletionForm() {
+  const [sent, setSent] = useState(false)
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const body = [
+      'Delete my account',
+      '',
+      `Full name: ${String(fd.get('name') ?? '').trim()}`,
+      `Email on the account: ${String(fd.get('email') ?? '').trim()}`,
+      `Mobile number: ${String(fd.get('mobile') ?? '').trim()}`,
+      `Society, wing and flat: ${String(fd.get('flat') ?? '').trim()}`,
+    ].join('\n')
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Delete my account')}&body=${encodeURIComponent(body)}`
+    setSent(true)
+  }
+  return (
+    <form className="del-form" onSubmit={onSubmit}>
+      <p className="del-form-lede">Deletion request</p>
+      <label>
+        <span>Full name</span>
+        <input name="name" type="text" autoComplete="name" required />
+      </label>
+      <label>
+        <span>Email on the account</span>
+        <input name="email" type="email" autoComplete="email" required />
+      </label>
+      <label>
+        <span>Mobile number on the account</span>
+        <input name="mobile" type="tel" autoComplete="tel" required />
+      </label>
+      <label>
+        <span>Society, wing and flat</span>
+        <input name="flat" type="text" placeholder="e.g. Monarch Solitaire, A-102" required />
+      </label>
+      <button className="btn" type="submit">Email deletion request</button>
+      {sent && <p className="del-note">Your email app should open addressed to {SUPPORT_EMAIL}. If it does not, write to that address with the subject “Delete my account”.</p>}
+    </form>
+  )
+}
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation()
@@ -49,7 +96,13 @@ function Doc({ page }: { page: PageDef }) {
       <details className="toc-m"><summary>On this page</summary><ol>{toc}</ol></details>
       <nav className="toc-d" aria-label="On this page"><p>On this page</p><ol>{toc}</ol></nav>
       <article>
-        {page.sections.map(s => <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`}><h2 id={`${s.id}-h`}>{s.title}</h2><Blocks body={s.body} /></section>)}
+        {page.sections.map(s => (
+          <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`}>
+            <h2 id={`${s.id}-h`}>{s.title}</h2>
+            <Blocks body={s.body} />
+            {page.path === '/account-deletion' && s.id === 'request' && <DeletionForm />}
+          </section>
+        ))}
       </article>
     </div>
   )

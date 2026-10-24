@@ -9,7 +9,9 @@ export const APP = 'Apna Society'
 export const DEVELOPER = 'SkyLine Tech Ventures'
 export const DEVELOPER_SITE = 'https://skylinetv.in'
 export const LAST_UPDATED = '24 October 2026'
-export const SUPPORT_EMAIL = '[TO CONFIRM: support email address]'
+export const SUPPORT_EMAIL = 'info@skylinetv.in'
+export const DELETION_DAYS = 30
+export const FINANCIAL_RETENTION_YEARS = 8
 /** Set this when the listing is live. The landing page hides the store button while empty. */
 export const PLAY_STORE_URL = ''
 
@@ -97,8 +99,8 @@ export const privacy: PageDef = {
     { id: 'third-parties', title: 'Third-party services', body: [
       '[TO CONFIRM: list each third-party service the app or backend uses (for example hosting, SMS or OTP, push notifications, analytics, crash reporting, payments) and what data it receives. If none, say so.]'] },
     { id: 'retention', title: 'Retention and deletion', body: [
-      'We keep your information while your account is active. You can ask us to delete your account at any time. See the Account Deletion page for how, and for what is deleted and what is kept.',
-      'Financial records such as maintenance bills, payments and receipts may be kept after deletion because the society needs them for its accounts.'] },
+      'We keep your information while your account is active. You can ask us to delete your account at any time. See the Account Deletion page for how, for what is deleted and what is kept, and for how long retained records are stored.',
+      `Financial records such as maintenance bills, payments, receipts, one-time collections and special charges may be kept for ${FINANCIAL_RETENTION_YEARS} years from the date of the transaction, because the society needs them for its accounts.`] },
     { id: 'rights', title: 'Your rights', body: [
       'You can ask us to:',
       ['Tell you what information we hold about you', 'Correct information that is wrong', 'Delete your account and associated information'],
@@ -110,20 +112,30 @@ export const privacy: PageDef = {
 export const deletion: PageDef = {
   path: '/account-deletion', nav: 'Account Deletion',
   title: 'Delete your account | Apna Society',
-  description: 'How to ask for your Apna Society account and data to be deleted, and what is kept for society records.',
-  intro: 'You can ask us to delete your Apna Society account and the personal information linked to it.',
+  description: 'How to ask SkyLine Tech Ventures to delete your Apna Society account, what is deleted, what is kept, and for how long.',
+  intro: `${APP} is a society management app developed by ${DEVELOPER}. You can ask us to delete your account and the personal information linked to it.`,
   updated: LAST_UPDATED,
   sections: [
+    { id: 'about', title: 'Who we are', body: [
+      `${APP} is developed by ${DEVELOPER} (${DEVELOPER_SITE}). On this page, "we" means ${DEVELOPER}.`,
+      'Use this page if you have an Apna Society account and want that account deleted.'] },
     { id: 'request', title: 'How to request deletion', body: [
-      `Email ${DEVELOPER} at ${SUPPORT_EMAIL} from the email address, or with the mobile number, registered on your account. Include:`,
-      ['Your full name', 'Your society, wing and flat number', 'The mobile number or email address on the account', 'The words "Delete my account"'] ] },
+      `Send the request from the email address or mobile number registered on your account. Use the form below, or email ${SUPPORT_EMAIL} with the subject "Delete my account".`,
+      'Include:',
+      ['Your full name', 'The email address and mobile number on the account', 'Your society, wing and flat number', 'The words "Delete my account"'] ] },
     { id: 'steps', title: 'What happens next', body: [
-      ['We confirm the request comes from the account holder.', 'We delete or anonymise the information described below.', 'We confirm by email or message once it is done.'],
-      '[TO CONFIRM: how long deletion takes. State a timeline only if it will be met.]'] },
-    { id: 'deleted', title: 'What we delete or anonymise', body: [
-      ['Your profile: name, email address and mobile number', 'Your login and authentication data', 'Vehicle and parking details linked to you', '[TO CONFIRM: whether visitor records linked to you are deleted or anonymised]'] ] },
-    { id: 'kept', title: 'What may be kept', body: [
-      'Maintenance bills, payments, receipts, one-time collections and special charges may be kept, because your society needs them for its financial and accounting records. Where possible they are kept without your personal details.'] },
+      ['We confirm the request comes from the account holder.', `We delete or anonymise the information listed below within ${DELETION_DAYS} days of that confirmation.`, 'We close the account so it cannot be used to sign in.', 'We confirm by email or message once it is done.'] ] },
+    { id: 'deleted', title: 'What we delete', body: [
+      'After we verify the request, we delete or anonymise:',
+      ['Your profile: name, email address, mobile number and username', 'Login and authentication data, including password and sign-in sessions', 'Device and notification tokens', 'Vehicle and parking details linked to you', 'Your name and contact details on visitor records (those records are anonymised)', 'Access to the app — the account is closed'] ] },
+    { id: 'kept', title: 'What we may keep', body: [
+      'Your society needs some records for its accounts. We may keep:',
+      ['Financial transactions, including payments recorded against your flat', 'Maintenance bills and the amounts charged', 'Receipts', 'One-time collections and special charges', 'Society, wing and flat records that belong to the society, not to you personally', 'Anonymised visitor entry and exit logs, without your name, email or mobile number'],
+      'Where we keep a financial record, we remove your name, email and mobile number when we can do so without breaking the society’s accounts.'] },
+    { id: 'retention', title: 'How long we keep retained information', body: [
+      `Financial records — bills, payments, receipts, one-time collections and special charges — are kept for ${FINANCIAL_RETENTION_YEARS} years from the date of the transaction. That is the period societies commonly need for accounts and Indian tax records.`,
+      `After ${FINANCIAL_RETENTION_YEARS} years we delete those records, or keep them only without your name, email or mobile number.`,
+      'Anonymised visitor entry and exit logs are kept for 12 months from the date of the visit, then deleted.'] },
   ] }
 
 export const support: PageDef = {
@@ -139,7 +151,7 @@ export const support: PageDef = {
       'When you write, include your name, society, wing and flat number, your role (Admin, Owner, Tenant or Guard), and what went wrong. Add a screenshot if you can. Never send your password.'] },
     { id: 'billing', title: 'Billing questions', body: [
       'Maintenance charges are set by your society committee. For a question about an amount, contact your society admin first. Contact us if a payment or receipt does not show correctly in the app.'] },
-    { id: 'delete', title: 'Delete your account', body: ['See the Account Deletion page for how to request it.'] },
+    { id: 'delete', title: 'Delete your account', body: ['See the Account Deletion page for the form and email, what we delete, what we keep, and for how long.'] },
   ] }
 
 export const pages = [privacy, deletion, support]
