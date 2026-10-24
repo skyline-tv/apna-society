@@ -1334,7 +1334,7 @@ class _OwnerHomeState extends State<OwnerHome> {
           if (ctx.access.canFinance)
             QuickAccessItem(
               icon: Icons.receipt_long_outlined,
-              label: 'Pay bill',
+              label: kResidentOnlinePaymentsEnabled ? 'Pay bill' : 'Bills',
               onTap: () => _open('bills'),
             ),
           if (ctx.access.canFinance)
@@ -1431,6 +1431,10 @@ class _OwnerHomeState extends State<OwnerHome> {
                           _duesHero(flat),
                           const SizedBox(height: 10),
                           _collectionsHero(),
+                          if (!kResidentOnlinePaymentsEnabled) ...[
+                            const SizedBox(height: 10),
+                            const InfoNote(kOfficePaymentMessage),
+                          ],
                         ],
                       )
                     : _flatCard(ctx),
@@ -1626,7 +1630,9 @@ class _OwnerHomeState extends State<OwnerHome> {
             ),
             const SizedBox(height: 14),
             PrimaryButton(
-              label: bills.isEmpty ? 'View bills' : 'Pay now',
+              label: bills.isEmpty || !kResidentOnlinePaymentsEnabled
+                  ? 'View bills'
+                  : 'Pay now',
               icon: Icons.payments_outlined,
               onPressed: () => _open('bills'),
             ),
@@ -1716,7 +1722,9 @@ class _OwnerHomeState extends State<OwnerHome> {
             ),
             const SizedBox(height: 14),
             PrimaryButton(
-              label: charges.isEmpty ? 'View collections' : 'Pay now',
+              label: charges.isEmpty || !kResidentOnlinePaymentsEnabled
+                  ? 'View collections'
+                  : 'Pay now',
               icon: Icons.celebration_outlined,
               onPressed: () => _openCollectionPay(charges),
             ),

@@ -23,6 +23,8 @@ services:
       ANNOUNCEMENT_STORAGE_LOCAL_DIR: /data/storage/announcements
       FCM_ENABLED: ${FCM_ENABLED:-false}
       OFFLINE_PAYMENTS_ENABLED: 'true'
+      PAYMENTS_LIVE_ENABLED: ${PAYMENTS_LIVE_ENABLED:-false}
+      DEMO_PAYMENTS_ENABLED: ${DEMO_PAYMENTS_ENABLED:-false}
       FIREBASE_SERVICE_ACCOUNT_PATH: /app/secrets/firebase-service-account.json
     ports:
       - "${PORT:-4000}:4000"

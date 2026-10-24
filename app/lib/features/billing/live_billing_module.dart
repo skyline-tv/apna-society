@@ -32,11 +32,12 @@ String billingErrorMessage(Object error) {
       case 'BILL_HAS_PAYMENTS':
         return 'Cannot cancel a bill that already has payments.';
       case 'PAYMENTS_LIVE_DISABLED':
-        return 'Online payments are not enabled on the server yet.';
+      case 'ONLINE_PAYMENTS_DISABLED':
+        return kOfficePaymentMessage;
       case 'OFFLINE_PAYMENTS_DISABLED':
         return 'Offline collection recording is not enabled on the server.';
       case 'DEMO_PAYMENTS_DISABLED':
-        return 'Payment simulation is not available while live payments are enabled.';
+        return 'Payment simulation is turned off.';
       case 'DEMO_PROVIDER_REQUIRED':
         return 'Payment simulation requires the mock payment provider.';
       case 'INVALID_GATEWAY_SIGNATURE':
@@ -1840,6 +1841,10 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
 
   Future<void> _pay(Bill bill) async {
     if (paying) return;
+    if (!kResidentOnlinePaymentsEnabled) {
+      showInfoSnack(context, kOfficePaymentMessage);
+      return;
+    }
     if (billAmountDuePaise(bill) <= 0) {
       showWarningSnack(context, 'This bill is already settled.');
       return;
@@ -2065,6 +2070,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                         DetailRow('Annual rate',
                             '${interest.annualInterestRatePercent}% p.a.'),
                       ]),
+                    if (payable && !kResidentOnlinePaymentsEnabled)
+                      const InfoNote(kOfficePaymentMessage),
                     const InfoNote(
                       'Interest accrues automatically after the due date. '
                       'The society server calculates simple daily interest. '
@@ -2075,9 +2082,10 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                 ),
               ),
             ),
-            if (payable || successful.isNotEmpty)
+            if ((payable && kResidentOnlinePaymentsEnabled) ||
+                successful.isNotEmpty)
               BottomActionBar(children: [
-                if (payable)
+                if (payable && kResidentOnlinePaymentsEnabled)
                   PrimaryButton(
                     label: 'Pay ${moneyPaise(due)}',
                     icon: Icons.lock_outline_rounded,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:apna_society/app_core.dart';
 import 'package:apna_society/ui/components.dart';
 
 void main() {
@@ -132,6 +133,11 @@ void main() {
     expect(find.text('Occupancy'), findsOneWidget);
     expect(find.text('90%'), findsOneWidget);
     expect(find.text('108 occupied'), findsOneWidget);
+  });
+
+  test('first publish keeps resident online and simulated payments off', () {
+    expect(kResidentOnlinePaymentsEnabled, isFalse);
+    expect(kOfficePaymentMessage, contains('cash or cheque'));
   });
 
   test('dayGreeting splits the day', () {

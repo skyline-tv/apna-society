@@ -53,9 +53,10 @@ String collectionErrorMessage(Object error) {
       case 'PAYMENT_ACCESS_DENIED':
         return 'You do not have access to this receipt.';
       case 'PAYMENTS_LIVE_DISABLED':
-        return 'Online payments are not enabled on the server yet.';
+      case 'ONLINE_PAYMENTS_DISABLED':
+        return kOfficePaymentMessage;
       case 'DEMO_PAYMENTS_DISABLED':
-        return 'Payment simulation is not available while live payments are enabled.';
+        return 'Payment simulation is turned off.';
       case 'INVALID_GATEWAY_SIGNATURE':
         return 'Payment could not be verified. Contact the society office if money was deducted.';
       case 'OFFLINE_PAYMENTS_DISABLED':
@@ -2274,7 +2275,7 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
                 subtitle: open.isEmpty
                     ? 'Nothing due on special collections.'
                     : '${open.length} open ${open.length == 1 ? 'charge' : 'charges'}',
-                child: open.isEmpty
+                child: open.isEmpty || !kResidentOnlinePaymentsEnabled
                     ? null
                     : PrimaryButton(
                         label: 'Pay now',
@@ -2294,6 +2295,10 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
                         },
                       ),
               ),
+              if (due > 0 && !kResidentOnlinePaymentsEnabled) ...[
+                const SizedBox(height: 12),
+                const InfoNote(kOfficePaymentMessage),
+              ],
               const SizedBox(height: 14),
               if (rows.isEmpty)
                 const EmptyState(
@@ -2382,6 +2387,10 @@ class _LiveOwnerCollectionChargePageState
 
   Future<void> _pay(CollectionCharge charge) async {
     if (paying) return;
+    if (!kResidentOnlinePaymentsEnabled) {
+      showInfoSnack(context, kOfficePaymentMessage);
+      return;
+    }
     if (charge.outstandingPaise <= 0) {
       showWarningSnack(context, 'This collection is already settled.');
       return;
@@ -2551,7 +2560,13 @@ class _LiveOwnerCollectionChargePageState
                       charge.allowPartialPayment ? 'Allowed' : 'Full amount only',
                     ),
                   ]),
-                  if (charge.allowPartialPayment && canPay) ...[
+                  if (canPay && !kResidentOnlinePaymentsEnabled) ...[
+                    const SizedBox(height: 12),
+                    const InfoNote(kOfficePaymentMessage),
+                  ],
+                  if (charge.allowPartialPayment &&
+                      canPay &&
+                      kResidentOnlinePaymentsEnabled) ...[
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: amountCtrl,
@@ -2588,7 +2603,7 @@ class _LiveOwnerCollectionChargePageState
                 ],
               ),
             ),
-            if (canPay)
+            if (canPay && kResidentOnlinePaymentsEnabled)
               BottomActionBar(children: [
                 PrimaryButton(
                   label: 'Pay collection',

@@ -65,6 +65,7 @@ npm install
 | `OFFLINE_PAYMENTS_ENABLED` | Compatibility flag. Admin cash/cheque recording is always allowed. |
 | `PAYMENT_GATEWAY_PROVIDER` | `mock` (default) or `razorpay` |
 | `PAYMENTS_LIVE_ENABLED` | `true` only when ready for live Razorpay charges (explicit opt-in) |
+| `DEMO_PAYMENTS_ENABLED` | Simulated in-app checkout. Default `false`. Forbidden in production. |
 | `RAZORPAY_KEY_ID` | Razorpay key id — never commit real values |
 | `RAZORPAY_KEY_SECRET` | Razorpay key secret for order/payment signatures |
 | `RAZORPAY_WEBHOOK_SECRET` | Webhook HMAC secret (required for live) |
@@ -566,6 +567,7 @@ Lifecycle: `DRAFT → SCHEDULED → PUBLISHED → ARCHIVED` (also `DRAFT|SCHEDUL
 **Security / env**
 - Production rejects placeholder JWT secrets, identical access/refresh secrets, missing `RESEND_API_KEY`, `memory` storage, and non-replica-set Mongo URIs (unless `mongodb+srv`).
 - Live Razorpay requires `PAYMENT_GATEWAY_PROVIDER=razorpay`, `PAYMENTS_LIVE_ENABLED=true`, and all three Razorpay secrets. Online orders are refused until that opt-in.
+- Simulated checkout (`DEMO_PAYMENTS_ENABLED`) is off by default and forbidden in production. Residents pay cash or cheque at the office until live Razorpay is enabled.
 - Visitor OTP is **email-only** (no SMS packages, env vars, or fallback).
 - Structured logs redact tokens, OTPs, payment/email/S3 secrets.
 

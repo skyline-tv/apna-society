@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { getEnv, isLivePaymentsEnabled } from '../../../config/env';
+import { getEnv, isDemoPaymentsEnabled, isLivePaymentsEnabled } from '../../../config/env';
 import { forbidden } from '../../../shared/errors/app-error';
 import type {
   CreateOrderInput,
@@ -44,6 +44,12 @@ export class MockRazorpayProvider implements PaymentProvider {
       throw forbidden(
         'Online payment orders are disabled. Enable PAYMENTS_LIVE_ENABLED=true with Razorpay credentials.',
         'PAYMENTS_LIVE_DISABLED',
+      );
+    }
+    if (!isDemoPaymentsEnabled()) {
+      throw forbidden(
+        'Online payment is not available. Please pay cash or cheque at the society office.',
+        'ONLINE_PAYMENTS_DISABLED',
       );
     }
     const orderId = `order_${randomUUID().replace(/-/g, '').slice(0, 14)}`;

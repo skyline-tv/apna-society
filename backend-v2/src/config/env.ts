@@ -52,6 +52,11 @@ const envSchema = z
     RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
     /** Explicit opt-in required before live Razorpay charges are allowed. */
     PAYMENTS_LIVE_ENABLED: boolFromEnv,
+    /**
+     * In-app simulated checkout (razorpay-mock). Forbidden in production.
+     * Tests set this true so payment integration suites can run.
+     */
+    DEMO_PAYMENTS_ENABLED: boolFromEnv,
     // Visitors / security (email-only OTP delivery — no SMS)
     VISITOR_OTP_TTL_MS: z.coerce.number().int().positive().default(10 * 60 * 1000),
     VISITOR_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
@@ -184,6 +189,13 @@ const envSchema = z
           path: ['SMS_OTP_DEV_BYPASS'],
         });
       }
+      if (data.DEMO_PAYMENTS_ENABLED) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'DEMO_PAYMENTS_ENABLED is not allowed in production',
+          path: ['DEMO_PAYMENTS_ENABLED'],
+        });
+      }
       if (data.SMS_OTP_ENABLED && !data.SMS_OTP_DEV_BYPASS) {
         if (data.SMS_PROVIDER === 'msg91') {
           if (!data.MSG91_AUTH_KEY || data.MSG91_AUTH_KEY.length < 8) {
@@ -313,4 +325,14 @@ export function isLivePaymentsEnabled(env: Env = getEnv()): boolean {
     env.PAYMENT_GATEWAY_PROVIDER === 'razorpay' &&
     Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET && env.RAZORPAY_WEBHOOK_SECRET)
   );
+}
+
+/** Simulated checkout. Never true when live Razorpay is on. */
+export function isDemoPaymentsEnabled(env: Env = getEnv()): boolean {
+  return env.DEMO_PAYMENTS_ENABLED && !isLivePaymentsEnabled(env);
+}
+
+/** Resident in-app checkout (live Razorpay or simulated mock). */
+export function isOnlineCheckoutEnabled(env: Env = getEnv()): boolean {
+  return isLivePaymentsEnabled(env) || isDemoPaymentsEnabled(env);
 }

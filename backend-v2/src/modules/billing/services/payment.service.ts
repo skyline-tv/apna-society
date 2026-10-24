@@ -1,5 +1,5 @@
 import type { ClientSession } from 'mongoose';
-import { isLivePaymentsEnabled } from '../../../config/env';
+import { isDemoPaymentsEnabled, isOnlineCheckoutEnabled } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
   AppError,
@@ -156,6 +156,12 @@ export async function createPaymentOrder(
   const amountPaise = amountDuePaise(interest.principalOutstandingPaise, remainingInterest);
   if (amountPaise <= 0) {
     throw badRequest('Bill is already fully paid', 'BILL_ALREADY_PAID');
+  }
+  if (!isOnlineCheckoutEnabled()) {
+    throw forbidden(
+      'Online payment is not available. Please pay cash or cheque at the society office.',
+      'ONLINE_PAYMENTS_DISABLED',
+    );
   }
   const provider = getPaymentProvider();
   const order = await provider.createOrder({
@@ -534,9 +540,9 @@ export async function completeDemoResidentPayment(
   input: { orderId: string; outcome: 'success' | 'failure' },
   actor: Actor,
 ) {
-  if (isLivePaymentsEnabled()) {
+  if (!isDemoPaymentsEnabled()) {
     throw forbidden(
-      'Demo payments are disabled when live Razorpay is enabled',
+      'Payment simulation is turned off.',
       'DEMO_PAYMENTS_DISABLED',
     );
   }

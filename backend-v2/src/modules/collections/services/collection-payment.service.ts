@@ -1,5 +1,5 @@
 import type { ClientSession } from 'mongoose';
-import { isLivePaymentsEnabled } from '../../../config/env';
+import { isDemoPaymentsEnabled, isOnlineCheckoutEnabled } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
   AppError,
@@ -123,6 +123,12 @@ export async function createCollectionPaymentOrder(
   }
   if (!collection.allowPartialPayment && requested !== charge.outstandingPaise) {
     throw badRequest('Partial payment is not enabled for this collection', 'PARTIAL_PAYMENT_DISABLED');
+  }
+  if (!isOnlineCheckoutEnabled()) {
+    throw forbidden(
+      'Online payment is not available. Please pay cash or cheque at the society office.',
+      'ONLINE_PAYMENTS_DISABLED',
+    );
   }
 
   const provider = getPaymentProvider();
@@ -383,9 +389,9 @@ export async function completeCollectionDemoPayment(
   input: { orderId: string; outcome: 'success' | 'failure' },
   actor: Actor,
 ) {
-  if (isLivePaymentsEnabled()) {
+  if (!isDemoPaymentsEnabled()) {
     throw forbidden(
-      'Demo payments are disabled when live Razorpay is enabled',
+      'Payment simulation is turned off.',
       'DEMO_PAYMENTS_DISABLED',
     );
   }

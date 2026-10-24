@@ -27,6 +27,9 @@ process.env.FCM_ENABLED = 'false';
 process.env.SMS_PROVIDER = 'memory';
 process.env.SMS_OTP_ENABLED = 'false';
 process.env.SMS_OTP_DEV_BYPASS = 'false';
+process.env.DEMO_PAYMENTS_ENABLED = 'true';
+process.env.PAYMENTS_LIVE_ENABLED = 'false';
+process.env.PAYMENT_GATEWAY_PROVIDER = 'mock';
 process.env.SMS_OTP_LENGTH = '6';
 process.env.SMS_OTP_EXPIRY_MINUTES = '5';
 // Placeholder until memory server starts; connectDatabase is called in beforeAll with real URI.

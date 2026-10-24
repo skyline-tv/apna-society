@@ -47,6 +47,12 @@ const kAppName = 'ApnaSociety';
 const kSocietyName = 'Monarch Solitaire A to E';
 const kSocietyAddress = 'Monarch Solitaire A to E Residential Society';
 const kAppTagline = 'Simplifying Society Management.';
+
+/// First publish: residents cannot pay in-app. Admin records cash or cheque.
+const kResidentOnlinePaymentsEnabled = false;
+
+const kOfficePaymentMessage =
+    'Online payment is not available yet. Please pay cash or cheque at the society office. Your receipt will appear here after the admin records it.';
 const kBuildingA = 'Monarch Solitaire A';
 const kBuildingB = 'Monarch Solitaire B';
 const kBuildingC = 'Monarch Solitaire C';
