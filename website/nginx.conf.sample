@@ -1,0 +1,2 @@
+# Serve the contents of dist/ ; prerendered pages live at /privacy-policy/index.html etc.
+location / { try_files $uri $uri/index.html $uri/ /index.html; }
