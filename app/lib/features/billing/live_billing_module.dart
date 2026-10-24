@@ -686,12 +686,15 @@ class LiveGenerateBillsPage extends StatefulWidget {
 
 class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
   DateTime periodStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  late DateTime dueDate = DateTime(periodStart.year, periodStart.month, 10);
   int months = 1;
   bool busy = false;
   bool reviewing = false;
   String? error;
   List<EligibleFlat>? _eligible;
   bool _loadingEligible = false;
+
+  String get _dueLabel => fmtIsoDate(civilDateToIso(dueDate));
 
   String get _periodLabel {
     if (months == 1) return monthName(periodStart);
@@ -733,7 +736,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
       context,
       title: 'Create bills now?',
       message:
-          'The server will create bills for $_periodLabel across ${rows.length} configured ${rows.length == 1 ? 'flat' : 'flats'}, including vacant and unassigned flats.',
+          'The server will create bills for $_periodLabel across ${rows.length} configured ${rows.length == 1 ? 'flat' : 'flats'}, including vacant and unassigned flats. Due date: $_dueLabel.',
       confirmLabel: 'Create bills',
       icon: Icons.auto_awesome_outlined,
     );
@@ -749,6 +752,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
           await ensureLiveRepositories(session.api).billing.generateBills(
                 billingPeriodStart: periodStart.toUtc().toIso8601String(),
                 numberOfMonths: months,
+                dueDate: civilDateToIso(dueDate),
               );
       ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
       if (!mounted) return;
@@ -832,6 +836,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                   rows: [
                     ('Period', _periodLabel),
                     ('Months', '$months'),
+                    ('Due date', _dueLabel),
                     ('Eligible flats', '${rows?.length ?? 0}'),
                     (
                       'Est. principal',
@@ -908,10 +913,37 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                     helpText: 'Select billing month',
                   );
                   if (picked != null) {
-                    setState(() =>
-                        periodStart = DateTime(picked.year, picked.month, 1));
+                    setState(() {
+                      periodStart = DateTime(picked.year, picked.month, 1);
+                      dueDate = DateTime(picked.year, picked.month, 10);
+                    });
                   }
                 },
+              ),
+              const SizedBox(height: 16),
+              const FormSectionLabel('Due date'),
+              PickerField(
+                label: 'Due date',
+                icon: Icons.event_outlined,
+                value: _dueLabel,
+                enabled: !busy,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: dueDate,
+                    firstDate: periodStart,
+                    lastDate: DateTime(2100),
+                    helpText: 'Select due date',
+                  );
+                  if (picked != null) {
+                    setState(() => dueDate = picked);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Defaults to the 10th of the billing month. Change it if the society uses another due date.',
+                style: T.secondary,
               ),
               const SizedBox(height: 16),
               const FormSectionLabel('Months covered'),

@@ -61,6 +61,7 @@ void main() {
         final adapter = ScriptedAdapter((options) async {
           expect(options.path.endsWith('/billing/generate'), isTrue);
           expect(options.data['numberOfMonths'], months);
+          expect(options.data['dueDate'], '2026-04-20T00:00:00.000+05:30');
           return jsonBody(201, {
             'success': true,
             'data': {
@@ -82,6 +83,7 @@ void main() {
         final result = await repo.generateBills(
           billingPeriodStart: '2026-04-01T00:00:00.000Z',
           numberOfMonths: months,
+          dueDate: '2026-04-20T00:00:00.000+05:30',
         );
         expect(result.createdCount, 1);
         expect(result.numberOfMonths, months);

@@ -18,7 +18,7 @@ import { appendPrincipalEvent } from '../models/principal-ledger.model';
 import { nextSequence } from '../models/sequence.model';
 import {
   billingPeriodBounds,
-  dueDateForBillingPeriod,
+  resolveBillDueDate,
   periodsOverlap,
   startOfCivilDay,
 } from '../utils/billing-calendar';
@@ -224,7 +224,7 @@ export async function generateBills(
     );
   }
 
-  const dueDate = dueDateForBillingPeriod(periodStart, timeZone);
+  const dueDate = resolveBillDueDate(periodStart, input.dueDate, timeZone);
   const flats = await FlatModel.find({ societyId }).sort({ number: 1 }).lean();
 
   const wings = await WingModel.find({ societyId }).lean();

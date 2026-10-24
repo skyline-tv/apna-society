@@ -178,4 +178,11 @@ describe('billing calendar', () => {
     expect(overdueDaysAsOf(due, new Date('2026-04-11T00:00:00+05:30'))).toBe(1);
     expect(overdueDaysAsOf(due, new Date('2026-04-12T23:00:00+05:30'))).toBe(2);
   });
+
+  it('counts overdue days from the day after a custom due date', () => {
+    const due = new Date('2026-04-15T23:59:59.999+05:30');
+    expect(overdueDaysAsOf(due, new Date('2026-04-15T12:00:00+05:30'))).toBe(0);
+    expect(overdueDaysAsOf(due, new Date('2026-04-16T00:00:00+05:30'))).toBe(1);
+    expect(overdueDaysAsOf(due, new Date('2026-04-17T23:00:00+05:30'))).toBe(2);
+  });
 });

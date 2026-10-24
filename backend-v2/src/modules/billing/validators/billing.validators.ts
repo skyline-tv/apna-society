@@ -13,6 +13,7 @@ const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid ObjectId');
 export const generateBillsSchema = z.object({
   billingPeriodStart: z.coerce.date(),
   numberOfMonths: z.union([z.literal(1), z.literal(3)]),
+  dueDate: z.coerce.date().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
 export type GenerateBillsInput = z.infer<typeof generateBillsSchema>;

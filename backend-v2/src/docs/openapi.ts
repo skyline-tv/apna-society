@@ -715,7 +715,7 @@ export function buildOpenApiSpec() {
             tags: ['Admin Billing'],
             summary: 'Generate monthly or 3-month prepaid maintenance bills',
             description:
-              'Bills only active flats with an active owner. Skips vacant/unassigned. Idempotent for overlapping periods (conflicts returned, not overwritten). Due date = 10th of first billing month (society timezone).',
+              'Bills every configured flat. Idempotent for overlapping periods (conflicts returned, not overwritten). Due date defaults to the 10th of the first billing month (society timezone). Send dueDate to override.',
             security: adminSecurity,
             requestBody: {
               required: true,
@@ -727,6 +727,7 @@ export function buildOpenApiSpec() {
                     properties: {
                       billingPeriodStart: { type: 'string', format: 'date-time', example: '2026-04-01T00:00:00.000+05:30' },
                       numberOfMonths: { type: 'integer', enum: [1, 3] },
+                      dueDate: { type: 'string', format: 'date-time', example: '2026-04-15T00:00:00.000+05:30' },
                       notes: { type: 'string' },
                     },
                   },

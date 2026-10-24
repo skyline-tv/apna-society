@@ -56,6 +56,11 @@ export function addCalendarMonths(start: CivilDate, months: number): CivilDate {
   return { year, month, day: 1 };
 }
 
+export function addCalendarDays(start: CivilDate, days: number): CivilDate {
+  const utc = new Date(Date.UTC(start.year, start.month - 1, start.day + days));
+  return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
+}
+
 /**
  * Billing period for N consecutive calendar months starting on the 1st.
  * Example: 2026-04-01 + 3 months → start 2026-04-01, end 2026-06-30 23:59:59.999 IST
@@ -82,18 +87,28 @@ export function dueDateForBillingPeriod(periodStart: Date, timeZone = 'Asia/Kolk
   return endOfZonedDay(civil.year, civil.month, 10);
 }
 
+/** End of the civil day of `dueDate` in the society timezone. */
+export function resolveBillDueDate(
+  periodStart: Date,
+  dueDate: Date | undefined,
+  timeZone = 'Asia/Kolkata',
+): Date {
+  if (!dueDate) return dueDateForBillingPeriod(periodStart, timeZone);
+  const civil = civilDateInTimeZone(dueDate, timeZone);
+  return endOfZonedDay(civil.year, civil.month, civil.day);
+}
+
 /**
- * Overdue days as of `asOf`: 0 on/before due date (10th);
- * 1 on the 11th, etc. Uses civil calendar days in the society timezone.
+ * Overdue days as of `asOf`: 0 on/before the due date;
+ * 1 on the following civil day, etc. Uses the society timezone.
  */
 export function overdueDaysAsOf(
   dueDate: Date,
   asOf: Date,
   timeZone = 'Asia/Kolkata',
 ): number {
-  const due = civilDateInTimeZone(dueDate, timeZone);
   const asOfCivil = civilDateInTimeZone(asOf, timeZone);
-  const interestStart = zonedMidnight(due.year, due.month, 11);
+  const interestStart = interestStartForDueDate(dueDate, timeZone);
   const asOfStart = zonedMidnight(asOfCivil.year, asOfCivil.month, asOfCivil.day);
   if (asOfStart.getTime() < interestStart.getTime()) {
     return 0;
@@ -126,8 +141,8 @@ export function inclusiveCivilDays(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
 }
 
-/** Interest accrual start: civil midnight of the 11th when due date is the 10th. */
+/** Interest accrual start: civil midnight of the day after the due date. */
 export function interestStartForDueDate(dueDate: Date, timeZone = 'Asia/Kolkata'): Date {
-  const due = civilDateInTimeZone(dueDate, timeZone);
-  return zonedMidnight(due.year, due.month, 11);
+  const next = addCalendarDays(civilDateInTimeZone(dueDate, timeZone), 1);
+  return zonedMidnight(next.year, next.month, next.day);
 }

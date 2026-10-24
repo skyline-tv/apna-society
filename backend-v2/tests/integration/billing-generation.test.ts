@@ -76,6 +76,32 @@ describe('Bill generation', () => {
     expect(audits).toBe(3);
   });
 
+  it('uses the admin-selected due date when provided', async () => {
+    const ctx = await createAdminContext(app, 'bill-due@example.com', 'BILL_DUE');
+    await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'D',
+      flatRates: [4000],
+      occupancyStatuses: ['VACANT'],
+    });
+
+    const res = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-04-01T00:00:00.000+05:30',
+        numberOfMonths: 1,
+        dueDate: '2026-04-20T00:00:00.000+05:30',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.createdCount).toBe(1);
+    expect(res.body.data.dueDate).toBe(new Date('2026-04-20T23:59:59.999+05:30').toISOString());
+    expect(res.body.data.created[0].dueDate).toBe(
+      new Date('2026-04-20T23:59:59.999+05:30').toISOString(),
+    );
+  });
+
   it('bills inactive flats and unassigned flats against the flat id', async () => {
     const ctx = await createAdminContext(app, 'bill-inactive@example.com', 'BILL_INACT');
     const { flats } = await createWingWithFlats({

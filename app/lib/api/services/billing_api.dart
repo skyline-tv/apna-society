@@ -16,6 +16,7 @@ class BillingApi {
   Future<GenerateBillsResult> generateBills({
     required String billingPeriodStart,
     required int numberOfMonths,
+    String? dueDate,
     String? notes,
     String? societyId,
   }) {
@@ -24,6 +25,7 @@ class BillingApi {
       body: omitNulls({
         'billingPeriodStart': billingPeriodStart,
         'numberOfMonths': numberOfMonths,
+        'dueDate': dueDate,
         'notes': notes,
       }),
       societyId: societyId,

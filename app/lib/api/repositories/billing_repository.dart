@@ -154,11 +154,13 @@ class BillingRepository {
   Future<GenerateBillsResult> generateBills({
     required String billingPeriodStart,
     required int numberOfMonths,
+    String? dueDate,
     String? notes,
   }) async {
     final result = await _api.generateBills(
       billingPeriodStart: billingPeriodStart,
       numberOfMonths: numberOfMonths,
+      dueDate: dueDate,
       notes: notes,
     );
     invalidateFinancialCaches();
