@@ -20,7 +20,7 @@ void main() {
       {'demo_admin', 'demo_owner', 'demo_tenant', 'demo_guard'},
     );
     for (final account in DemoEnvironment.accounts) {
-      expect(account.password.contains('Reviewer-'), isTrue);
+      expect(account.password, 'demo@12345');
       expect(account.username.contains('.'), isFalse);
     }
   });

@@ -15,7 +15,7 @@ export const DEMO_LOGIN_OTP = '123456';
 export const DEMO_ACCOUNTS = {
   admin: {
     username: 'demo_admin',
-    password: 'Reviewer-Admin-2026!',
+    password: 'demo@12345',
     email: 'demo.admin@example.com',
     name: 'Priya Sharma',
     mobileE164: '919000000001',
@@ -23,7 +23,7 @@ export const DEMO_ACCOUNTS = {
   },
   owner: {
     username: 'demo_owner',
-    password: 'Reviewer-Owner-2026!',
+    password: 'demo@12345',
     email: 'demo.owner@example.com',
     name: 'Rahul Mehta',
     mobileE164: '919000000002',
@@ -31,7 +31,7 @@ export const DEMO_ACCOUNTS = {
   },
   tenant: {
     username: 'demo_tenant',
-    password: 'Reviewer-Tenant-2026!',
+    password: 'demo@12345',
     email: 'demo.tenant@example.com',
     name: 'Ananya Iyer',
     mobileE164: '919000000003',
@@ -39,7 +39,7 @@ export const DEMO_ACCOUNTS = {
   },
   guard: {
     username: 'demo_guard',
-    password: 'Reviewer-Guard-2026!',
+    password: 'demo@12345',
     email: 'demo.guard@example.com',
     name: 'Suresh Kulkarni',
     mobileE164: '919000000004',

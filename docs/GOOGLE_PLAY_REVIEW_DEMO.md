@@ -32,10 +32,10 @@ If **Explore sample data** cannot reach the demo server, use the same usernames 
 
 | Role | Username | Password |
 | --- | --- | --- |
-| Admin | `demo_admin` | `Reviewer-Admin-2026!` |
-| Owner | `demo_owner` | `Reviewer-Owner-2026!` |
-| Tenant | `demo_tenant` | `Reviewer-Tenant-2026!` |
-| Security Guard | `demo_guard` | `Reviewer-Guard-2026!` |
+| Admin | `demo_admin` | `demo@12345` |
+| Owner | `demo_owner` | `demo@12345` |
+| Tenant | `demo_tenant` | `demo@12345` |
+| Security Guard | `demo_guard` | `demo@12345` |
 
 Optional mobile login OTP (does not expire in demo): `123456`  
 Visitor entry OTP (reusable, does not expire in demo): `246810`

@@ -18,22 +18,22 @@ class DemoEnvironment {
     DemoAccount(
       role: 'Admin',
       username: 'demo_admin',
-      password: 'Reviewer-Admin-2026!',
+      password: 'demo@12345',
     ),
     DemoAccount(
       role: 'Owner',
       username: 'demo_owner',
-      password: 'Reviewer-Owner-2026!',
+      password: 'demo@12345',
     ),
     DemoAccount(
       role: 'Tenant',
       username: 'demo_tenant',
-      password: 'Reviewer-Tenant-2026!',
+      password: 'demo@12345',
     ),
     DemoAccount(
       role: 'Security Guard',
       username: 'demo_guard',
-      password: 'Reviewer-Guard-2026!',
+      password: 'demo@12345',
     ),
   ];
 
