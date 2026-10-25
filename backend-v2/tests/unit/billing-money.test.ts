@@ -94,9 +94,10 @@ describe('receipt pdf', () => {
     });
     const text = pdf.toString('utf8');
     expect(text.startsWith('%PDF-1.4')).toBe(true);
-    expect(text).toContain('Apna Society');
-    expect(text).toContain('AS  -  Apna Society');
+    expect(text).not.toContain('Apna Society');
     expect(text).toContain('Monarch Solitaire A to E');
+    expect(text).toContain('15 Jul 2026');
+    expect(text).not.toContain('10:30');
     expect(text).toContain('E-303');
     expect(text).toContain('RCPT-2026-000001');
     expect(text).toContain('SUCCESSFUL');
@@ -152,6 +153,25 @@ describe('receipt pdf', () => {
     expect(text).toContain('Applied to principal');
     expect(text).toContain('Interest');
     expect(text).not.toContain('Base maintenance');
+  });
+
+  it('does not print Unassigned as the payer on vacant-flat receipts', () => {
+    const pdf = buildReceiptPdf({
+      receiptNumber: 'RCPT-2026-000099',
+      societyName: 'Monarch Solitaire A to E',
+      flatNumber: '101',
+      wingCode: 'A',
+      ownerName: 'Unassigned',
+      amountPaise: 400_000,
+      paymentMethod: 'CASH',
+      paidAt: new Date('2026-07-15T10:30:00.000+05:30'),
+      billNumber: 'BILL-2026-000099',
+      billingPeriod: 'Jul 2026',
+      paymentStatus: 'SUCCESSFUL',
+    });
+    const text = pdf.toString('utf8');
+    expect(text).toContain('Owner of A-101');
+    expect(text).not.toContain('Unassigned');
   });
 });
 

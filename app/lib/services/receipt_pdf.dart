@@ -12,7 +12,7 @@ class _Kv {
 }
 
 /// Official society payment receipt (A4, brand blue).
-/// Society name leads; Apna Society is only a tiny AS mark.
+/// Issued in the society's name — no product branding.
 class ReceiptPdf {
   ReceiptPdf._();
 
@@ -99,6 +99,14 @@ class ReceiptPdf {
     return 'SUCCESSFUL';
   }
 
+  static String displayPayer(String? ownerName, String flatLabel) {
+    final name = (ownerName ?? '').trim();
+    if (name.isEmpty || name == '-' || name.toLowerCase() == 'unassigned') {
+      return 'Owner of $flatLabel';
+    }
+    return name;
+  }
+
   static Future<Uint8List> buildBytes({
     required Map<String, dynamic> payment,
     required Map<String, dynamic> bill,
@@ -158,7 +166,7 @@ class ReceiptPdf {
       status: _statusLabel(status),
       paidAt: shortDate(payment['paid_at'] as String?),
       method: method,
-      payer: '${bill['owner_name'] ?? '-'}',
+      payer: displayPayer(bill['owner_name'] as String?, _flatLabel(bill)),
       flatLabel: _flatLabel(bill),
       towards: period == '-'
           ? 'Monthly maintenance'
@@ -208,7 +216,7 @@ class ReceiptPdf {
       status: 'SUCCESSFUL',
       paidAt: shortDate(batch['paid_at'] as String?),
       method: method,
-      payer: '${batch['owner_name'] ?? '-'}',
+      payer: displayPayer(batch['owner_name'] as String?, _flatLabel(batch)),
       flatLabel: _flatLabel(batch),
       towards: 'Settlement of outstanding maintenance',
       breakdown: breakdown,
@@ -293,37 +301,12 @@ class ReceiptPdf {
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Container(
-                      width: 28,
-                      height: 28,
-                      alignment: pw.Alignment.center,
-                      decoration: pw.BoxDecoration(
-                        border: pw.Border.all(color: brandBlue, width: 1.2),
-                      ),
-                      child: pw.Text('AS',
+                    pw.Expanded(
+                      child: pw.Text(societyName,
                           style: pw.TextStyle(
                               font: pw.Font.timesBold(),
-                              fontSize: 11,
+                              fontSize: 16,
                               color: brandBlue)),
-                    ),
-                    pw.SizedBox(width: 10),
-                    pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(societyName,
-                              style: pw.TextStyle(
-                                  font: pw.Font.timesBold(),
-                                  fontSize: 16,
-                                  color: brandBlue)),
-                          pw.Text('AS  -  Apna Society',
-                              style: pw.TextStyle(
-                                  font: pw.Font.helvetica(),
-                                  fontSize: 8,
-                                  letterSpacing: 0.4,
-                                  color: muted)),
-                        ],
-                      ),
                     ),
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,

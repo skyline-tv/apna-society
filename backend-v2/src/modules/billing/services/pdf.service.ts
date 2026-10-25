@@ -35,17 +35,20 @@ const INK = '0.102 0.102 0.094';
 const RULE = '0.839 0.878 0.918';
 
 function formatPaidAtIst(paidAt: Date): string {
-  const formatted = new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
   }).format(paidAt);
-  return `${formatted} IST`;
+}
+
+function displayPayerName(ownerName: string, flatLabel: string): string {
+  const name = ownerName.trim();
+  if (!name || name === '-' || /^unassigned$/i.test(name)) {
+    return `Owner of ${flatLabel}`;
+  }
+  return name;
 }
 
 function paymentMethodLabel(method: string): string {
@@ -184,7 +187,7 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
 
 /**
  * Official society payment receipt (A4, brand blue).
- * Society name leads; Apna Society is only a tiny AS mark.
+ * Issued in the society's name — no product branding.
  * Dependency-free PDF 1.4 using standard Type1 fonts.
  */
 export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
@@ -192,9 +195,9 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const watermark = input.watermark ?? (isDemoMode() ? DEMO_MODE_LABEL : undefined);
   const flatLabel = formatFlatLabel(input.wingCode, input.flatNumber) || '-';
   const status = (input.paymentStatus ?? 'SUCCESSFUL').trim() || 'SUCCESSFUL';
-  const payerLines = wrapText(input.ownerName || '-', 42);
+  const payerLines = wrapText(displayPayerName(input.ownerName || '', flatLabel), 42);
   const towards = wrapText(towardsLine(input), 78);
-  const society = wrapText(input.societyName || 'Monarch Solitaire A to E', 28);
+  const society = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
   const paidAt = formatPaidAtIst(input.paidAt);
   const lines = amountLines(input);
@@ -236,16 +239,11 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   // Inner border
   ops.push(`${RULE} RG 0.8 w 28 28 539 786 re S`);
 
-  // Tiny AS mark — product branding stays small; society name leads.
-  ops.push(`${BLUE} RG 1.2 w 50 748 28 28 re S`);
-  text('F4', 11, 55.4, 757, 'AS', BLUE);
-
   let titleY = 766;
   for (const line of society) {
-    text('F4', 16, 88, titleY, line, BLUE);
+    text('F4', 16, LEFT, titleY, line, BLUE);
     titleY -= 16;
   }
-  text('F1', 7, 88, titleY + 2, 'AS  -  Apna Society', MUTED);
 
   rightText('F2', 8, 772, 'RECEIPT', BLUE, true);
   rightText('F4', 14, 754, pdfLatin(input.receiptNumber), INK, true);

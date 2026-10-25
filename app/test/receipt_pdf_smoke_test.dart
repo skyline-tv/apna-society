@@ -52,6 +52,8 @@ void main() {
     );
     expect(cash.length, greaterThan(100));
     expect(cheque.length, greaterThan(100));
+    expect(ReceiptPdf.displayPayer('Unassigned', 'A-101'), 'Owner of A-101');
+    expect(ReceiptPdf.displayPayer('Priya Sharma', 'E-303'), 'Priya Sharma');
     expect(
         ReceiptPdf.methodLabel(
             {'method': 'Cheque', 'cheque_status': 'Pending'}),
