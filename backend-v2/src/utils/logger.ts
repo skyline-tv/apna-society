@@ -6,6 +6,9 @@ let logger: pino.Logger | null = null;
 export function getLogger(): pino.Logger {
   if (!logger) {
     const env = getEnv();
+    // pino-pretty is a devDependency. Demo runtime uses NODE_ENV=development
+    // but the Docker image prunes it — keep JSON logs there and in production.
+    const usePretty = env.NODE_ENV === 'development' && !env.DEMO_MODE;
     logger = pino({
       level: env.LOG_LEVEL,
       redact: {
@@ -33,10 +36,14 @@ export function getLogger(): pino.Logger {
         ],
         remove: true,
       },
-      transport:
-        env.NODE_ENV === 'development'
-          ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:standard' } }
-          : undefined,
+      ...(usePretty
+        ? {
+            transport: {
+              target: 'pino-pretty',
+              options: { colorize: true, translateTime: 'SYS:standard' },
+            },
+          }
+        : {}),
     });
   }
   return logger;
