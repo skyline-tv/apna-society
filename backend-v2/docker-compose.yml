@@ -54,6 +54,67 @@ services:
       - apna-internal
       - skyline-proxy
 
+  # Isolated Google Play review API. Same Mongo server, different database.
+  # Does not use production .env, Razorpay, or the apna_society database.
+  demo-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: apna-society-demo-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DEMO_MODE: 'true'
+      HOST: 0.0.0.0
+      PORT: '4000'
+      MONGODB_URI: mongodb://mongo:27017/apna_society_unused?replicaSet=rs0&directConnection=true
+      DEMO_MONGODB_URI: mongodb://mongo:27017/apna_society_demo?replicaSet=rs0&directConnection=true
+      JWT_ACCESS_SECRET: ${DEMO_JWT_ACCESS_SECRET:-demo-access-secret-not-for-production-use-32}
+      JWT_REFRESH_SECRET: ${DEMO_JWT_REFRESH_SECRET:-demo-refresh-secret-not-for-production-use-32x}
+      PAYMENT_GATEWAY_PROVIDER: mock
+      PAYMENTS_LIVE_ENABLED: 'false'
+      DEMO_PAYMENTS_ENABLED: 'true'
+      OFFLINE_PAYMENTS_ENABLED: 'true'
+      REDIS_ENABLED: 'false'
+      FCM_ENABLED: 'false'
+      SMS_OTP_ENABLED: 'false'
+      SMS_OTP_DEV_BYPASS: 'false'
+      CORS_ORIGINS: '*'
+      LOG_LEVEL: info
+      EMAIL_FROM: 'Apna Society Demo <noreply@example.com>'
+      COMPLAINT_STORAGE_LOCAL_DIR: /data/storage/complaints
+      ANNOUNCEMENT_STORAGE_LOCAL_DIR: /data/storage/announcements
+    ports:
+      - '4001:4000'
+    volumes:
+      - demo_api_storage:/data/storage
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-init-replica:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/api/v1/public/environment').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 50s
+    command:
+      [
+        'sh',
+        '-c',
+        'node dist/modules/demo/run-seed-demo.js && node dist/server.js',
+      ]
+    networks:
+      - apna-internal
+      - skyline-proxy
+
   # MongoDB is intentionally NOT published to the host by default.
   mongo:
     image: mongo:7
@@ -121,6 +182,7 @@ volumes:
   mongo_data:
   mongo_backups:
   api_storage:
+  demo_api_storage:
   redis_data:
 
 networks:

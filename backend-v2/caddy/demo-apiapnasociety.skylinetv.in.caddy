@@ -1,0 +1,12 @@
+# Drop this site into the VPS Caddyfile (skyline-proxy).
+# DNS: demo-apiapnasociety.skylinetv.in → VPS A record.
+#
+# demo-apiapnasociety.skylinetv.in {
+#   encode gzip
+#   reverse_proxy apna-society-demo-api:4000
+# }
+
+demo-apiapnasociety.skylinetv.in {
+	encode gzip
+	reverse_proxy apna-society-demo-api:4000
+}

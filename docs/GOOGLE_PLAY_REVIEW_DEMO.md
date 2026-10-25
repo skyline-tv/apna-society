@@ -51,9 +51,32 @@ Society: **Maple Grove Residences** (fictional, Pune). Owner lives in A-101. Ten
 
 Every checkout is simulated. Receipts show `SIMULATED PAYMENT - SAMPLE DATA - NOT A REAL TRANSACTION`.
 
-## Operator: run the demo API (do not use production `.env`)
+## Operator: VPS (pull and start)
 
-Use a **separate** process and a **separate** database. Do not point `DEMO_MONGODB_URI` at `apna_society`. Use distinct JWT secrets from production.
+Do **not** edit production `.env`. The `demo-api` Compose service uses a separate database (`apna_society_demo`) and seeds on startup.
+
+```bash
+cd /path/to/apna_society/backend-v2
+git pull
+docker compose up -d --build demo-api
+```
+
+Add this Caddy site (also in `backend-v2/caddy/demo-apiapnasociety.skylinetv.in.caddy`) and point DNS at the VPS:
+
+```
+demo-apiapnasociety.skylinetv.in {
+  encode gzip
+  reverse_proxy apna-society-demo-api:4000
+}
+```
+
+Then check:
+
+```bash
+curl https://demo-apiapnasociety.skylinetv.in/api/v1/public/environment
+```
+
+## Local demo process (do not use production `.env`)
 
 ```bash
 cd backend-v2
@@ -66,7 +89,7 @@ export PAYMENT_GATEWAY_PROVIDER=mock
 export PAYMENTS_LIVE_ENABLED=false
 export DEMO_PAYMENTS_ENABLED=true
 # Distinct JWT secrets, >=32 characters each
-npm run seed:demo
+npx tsx scripts/seed-demo.ts
 npm run dev
 ```
 
