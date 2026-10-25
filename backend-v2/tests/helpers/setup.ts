@@ -28,6 +28,7 @@ process.env.SMS_PROVIDER = 'memory';
 process.env.SMS_OTP_ENABLED = 'false';
 process.env.SMS_OTP_DEV_BYPASS = 'false';
 process.env.DEMO_PAYMENTS_ENABLED = 'true';
+process.env.DEMO_MODE = 'false';
 process.env.PAYMENTS_LIVE_ENABLED = 'false';
 process.env.PAYMENT_GATEWAY_PROVIDER = 'mock';
 process.env.SMS_OTP_LENGTH = '6';

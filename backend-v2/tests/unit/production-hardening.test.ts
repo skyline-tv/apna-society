@@ -112,6 +112,16 @@ describe('production env hardening', () => {
     ).toThrow(/DEMO_PAYMENTS_ENABLED/);
   });
 
+  it('rejects DEMO_MODE in production', () => {
+    expect(() =>
+      loadEnv({
+        ...base,
+        DEMO_MODE: 'true',
+        DEMO_MONGODB_URI: 'mongodb://127.0.0.1:27017/apna_society_demo?replicaSet=rs0',
+      }),
+    ).toThrow(/DEMO_MODE/);
+  });
+
   it('rejects SMS_OTP_DEV_BYPASS in production', () => {
     expect(() =>
       loadEnv({

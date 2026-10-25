@@ -17,6 +17,7 @@ enum ApiFlavor {
   development,
   staging,
   production,
+  demo,
 }
 
 class ApiConfigurationException implements Exception {
@@ -74,6 +75,7 @@ class ApiConfig {
         'PRODUCTION_API_URL',
         defaultValue: productionBaseUrl,
       ),
+      demoBaseUrl: const String.fromEnvironment('DEMO_API_URL'),
       captureTrafficLog: !kReleaseMode &&
           const bool.fromEnvironment('API_TRAFFIC_LOG', defaultValue: false),
     );
@@ -84,6 +86,7 @@ class ApiConfig {
     String baseUrlOverride = '',
     String stagingBaseUrl = '',
     String productionBaseUrl = '',
+    String demoBaseUrl = '',
     Duration connectTimeout = const Duration(seconds: 15),
     Duration sendTimeout = const Duration(seconds: 15),
     Duration receiveTimeout = const Duration(seconds: 30),
@@ -103,6 +106,13 @@ class ApiConfig {
                 productionBaseUrl.isNotEmpty
                     ? productionBaseUrl
                     : ApiConfig.productionBaseUrl,
+              ),
+            ApiFlavor.demo => _normalizeBaseUrl(
+                demoBaseUrl.isNotEmpty
+                    ? demoBaseUrl
+                    : (kReleaseMode
+                        ? 'https://demo-apiapnasociety.skylinetv.in'
+                        : 'http://192.168.1.130:4001'),
               ),
           };
     if (baseUrl.isEmpty) {
@@ -128,6 +138,8 @@ class ApiConfig {
       case 'production':
       case 'prod':
         return ApiFlavor.production;
+      case 'demo':
+        return ApiFlavor.demo;
       default:
         throw ApiConfigurationException(
           'Unknown API_ENV "$raw". Use development, staging, or production.',

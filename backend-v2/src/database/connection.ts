@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { getMongoUri, isDemoMode } from '../config/demo';
 import { getEnv } from '../config/env';
 import { getLogger } from '../utils/logger';
 
@@ -6,7 +7,7 @@ let isConnecting = false;
 
 export async function connectDatabase(uri?: string): Promise<typeof mongoose> {
   const env = getEnv();
-  const mongoUri = uri ?? env.MONGODB_URI;
+  const mongoUri = uri ?? getMongoUri(env);
   const logger = getLogger();
 
   if (mongoose.connection.readyState === 1) {
@@ -31,7 +32,14 @@ export async function connectDatabase(uri?: string): Promise<typeof mongoose> {
       maxPoolSize: 20,
       minPoolSize: 1,
     });
-    logger.info({ readyState: mongoose.connection.readyState }, 'MongoDB connected');
+    logger.info(
+      {
+        readyState: mongoose.connection.readyState,
+        demoMode: isDemoMode(env),
+        database: mongoose.connection.name,
+      },
+      'MongoDB connected',
+    );
     return mongoose;
   } finally {
     isConnecting = false;
@@ -70,7 +78,7 @@ export function supportsTransactions(): boolean {
   // Transactions require a replica set (or mongos). Detection is best-effort.
   const topology = (mongoose.connection as unknown as { client?: { options?: { replicaSet?: string } } })
     .client?.options?.replicaSet;
-  return Boolean(topology) || getEnv().MONGODB_URI.includes('replicaSet=');
+  return Boolean(topology) || getMongoUri().includes('replicaSet=');
 }
 
 export async function withTransaction<T>(

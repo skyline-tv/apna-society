@@ -15,6 +15,12 @@ const envSchema = z
     HOST: z.string().min(1).default('0.0.0.0'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+    /**
+     * Isolated Google Play review process. Forbidden in production.
+     * Requires DEMO_MONGODB_URI pointing at a different database.
+     */
+    DEMO_MODE: boolFromEnv,
+    DEMO_MONGODB_URI: z.string().optional().default(''),
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
     JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
     ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
@@ -196,6 +202,13 @@ const envSchema = z
           path: ['DEMO_PAYMENTS_ENABLED'],
         });
       }
+      if (data.DEMO_MODE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'DEMO_MODE is not allowed in production. Run a dedicated demo process.',
+          path: ['DEMO_MODE'],
+        });
+      }
       if (data.SMS_OTP_ENABLED && !data.SMS_OTP_DEV_BYPASS) {
         if (data.SMS_PROVIDER === 'msg91') {
           if (!data.MSG91_AUTH_KEY || data.MSG91_AUTH_KEY.length < 8) {
@@ -273,6 +286,58 @@ const envSchema = z
       }
     }
 
+    if (data.DEMO_MODE) {
+      if (!data.DEMO_MONGODB_URI.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'DEMO_MONGODB_URI is required when DEMO_MODE=true',
+          path: ['DEMO_MONGODB_URI'],
+        });
+      } else {
+        const demoName = data.DEMO_MONGODB_URI.replace(/^mongodb(\+srv)?:\/\//i, 'http://');
+        try {
+          const demoUrl = new URL(demoName);
+          const demoDb = decodeURIComponent(
+            demoUrl.pathname.replace(/^\//, '').split('/')[0] ?? '',
+          );
+          if (demoDb === 'apna_society') {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                'DEMO_MONGODB_URI must not use the production database name apna_society',
+              path: ['DEMO_MONGODB_URI'],
+            });
+          }
+          const prodUrl = new URL(data.MONGODB_URI.replace(/^mongodb(\+srv)?:\/\//i, 'http://'));
+          const prodDb = decodeURIComponent(
+            prodUrl.pathname.replace(/^\//, '').split('/')[0] ?? '',
+          );
+          if (
+            `${demoUrl.host}/${demoDb}`.toLowerCase() === `${prodUrl.host}/${prodDb}`.toLowerCase()
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'DEMO_MONGODB_URI must be a different database than MONGODB_URI',
+              path: ['DEMO_MONGODB_URI'],
+            });
+          }
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'DEMO_MONGODB_URI must be a valid MongoDB URI',
+            path: ['DEMO_MONGODB_URI'],
+          });
+        }
+      }
+      if (data.PAYMENTS_LIVE_ENABLED || data.PAYMENT_GATEWAY_PROVIDER === 'razorpay') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Demo mode cannot use live Razorpay. Keep PAYMENT_GATEWAY_PROVIDER=mock.',
+          path: ['PAYMENT_GATEWAY_PROVIDER'],
+        });
+      }
+    }
+
     if (data.PAYMENT_GATEWAY_PROVIDER === 'razorpay' && data.NODE_ENV !== 'test') {
       if (!data.RAZORPAY_KEY_ID || !data.RAZORPAY_KEY_SECRET) {
         ctx.addIssue({
@@ -327,9 +392,9 @@ export function isLivePaymentsEnabled(env: Env = getEnv()): boolean {
   );
 }
 
-/** Simulated checkout. Never true when live Razorpay is on. */
+/** Simulated checkout. Never true when live Razorpay is on. Always on in DEMO_MODE. */
 export function isDemoPaymentsEnabled(env: Env = getEnv()): boolean {
-  return env.DEMO_PAYMENTS_ENABLED && !isLivePaymentsEnabled(env);
+  return (env.DEMO_PAYMENTS_ENABLED || env.DEMO_MODE) && !isLivePaymentsEnabled(env);
 }
 
 /** Resident in-app checkout (live Razorpay or simulated mock). */

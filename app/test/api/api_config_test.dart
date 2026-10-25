@@ -55,6 +55,16 @@ void main() {
     expect(config.baseUrl, 'https://society.example.test');
   });
 
+  test('demo flavor uses the isolated demo host', () {
+    final config = ApiConfig.resolve(
+      flavorName: 'demo',
+      demoBaseUrl: 'https://demo.example.test',
+    );
+    expect(config.flavor, ApiFlavor.demo);
+    expect(config.baseUrl, 'https://demo.example.test');
+    expect(config.baseUrl.contains('/api/v1'), isFalse);
+  });
+
   test('unknown flavor is rejected', () {
     expect(
       () => ApiConfig.resolve(flavorName: 'local'),

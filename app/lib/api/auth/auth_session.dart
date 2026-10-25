@@ -398,3 +398,19 @@ void resetAuthSessionForTests() {
   AuthSession.onLocalSessionCleared = null;
   AuthSession.onAccessTokenRefreshed = null;
 }
+
+/// Replace the process-wide session (used when entering or leaving demo mode).
+AuthSession replaceAuthSession({
+  ApiConfig? config,
+  ApiClient? client,
+  SecureTokenStore? tokenStore,
+  ApnaApi? api,
+}) {
+  authSession = AuthSession(
+    config: config,
+    client: client,
+    tokenStore: tokenStore,
+    api: api,
+  );
+  return authSession!;
+}

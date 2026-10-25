@@ -5,7 +5,8 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import { API_PREFIX } from './config/constants';
-import { getCorsOrigins, getEnv } from './config/env';
+import { DEMO_MODE_LABEL, isDemoMode } from './config/demo';
+import { getCorsOrigins, getEnv, isDemoPaymentsEnabled } from './config/env';
 import { getDatabaseHealth, pingDatabase } from './database/connection';
 import { buildOpenApiSpec } from './docs/openapi';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
@@ -65,7 +66,20 @@ export function createApp() {
       data: {
         status: 'ok',
         service: 'apna-society-backend-v2',
+        demoMode: isDemoMode(),
         timestamp: new Date().toISOString(),
+      },
+    });
+  });
+
+  app.get(`${API_PREFIX}/public/environment`, (_req, res) => {
+    const demo = isDemoMode();
+    res.status(200).json({
+      success: true,
+      data: {
+        demoMode: demo,
+        label: demo ? DEMO_MODE_LABEL : undefined,
+        simulatedPayments: demo && isDemoPaymentsEnabled(),
       },
     });
   });

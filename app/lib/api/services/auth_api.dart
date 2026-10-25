@@ -1,4 +1,5 @@
 import '../config/api_config.dart';
+import '../config/demo_environment.dart';
 import '../http/api_client.dart';
 import '../http/json_read.dart';
 import '../models/auth_models.dart';
@@ -64,6 +65,14 @@ class AuthApi {
     return _client.post(
       '${ApiConfig.apiPrefix}/auth/logout-all',
       decode: LogoutAllResult.fromJson,
+    );
+  }
+
+  Future<PublicEnvironment> publicEnvironment() {
+    return _client.get(
+      '${ApiConfig.apiPrefix}/public/environment',
+      authenticate: false,
+      decode: PublicEnvironment.fromJson,
     );
   }
 

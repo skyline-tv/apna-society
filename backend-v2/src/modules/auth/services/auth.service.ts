@@ -7,6 +7,11 @@ import {
   OTP_REQUEST_WINDOW_MS,
   OTP_RESEND_COOLDOWN_MS,
 } from '../../../config/constants';
+import {
+  DEMO_LOGIN_OTP,
+  isDemoMode,
+  isReservedDemoUsername,
+} from '../../../config/demo';
 import { getEnv } from '../../../config/env';
 import {
   badRequest,
@@ -81,6 +86,33 @@ export async function requestOtp(
       'OTP request for non-loginable mobile',
     );
     return { message: GENERIC_OTP_MESSAGE };
+  }
+
+  if (isDemoMode()) {
+    await OtpChallengeModel.deleteMany({ mobileE164, consumedAt: { $exists: false } });
+    await OtpChallengeModel.create({
+      mobileE164,
+      userId: user._id,
+      expiresAt: new Date('2099-12-31T23:59:59.999Z'),
+      attemptCount: 0,
+      maxAttempts: OTP_MAX_ATTEMPTS,
+      lastSentAt: now,
+      requestCount: 1,
+      requestWindowStartedAt: now,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    await writeAuditLog({
+      action: 'AUTH_OTP_REQUESTED',
+      actorUserId: user._id,
+      societyId: user.primarySocietyId,
+      targetType: 'User',
+      targetId: String(user._id),
+      metadata: { mobileSuffix: mobileE164.slice(-4), provider: 'demo' },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    return { message: GENERIC_OTP_MESSAGE, debugOtp: DEMO_LOGIN_OTP };
   }
 
   const existing = await OtpChallengeModel.findOne({
@@ -186,7 +218,10 @@ export async function verifyOtp(
     consumedAt: { $exists: false },
   }).sort({ createdAt: -1 });
 
-  if (!challenge || challenge.expiresAt.getTime() <= now.getTime()) {
+  if (
+    !challenge ||
+    (!isDemoMode() && challenge.expiresAt.getTime() <= now.getTime())
+  ) {
     await writeAuditLog({
       action: 'AUTH_OTP_FAILED',
       metadata: { mobileSuffix: mobileE164.slice(-4), reason: 'expired_or_missing' },
@@ -201,7 +236,10 @@ export async function verifyOtp(
   }
 
   const sms = getSmsProvider();
-  const verified = await sms.verifyOtp({ mobileE164, otp: normalizedOtp });
+  const demoOtpOk = isDemoMode() && normalizedOtp === DEMO_LOGIN_OTP;
+  const verified = demoOtpOk
+    ? { verified: true }
+    : await sms.verifyOtp({ mobileE164, otp: normalizedOtp });
 
   if (!verified.verified) {
     challenge.attemptCount += 1;
@@ -267,6 +305,16 @@ export async function loginWithPassword(
   const logger = getLogger();
   const username = normalizeUsername(usernameRaw);
   const now = new Date();
+
+  if (isReservedDemoUsername(username) && !isDemoMode()) {
+    await writeAuditLog({
+      action: 'AUTH_LOGIN_FAILED',
+      metadata: { reason: 'DEMO_USERNAME_OUTSIDE_DEMO', usernameSuffix: username.slice(-3) },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    throw unauthorized(GENERIC_INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
+  }
 
   const fail = async (reason: string, actorUserId?: string): Promise<never> => {
     await writeAuditLog({

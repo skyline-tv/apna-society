@@ -1,3 +1,4 @@
+import { DEMO_VISITOR_OTP, isDemoMode } from '../../../config/demo';
 import { getEnv } from '../../../config/env';
 import { withTransaction } from '../../../database/connection';
 import {
@@ -604,16 +605,18 @@ export async function approveVisitor(
     : resident?.email
       ? normalizeEmail(String(resident.email))
       : '';
-  if (!deliveryEmail && !otpDevBypass) {
+  if (!deliveryEmail && !otpDevBypass && !isDemoMode()) {
     throw badRequest(
       'No usable email address for visitor OTP delivery. Provide visitorEmail on the request or ensure the assigned resident has an email.',
       'VISITOR_EMAIL_REQUIRED',
     );
   }
 
-  const otp = otpDevBypass ? DEV_BYPASS_OTP : generateOtp(6);
+  const otp = isDemoMode() ? DEMO_VISITOR_OTP : otpDevBypass ? DEV_BYPASS_OTP : generateOtp(6);
   const otpHash = hashToken(otp);
-  const expiresAt = new Date(Date.now() + env.VISITOR_OTP_TTL_MS);
+  const expiresAt = isDemoMode()
+    ? new Date('2099-12-31T23:59:59.999Z')
+    : new Date(Date.now() + env.VISITOR_OTP_TTL_MS);
 
   const updated = await withTransaction(async (session) => {
     const claimed = await VisitorLogModel.findOneAndUpdate(
@@ -660,8 +663,8 @@ export async function approveVisitor(
   });
 
   const flatLabel = formatFlatLabel(updated.wingCodeSnapshot, updated.flatNumberSnapshot);
-  if (otpDevBypass) {
-    // Fixed OTP 123456 — skip email/MSG91 while SMS_OTP_DEV_BYPASS is on.
+  if (otpDevBypass || isDemoMode()) {
+    // Fixed reviewer OTP — skip email/MSG91 in demo or local bypass.
   } else {
     await deliverVisitorEntryOtp({
       toEmail: deliveryEmail,
@@ -923,7 +926,7 @@ function assertOtpStillUsable(visitor: {
   if (!visitor.entryOtpHash || !visitor.entryOtpExpiresAt) {
     throw badRequest('No active entry OTP for this visitor', 'OTP_MISSING');
   }
-  if (visitor.entryOtpExpiresAt.getTime() < Date.now()) {
+  if (!isDemoMode() && visitor.entryOtpExpiresAt.getTime() < Date.now()) {
     throw badRequest('Entry OTP has expired', 'OTP_EXPIRED');
   }
   if (visitor.otpAttempts >= env.VISITOR_OTP_MAX_ATTEMPTS) {
@@ -934,13 +937,14 @@ function assertOtpStillUsable(visitor: {
 /** OTP-only verification. Does not record physical entry. */
 export async function verifyEntryOtpByCode(societyId: string, otp: string, actor: Actor) {
   const providedHash = hashToken(otp.trim());
+  const demoOtpOk = isDemoMode() && otp.trim() === DEMO_VISITOR_OTP;
   const matches = await VisitorLogModel.find({
     societyId: parseObjectId(societyId, 'societyId'),
     approvalStatus: 'APPROVED',
     entryStatus: 'NOT_ENTERED',
-    entryOtpHash: providedHash,
+    ...(demoOtpOk ? {} : { entryOtpHash: providedHash }),
   });
-  if (matches.length !== 1) {
+  if (matches.length !== 1 && !(demoOtpOk && matches.length >= 1)) {
     throw forbidden('Invalid or expired entry OTP', 'OTP_INVALID');
   }
   const visitor = matches[0];
@@ -964,7 +968,8 @@ export async function verifyEntryOtp(
   assertOtpStillUsable(visitor);
 
   const providedHash = hashToken(otp.trim());
-  if (!safeEqualHex(providedHash, visitor.entryOtpHash!)) {
+  const demoOtpOk = isDemoMode() && otp.trim() === DEMO_VISITOR_OTP;
+  if (!demoOtpOk && !safeEqualHex(providedHash, visitor.entryOtpHash!)) {
     visitor.otpAttempts += 1;
     await visitor.save();
     await writeAuditLog({

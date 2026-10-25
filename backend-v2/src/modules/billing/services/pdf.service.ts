@@ -1,3 +1,4 @@
+import { DEMO_MODE_LABEL, isDemoMode } from '../../../config/demo';
 import { formatFlatLabel } from '../../../utils/flat-label';
 import { paiseToRupeesDisplay } from '../utils/money';
 
@@ -22,6 +23,8 @@ export type ReceiptPdfInput = {
   description?: string;
   collectionNumber?: string;
   collectionTitle?: string;
+  /** Diagonal overlay. Set automatically in DEMO_MODE. */
+  watermark?: string;
 };
 
 const LEFT = 50;
@@ -186,6 +189,7 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
  */
 export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const ops: string[] = [];
+  const watermark = input.watermark ?? (isDemoMode() ? DEMO_MODE_LABEL : undefined);
   const flatLabel = formatFlatLabel(input.wingCode, input.flatNumber) || '-';
   const status = (input.paymentStatus ?? 'SUCCESSFUL').trim() || 'SUCCESSFUL';
   const payerLines = wrapText(input.ownerName || '-', 42);
@@ -219,6 +223,15 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     const x = Math.max(LEFT + 180, RIGHT - estimateWidth(value, size, bold));
     text(font, size, x, y, value, color);
   };
+
+  if (watermark) {
+    const mark = pdfLatin(watermark);
+    ops.push('q 0.90 0.78 0.40 rg 0.22 g');
+    ops.push(
+      `BT /F2 28 Tf 0.72 0.72 -0.72 0.72 118 210 Tm (${escapePdf(mark)}) Tj ET`,
+    );
+    ops.push('Q');
+  }
 
   // Inner border
   ops.push(`${RULE} RG 0.8 w 28 28 539 786 re S`);
@@ -308,10 +321,21 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     9,
     LEFT,
     footerY + 16,
-    'This is an authorized receipt for a confirmed payment, generated from verified society records.',
+    watermark
+      ? 'SIMULATED PAYMENT - SAMPLE DATA - NOT A REAL TRANSACTION'
+      : 'This is an authorized receipt for a confirmed payment, generated from verified society records.',
     MUTED,
   );
-  text('F1', 9, LEFT, footerY, 'No signature is required for digitally issued receipts.', MUTED);
+  text(
+    'F1',
+    9,
+    LEFT,
+    footerY,
+    watermark
+      ? pdfLatin(watermark)
+      : 'No signature is required for digitally issued receipts.',
+    MUTED,
+  );
   ops.push(`${RULE} RG 0.6 w 365 ${footerY + 28} m 545 ${footerY + 28} l S`);
   const societyFooter = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
   rightText('F1', 8, footerY + 16, 'AUTHORIZED', MUTED);

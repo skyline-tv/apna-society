@@ -7,6 +7,9 @@ import 'api/auth/app_role.dart';
 import 'api/auth/auth_messages.dart';
 import 'api/auth/auth_session.dart';
 import 'api/auth/home_resolver.dart';
+import 'api/config/api_config.dart';
+import 'api/config/demo_environment.dart';
+import 'api/http/api_exception.dart';
 import 'api/socket/visitor_socket.dart';
 import 'services/push_notification_service.dart';
 import 'api/models/billing_models.dart'
@@ -133,7 +136,40 @@ class ApnaSocietyApp extends StatelessWidget {
                 maxScaleFactor: 1.3,
               ),
             ),
-            child: child ?? const SizedBox.shrink(),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: DemoEnvironment.active,
+              builder: (context, demo, _) {
+                final page = child ?? const SizedBox.shrink();
+                if (!demo) return page;
+                return Column(
+                  children: [
+                    const Material(
+                      color: Color(0xFF9A6700),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            DemoEnvironment.label,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(child: page),
+                  ],
+                );
+              },
+            ),
           );
         },
         home: const AppBootstrap(),
@@ -286,7 +322,10 @@ class _AuthGateState extends State<AuthGate> {
   Future<Widget> _resolveHome() async {
     // Legacy local-demo session keys must not restore an authenticated shell.
     await SessionStore.clear();
-    final session = ensureAuthSession();
+    final demo = await DemoEnvironment.restorePersisted();
+    final session = demo
+        ? ensureAuthSession(config: DemoEnvironment.config())
+        : ensureAuthSession();
     try {
       final profile = await session.restore();
       if (profile == null) {
@@ -465,6 +504,60 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  Future<void> _enterDemoMode() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await DemoEnvironment.persist(true);
+      final session = replaceAuthSession(config: DemoEnvironment.config());
+      final env = await session.api.auth.publicEnvironment();
+      if (!env.demoMode) {
+        await DemoEnvironment.persist(false);
+        replaceAuthSession(config: ApiConfig.fromEnvironment());
+        if (!mounted) return;
+        setState(() {
+          error =
+              'The demo server is not in DEMO MODE. Reviewer sample data was not opened.';
+        });
+        return;
+      }
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => const _DemoAccountsSheet(),
+      );
+    } catch (e) {
+      await DemoEnvironment.persist(false);
+      replaceAuthSession(config: ApiConfig.fromEnvironment());
+      if (!mounted) return;
+      final message = e is ApiException
+          ? e.message
+          : 'Could not reach the demo server. Sample data is isolated and is not available on the production API.';
+      setState(() => error = message);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _leaveDemoMode() async {
+    await DemoEnvironment.persist(false);
+    replaceAuthSession(config: ApiConfig.fromEnvironment());
+    if (!mounted) return;
+    setState(() => error = null);
+  }
+
+  void _fillDemoAccount(DemoAccount account) {
+    setState(() {
+      username.text = account.username;
+      password.text = account.password;
+      error = null;
+    });
+  }
+
   void _showForgotPassword() {
     showDialog<void>(
       context: context,
@@ -630,6 +723,39 @@ class _LoginScreenState extends State<LoginScreen> {
                         busy: busy,
                         onPressed: submitLogin,
                       ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _enterDemoMode,
+                        icon: const Icon(Icons.science_outlined),
+                        label: const Text('Explore sample data'),
+                      ),
+                      if (DemoEnvironment.active.value) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '${DemoEnvironment.label}\nVisitor OTP: ${DemoEnvironment.visitorOtp}  ·  Login OTP: ${DemoEnvironment.loginOtp}',
+                          textAlign: TextAlign.center,
+                          style: T.caption,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            for (final account in DemoEnvironment.accounts)
+                              ActionChip(
+                                label: Text(account.role),
+                                onPressed: busy
+                                    ? null
+                                    : () => _fillDemoAccount(account),
+                              ),
+                          ],
+                        ),
+                        TextButton(
+                          onPressed: busy ? null : _leaveDemoMode,
+                          child: const Text('Leave demo'),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       Text(
                         'Having trouble? Contact your society admin.',
@@ -685,6 +811,41 @@ class _LoginScreenState extends State<LoginScreen> {
           ]),
         ]);
       });
+}
+
+class _DemoAccountsSheet extends StatelessWidget {
+  const _DemoAccountsSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(DemoEnvironment.label, style: T.title),
+          const SizedBox(height: 8),
+          const Text(
+            'These accounts use fictional Maple Grove Residences data. Payments are simulated. Visitor OTP is 246810 and does not expire.',
+            style: T.secondary,
+          ),
+          const SizedBox(height: 16),
+          for (final account in DemoEnvironment.accounts)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(account.role, style: T.bodyStrong),
+              subtitle: Text('${account.username}  ·  ${account.password}'),
+            ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Use a sample account'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ChangePasswordScreen extends StatefulWidget {
