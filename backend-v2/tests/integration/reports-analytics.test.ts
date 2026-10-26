@@ -235,7 +235,7 @@ describe('Financial and collection reports', () => {
       });
     expect(paymentsCsv.status).toBe(200);
     expect(paymentsCsv.text).toContain('paymentNumber,status,paymentMethod');
-    expect(paymentsCsv.text).toContain('OFFLINE');
+    expect(paymentsCsv.text).toContain('CASH');
   });
 });
 

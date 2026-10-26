@@ -255,6 +255,27 @@ class GenerateBillsResult {
   }
 }
 
+class DeleteAllBillsResult {
+  const DeleteAllBillsResult({
+    required this.billsDeleted,
+    required this.paymentsDeleted,
+    required this.receiptsDeleted,
+  });
+
+  final int billsDeleted;
+  final int paymentsDeleted;
+  final int receiptsDeleted;
+
+  factory DeleteAllBillsResult.fromJson(Object? data) {
+    final json = requireMap(data, 'delete all bills');
+    return DeleteAllBillsResult(
+      billsDeleted: requireInt(json, 'billsDeleted'),
+      paymentsDeleted: requireInt(json, 'paymentsDeleted'),
+      receiptsDeleted: requireInt(json, 'receiptsDeleted'),
+    );
+  }
+}
+
 class InterestSegment {
   const InterestSegment({
     required this.from,

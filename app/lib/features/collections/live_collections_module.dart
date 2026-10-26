@@ -2073,39 +2073,71 @@ class _LiveAdminCollectionChargePageState
     );
     final refCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
+    var method = 'CASH';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Record offline payment'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Amount (₹)',
-                prefixText: '₹ ',
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Record office payment'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final option in [
+                      ('CASH', 'Cash'),
+                      ('CHEQUE', 'Cheque'),
+                      ('NEFT', 'NEFT'),
+                      ('UPI', 'UPI'),
+                    ])
+                      AppFilterChip(
+                        label: option.$2,
+                        selected: method == option.$1,
+                        onSelected: () => setDialog(() => method = option.$1),
+                      ),
+                  ],
+                ),
+                TextFormField(
+                  controller: amountCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (₹)',
+                    prefixText: '₹ ',
+                  ),
+                ),
+                TextFormField(
+                  controller: refCtrl,
+                  decoration: InputDecoration(
+                    labelText: method == 'CHEQUE'
+                        ? 'Cheque number'
+                        : method == 'NEFT'
+                            ? 'NEFT / UTR'
+                            : method == 'UPI'
+                                ? 'UPI reference'
+                                : 'Reference number',
+                  ),
+                ),
+                TextFormField(
+                  controller: notesCtrl,
+                  decoration: const InputDecoration(labelText: 'Notes'),
+                ),
+              ],
             ),
-            TextFormField(
-              controller: refCtrl,
-              decoration: const InputDecoration(labelText: 'Reference number'),
-            ),
-            TextFormField(
-              controller: notesCtrl,
-              decoration: const InputDecoration(labelText: 'Notes'),
-            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Record')),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Record')),
-        ],
       ),
     );
     if (ok != true || !mounted) return;
@@ -2124,6 +2156,7 @@ class _LiveAdminCollectionChargePageState
             chargeId: charge.id,
             amountPaise: paise,
             paidAt: DateTime.now().toUtc().toIso8601String(),
+            paymentMethod: method,
             referenceNumber: refCtrl.text.trim(),
             notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
           );
@@ -2165,7 +2198,7 @@ class _LiveAdminCollectionChargePageState
           if (widget.collectionActive) ...[
             const SizedBox(height: 16),
             PrimaryButton(
-              label: 'Record offline payment',
+              label: 'Record office payment',
               icon: Icons.payments_outlined,
               busy: busy,
               onPressed: charge.outstandingPaise <= 0 ? null : _offline,

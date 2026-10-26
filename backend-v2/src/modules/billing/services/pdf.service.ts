@@ -43,25 +43,36 @@ function formatPaidAtIst(paidAt: Date): string {
   }).format(paidAt);
 }
 
-function displayPayerName(ownerName: string, flatLabel: string): string {
+function displayPayerName(ownerName: string): string {
   const name = ownerName.trim();
-  if (!name || name === '-' || /^unassigned$/i.test(name)) {
-    return `Owner of ${flatLabel}`;
-  }
+  if (!name || name === '-' || /^unassigned$/i.test(name)) return '-';
   return name;
+}
+
+function wingAndFlatLine(wingCode: string, flatNumber: string): string {
+  const label = formatFlatLabel(wingCode, flatNumber);
+  const wing = (wingCode ?? '').trim().toUpperCase();
+  if (!label) return '-';
+  if (wing && label.startsWith(`${wing}-`)) {
+    return `Wing ${wing} - Flat ${label.slice(wing.length + 1)}`;
+  }
+  if (wing && label === wing) return `Wing ${wing}`;
+  return `Flat ${label}`;
 }
 
 function paymentMethodLabel(method: string): string {
   switch (method) {
     case 'OFFLINE':
-    case 'CASH':
       return 'Cash / offline';
+    case 'CASH':
+      return 'Cash';
     case 'CHEQUE':
       return 'Cheque';
     case 'UPI':
       return 'UPI';
-    case 'BANK_TRANSFER':
     case 'NEFT':
+      return 'NEFT';
+    case 'BANK_TRANSFER':
       return 'Bank transfer';
     case 'DEMO':
       return 'Demo gateway';
@@ -193,9 +204,9 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
 export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const ops: string[] = [];
   const watermark = input.watermark ?? (isDemoMode() ? DEMO_MODE_LABEL : undefined);
-  const flatLabel = formatFlatLabel(input.wingCode, input.flatNumber) || '-';
   const status = (input.paymentStatus ?? 'SUCCESSFUL').trim() || 'SUCCESSFUL';
-  const payerLines = wrapText(displayPayerName(input.ownerName || '', flatLabel), 42);
+  const payerLines = wrapText(displayPayerName(input.ownerName || ''), 42);
+  const wingFlat = wingAndFlatLine(input.wingCode, input.flatNumber);
   const towards = wrapText(towardsLine(input), 78);
   const society = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
@@ -265,13 +276,11 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   text('F2', 11, 320, y, method);
 
   y -= 28;
-  text('F1', 8, LEFT, y, 'RECEIVED WITH THANKS FROM', MUTED);
-  y -= 20;
   for (const line of payerLines) {
     text('F3', 20, LEFT, y, line, INK);
     y -= 22;
   }
-  text('F2', 11, LEFT, y, `Wing / Flat ${pdfLatin(flatLabel)}`, BLUE);
+  text('F2', 11, LEFT, y, pdfLatin(wingFlat), BLUE);
 
   y -= 24;
   text('F1', 8, LEFT, y, 'TOWARDS', MUTED);

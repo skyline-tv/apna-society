@@ -85,26 +85,31 @@ class ReceiptPdf {
     return method.isEmpty ? '-' : method;
   }
 
-  static String _flatLabel(Map<String, dynamic> source) {
-    final flat = '${source['flat_number'] ?? ''}'.trim();
-    final building = '${source['building'] ?? ''}'.trim();
-    if (flat.isNotEmpty && building.isNotEmpty) return '$flat - $building';
-    if (flat.isNotEmpty) return flat;
-    if (building.isNotEmpty) return building;
-    return '-';
-  }
-
   static String _statusLabel(String? status) {
     if (status == 'reversed') return 'REVERSED';
     return 'SUCCESSFUL';
   }
 
-  static String displayPayer(String? ownerName, String flatLabel) {
+  static String displayPayer(String? ownerName) {
     final name = (ownerName ?? '').trim();
     if (name.isEmpty || name == '-' || name.toLowerCase() == 'unassigned') {
-      return 'Owner of $flatLabel';
+      return '-';
     }
     return name;
+  }
+
+  static String wingFlatLine(Map<String, dynamic> source) {
+    final flat = '${source['flat_number'] ?? ''}'.trim();
+    final building = '${source['building'] ?? ''}'.trim();
+    final wing = '${source['wing'] ?? source['wing_code'] ?? ''}'.trim();
+    if (wing.isNotEmpty && flat.isNotEmpty) return 'Wing $wing · Flat $flat';
+    if (building.isNotEmpty && flat.isNotEmpty) {
+      return '$building · Flat $flat';
+    }
+    if (flat.isNotEmpty) return 'Flat $flat';
+    if (wing.isNotEmpty) return 'Wing $wing';
+    if (building.isNotEmpty) return building;
+    return '-';
   }
 
   static Future<Uint8List> buildBytes({
@@ -166,8 +171,8 @@ class ReceiptPdf {
       status: _statusLabel(status),
       paidAt: shortDate(payment['paid_at'] as String?),
       method: method,
-      payer: displayPayer(bill['owner_name'] as String?, _flatLabel(bill)),
-      flatLabel: _flatLabel(bill),
+      payer: displayPayer(bill['owner_name'] as String?),
+      flatLabel: wingFlatLine(bill),
       towards: period == '-'
           ? 'Monthly maintenance'
           : 'Monthly maintenance - $period',
@@ -216,8 +221,8 @@ class ReceiptPdf {
       status: 'SUCCESSFUL',
       paidAt: shortDate(batch['paid_at'] as String?),
       method: method,
-      payer: displayPayer(batch['owner_name'] as String?, _flatLabel(batch)),
-      flatLabel: _flatLabel(batch),
+      payer: displayPayer(batch['owner_name'] as String?),
+      flatLabel: wingFlatLine(batch),
       towards: 'Settlement of outstanding maintenance',
       breakdown: breakdown,
       refs: refs,
@@ -347,18 +352,11 @@ class ReceiptPdf {
                   pw.Expanded(child: _meta('Payment method', method)),
                 ]),
                 pw.SizedBox(height: 16),
-                pw.Text('RECEIVED WITH THANKS FROM',
-                    style: pw.TextStyle(
-                        font: pw.Font.helvetica(),
-                        fontSize: 8,
-                        letterSpacing: 1.2,
-                        color: muted)),
-                pw.SizedBox(height: 4),
                 pw.Text(payer,
                     style: pw.TextStyle(
                         font: pw.Font.timesBold(), fontSize: 20, color: ink)),
                 pw.SizedBox(height: 4),
-                pw.Text('Wing / Flat $flatLabel',
+                pw.Text(flatLabel,
                     style: pw.TextStyle(
                         font: pw.Font.helveticaBold(),
                         fontSize: 11,

@@ -180,6 +180,7 @@ class CollectionApi {
     required int amountPaise,
     required String paidAt,
     required String referenceNumber,
+    String? paymentMethod,
     String? notes,
     String? idempotencyKey,
   }) {
@@ -189,6 +190,7 @@ class CollectionApi {
         'chargeId': chargeId,
         'amountPaise': amountPaise,
         'paidAt': paidAt,
+        'paymentMethod': paymentMethod,
         'referenceNumber': referenceNumber,
         'notes': notes,
         'idempotencyKey': idempotencyKey,

@@ -687,7 +687,7 @@ export async function recordOfflinePayment(
     billId: string;
     amountPaise: number;
     paidAt: Date;
-    paymentMethod?: 'OFFLINE';
+    paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
     referenceNumber: string;
     notes?: string;
     idempotencyKey?: string;
@@ -732,7 +732,7 @@ export async function recordOfflinePayment(
           amountPaise: input.amountPaise,
           allocatedToPrincipalPaise: 0,
           allocatedToInterestPaise: 0,
-          paymentMethod: 'OFFLINE',
+          paymentMethod: input.paymentMethod ?? 'CASH',
           status: 'PENDING',
           referenceNumber: input.referenceNumber,
           notes: input.notes,

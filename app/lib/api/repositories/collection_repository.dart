@@ -131,12 +131,14 @@ class CollectionRepository {
     required int amountPaise,
     required String paidAt,
     required String referenceNumber,
+    String? paymentMethod,
     String? notes,
   }) {
     return _api.recordOffline(
       chargeId: chargeId,
       amountPaise: amountPaise,
       paidAt: paidAt,
+      paymentMethod: paymentMethod,
       referenceNumber: referenceNumber,
       notes: notes,
     );

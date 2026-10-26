@@ -98,7 +98,9 @@ describe('receipt pdf', () => {
     expect(text).toContain('Monarch Solitaire A to E');
     expect(text).toContain('15 Jul 2026');
     expect(text).not.toContain('10:30');
-    expect(text).toContain('E-303');
+    expect(text).toContain('Wing E');
+    expect(text).toContain('Flat 303');
+    expect(text).not.toContain('RECEIVED WITH THANKS FROM');
     expect(text).toContain('RCPT-2026-000001');
     expect(text).toContain('SUCCESSFUL');
     expect(text).toContain('BILL-2026-000001');
@@ -170,8 +172,9 @@ describe('receipt pdf', () => {
       paymentStatus: 'SUCCESSFUL',
     });
     const text = pdf.toString('utf8');
-    expect(text).toContain('Owner of A-101');
+    expect(text).toContain('Wing A - Flat 101');
     expect(text).not.toContain('Unassigned');
+    expect(text).toContain('(-)');
   });
 });
 

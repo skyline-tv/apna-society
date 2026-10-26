@@ -3,8 +3,12 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 export const PAYMENT_STATUSES = ['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const PAYMENT_METHODS = ['UPI', 'OFFLINE', 'GATEWAY'] as const;
+export const PAYMENT_METHODS = ['UPI', 'OFFLINE', 'GATEWAY', 'CASH', 'CHEQUE', 'NEFT'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** Methods an admin can pick when recording an office-line payment. */
+export const OFFICE_PAYMENT_METHODS = ['CASH', 'CHEQUE', 'NEFT', 'UPI'] as const;
+export type OfficePaymentMethod = (typeof OFFICE_PAYMENT_METHODS)[number];
 
 export interface PaymentDocument extends Document {
   societyId: Types.ObjectId;

@@ -113,8 +113,9 @@ String _paymentMethodLabel(String method) {
       return 'Cheque';
     case 'UPI':
       return 'UPI';
-    case 'BANK_TRANSFER':
     case 'NEFT':
+      return 'NEFT';
+    case 'BANK_TRANSFER':
       return 'Bank transfer';
     case 'DEMO':
       return 'Demo gateway';
@@ -1343,7 +1344,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                         ? ToolLink(
                             icon: Icons.payments_outlined,
                             label: 'Record offline payment',
-                            subtitle: 'Cash, cheque or bank transfer received',
+                            subtitle: 'Cash, cheque, NEFT or UPI received',
                             onTap: () => _offline(bill),
                           )
                         : null,
@@ -1410,12 +1411,20 @@ class LiveOfflinePaymentPage extends StatefulWidget {
   State<LiveOfflinePaymentPage> createState() => _LiveOfflinePaymentPageState();
 }
 
+const _officePaymentMethods = [
+  ('CASH', 'Cash'),
+  ('CHEQUE', 'Cheque'),
+  ('NEFT', 'NEFT'),
+  ('UPI', 'UPI'),
+];
+
 class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   final _form = GlobalKey<FormState>();
   final reference = TextEditingController();
   final notes = TextEditingController();
   late final amount = TextEditingController(
       text: paiseToRupeeInput(billAmountDuePaise(widget.bill)));
+  String method = 'CASH';
   bool busy = false;
   String? error;
 
@@ -1435,7 +1444,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
       context,
       title: 'Record ${moneyPaise(amountPaise)}?',
       message:
-          'Offline payment for ${widget.bill.billNumber} with reference “${reference.text.trim()}” will be recorded on the server.',
+          '${_paymentMethodLabel(method)} payment for ${widget.bill.billNumber} with reference “${reference.text.trim()}” will be recorded.',
       confirmLabel: 'Record payment',
       icon: Icons.payments_outlined,
     );
@@ -1448,13 +1457,14 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
       final idempotencyKey =
-          'offline-${widget.bill.id}-${reference.text.trim()}-$amountPaise';
+          'offline-${widget.bill.id}-$method-${reference.text.trim()}-$amountPaise';
       final result = await ensureLiveRepositories(session.api)
           .billing
           .recordOfflinePayment(
             billId: widget.bill.id,
             amountPaise: amountPaise,
             paidAt: DateTime.now().toUtc().toIso8601String(),
+            paymentMethod: method,
             referenceNumber: reference.text.trim(),
             notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
             idempotencyKey: idempotencyKey,
@@ -1510,6 +1520,21 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
         ),
         const SizedBox(height: 8),
         const FormSectionLabel('Payment received'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in _officePaymentMethods)
+              AppFilterChip(
+                label: option.$2,
+                selected: method == option.$1,
+                onSelected: busy
+                    ? () {}
+                    : () => setState(() => method = option.$1),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
         TextFormField(
           controller: amount,
           enabled: !busy,
@@ -1537,10 +1562,22 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           enabled: !busy,
           textCapitalization: TextCapitalization.characters,
           textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: 'Reference number *',
-            hintText: 'Cheque no., UTR or receipt book no.',
-            prefixIcon: Icon(Icons.tag_rounded),
+          decoration: InputDecoration(
+            labelText: method == 'CHEQUE'
+                ? 'Cheque number *'
+                : method == 'NEFT'
+                    ? 'NEFT / UTR *'
+                    : method == 'UPI'
+                        ? 'UPI reference *'
+                        : 'Reference number *',
+            hintText: method == 'CHEQUE'
+                ? 'Cheque number'
+                : method == 'NEFT'
+                    ? 'Bank UTR'
+                    : method == 'UPI'
+                        ? 'UPI transaction ID'
+                        : 'Receipt book or slip number',
+            prefixIcon: const Icon(Icons.tag_rounded),
           ),
           validator: (v) =>
               (v ?? '').trim().isEmpty ? 'Reference number is required.' : null,

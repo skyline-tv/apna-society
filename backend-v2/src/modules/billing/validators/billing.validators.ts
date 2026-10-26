@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { OCCUPANCY_STATUSES } from '../../../config/constants';
 import { BILL_STATUSES } from '../models/bill.model';
-import { PAYMENT_STATUSES } from '../models/payment.model';
+import { OFFICE_PAYMENT_METHODS, PAYMENT_STATUSES } from '../models/payment.model';
 
 const optionalBoolQuery = z
   .enum(['true', 'false'])
@@ -75,7 +75,7 @@ export const offlinePaymentSchema = z.object({
   billId: objectId,
   amountPaise: z.number().int().positive(),
   paidAt: z.coerce.date(),
-  paymentMethod: z.literal('OFFLINE').optional(),
+  paymentMethod: z.enum(OFFICE_PAYMENT_METHODS).optional(),
   referenceNumber: z.string().trim().min(1).max(120),
   notes: z.string().trim().max(2000).optional(),
   idempotencyKey: z.string().trim().min(1).max(120).optional(),

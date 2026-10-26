@@ -136,8 +136,11 @@ async function loadFinancialReport(societyId: string, query: FinancialReportQuer
     const { status, method } = row._id;
     if (status === 'SUCCESS') {
       paymentSuccessCount += row.count;
-      if (method === 'OFFLINE') totalOfflineCollectionsPaise += row.amountPaise;
-      else totalOnlineCollectionsPaise += row.amountPaise;
+      if (method === 'OFFLINE' || method === 'CASH' || method === 'CHEQUE' || method === 'NEFT') {
+        totalOfflineCollectionsPaise += row.amountPaise;
+      } else {
+        totalOnlineCollectionsPaise += row.amountPaise;
+      }
     } else if (status === 'FAILED') {
       paymentFailureCount += row.count;
     } else if (status === 'REFUNDED') {

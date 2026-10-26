@@ -167,7 +167,7 @@ class _CollectPaymentPageState extends State<CollectPaymentPage> {
               const Icon(Icons.check_circle_rounded, color: C.green, size: 52),
           title: Text(widget.ownerMode
               ? 'Bills settled'
-              : (method == 'Cheque' ? 'Cheque recorded' : 'Cash collected')),
+              : (method == 'Cheque' ? 'Cheque recorded' : '$method collected')),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(money(collected),
                 style: const TextStyle(
@@ -324,21 +324,20 @@ class _CollectPaymentPageState extends State<CollectPaymentPage> {
                         style: TextStyle(
                             fontWeight: FontWeight.w800, color: C.navy)),
                     const SizedBox(height: 8),
-                    Wrap(spacing: 8, children: [
-                      ChoiceChip(
-                        label: const Text('Cash'),
-                        selected: method == 'Cash',
-                        onSelected: saving
-                            ? null
-                            : (_) => setState(() => method = 'Cash'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Cheque'),
-                        selected: method == 'Cheque',
-                        onSelected: saving
-                            ? null
-                            : (_) => setState(() => method = 'Cheque'),
-                      ),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final option in const [
+                        'Cash',
+                        'Cheque',
+                        'NEFT',
+                        'UPI',
+                      ])
+                        ChoiceChip(
+                          label: Text(option),
+                          selected: method == option,
+                          onSelected: saving
+                              ? null
+                              : (_) => setState(() => method = option),
+                        ),
                     ]),
                   ],
                   const SizedBox(height: 12),
@@ -406,9 +405,7 @@ class _CollectPaymentPageState extends State<CollectPaymentPage> {
                           : Text(
                               widget.ownerMode
                                   ? 'Pay Outstanding Bills'
-                                  : (method == 'Cheque'
-                                      ? 'Record Cheque · Pay Outstanding'
-                                      : 'Collect Cash · Pay Outstanding'),
+                                  : 'Collect $method · Pay Outstanding',
                               style:
                                   const TextStyle(fontWeight: FontWeight.w800),
                             ),

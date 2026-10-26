@@ -194,6 +194,7 @@ class BillingRepository {
     required int amountPaise,
     required String paidAt,
     required String referenceNumber,
+    String? paymentMethod,
     String? notes,
     String? idempotencyKey,
   }) async {
@@ -206,6 +207,7 @@ class BillingRepository {
         billId: billId,
         amountPaise: amountPaise,
         paidAt: paidAt,
+        paymentMethod: paymentMethod,
         referenceNumber: referenceNumber,
         notes: notes,
         idempotencyKey: idempotencyKey,

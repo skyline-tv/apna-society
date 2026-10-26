@@ -478,6 +478,7 @@ export async function recordOfflineCollectionPayment(
     chargeId: string;
     amountPaise: number;
     paidAt: Date;
+    paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
     referenceNumber: string;
     notes?: string;
     idempotencyKey?: string;
@@ -524,7 +525,7 @@ export async function recordOfflineCollectionPayment(
           ownerUserId: charge.ownerUserId,
           paymentNumber,
           amountPaise: input.amountPaise,
-          paymentMethod: 'OFFLINE',
+          paymentMethod: input.paymentMethod ?? 'CASH',
           status: 'PENDING',
           referenceNumber: input.referenceNumber,
           notes: input.notes,

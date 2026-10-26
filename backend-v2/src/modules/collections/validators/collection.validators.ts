@@ -5,7 +5,7 @@ import {
   COLLECTION_STATUSES,
 } from '../models/collection.model';
 import { COLLECTION_CHARGE_STATUSES } from '../models/collection-charge.model';
-import { PAYMENT_STATUSES } from '../../billing/models/payment.model';
+import { OFFICE_PAYMENT_METHODS, PAYMENT_STATUSES } from '../../billing/models/payment.model';
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid ObjectId');
 
@@ -185,6 +185,7 @@ export const offlineCollectionPaymentSchema = z.object({
   chargeId: objectId,
   amountPaise: z.number().int().positive(),
   paidAt: z.coerce.date(),
+  paymentMethod: z.enum(OFFICE_PAYMENT_METHODS).optional(),
   referenceNumber: z.string().trim().min(1).max(120),
   notes: z.string().trim().max(2000).optional(),
   idempotencyKey: z.string().trim().min(1).max(120).optional(),

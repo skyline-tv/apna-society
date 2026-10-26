@@ -2166,8 +2166,13 @@ LIMIT 1
     DateTime? chequeDate,
     String? bankName,
   }) {
-    if (method != 'Cash' && method != 'Cheque' && method != 'App (Demo)') {
-      throw StateError('Payment method must be Cash, Cheque, or App (Demo).');
+    if (method != 'Cash' &&
+        method != 'Cheque' &&
+        method != 'NEFT' &&
+        method != 'UPI' &&
+        method != 'App (Demo)') {
+      throw StateError(
+          'Payment method must be Cash, Cheque, NEFT, UPI, or App (Demo).');
     }
     if (method == 'Cheque') {
       if ((chequeNumber ?? '').trim().isEmpty)
@@ -2614,8 +2619,11 @@ INSERT OR IGNORE INTO bill_interest_ledger(
       );
     }
     final normalized = method.trim();
-    if (normalized != 'Cash' && normalized != 'Cheque') {
-      throw StateError('Payment method must be Cash or Cheque.');
+    if (normalized != 'Cash' &&
+        normalized != 'Cheque' &&
+        normalized != 'NEFT' &&
+        normalized != 'UPI') {
+      throw StateError('Payment method must be Cash, Cheque, NEFT, or UPI.');
     }
     return settleAllOutstandingForFlat(
       flatId: flatId,
