@@ -6,7 +6,6 @@ import {
   billingSummaryHandler,
   billInterestHandler,
   cancelBillHandler,
-  deleteAllBillsHandler,
   eligibleFlatsHandler,
   generateBillsHandler,
   getAdminPaymentReceiptHandler,
@@ -31,7 +30,6 @@ import {
   billIdParamSchema,
   billingSummaryQuerySchema,
   cancelBillSchema,
-  deleteAllBillsSchema,
   generateBillsSchema,
   interestQuerySchema,
   listBillsQuerySchema,
@@ -58,11 +56,6 @@ router.post(
   asyncHandler(generateBillsHandler),
 );
 router.get('/billing/bills', validateQuery(listBillsQuerySchema), asyncHandler(listBillsHandler));
-router.post(
-  '/billing/bills/delete-all',
-  validateBody(deleteAllBillsSchema),
-  asyncHandler(deleteAllBillsHandler),
-);
 router.get(
   '/billing/bills/:billId',
   validateParams(billIdParamSchema),

@@ -3,7 +3,6 @@ import { getRequestSocietyId } from '../../../middleware/admin-society';
 import {
   adjustBill,
   cancelBill,
-  deleteAllBills,
   generateBills,
   getBill,
   listBills,
@@ -92,11 +91,6 @@ export async function cancelBillHandler(req: Request, res: Response): Promise<vo
     String((req.body as { reason: string }).reason),
     actorFrom(req),
   );
-  res.json({ success: true, data });
-}
-
-export async function deleteAllBillsHandler(req: Request, res: Response): Promise<void> {
-  const data = await deleteAllBills(getRequestSocietyId(req), actorFrom(req));
   res.json({ success: true, data });
 }
 
