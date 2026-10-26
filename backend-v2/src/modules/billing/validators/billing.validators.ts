@@ -76,7 +76,12 @@ export const offlinePaymentSchema = z.object({
   amountPaise: z.number().int().positive(),
   paidAt: z.coerce.date(),
   paymentMethod: z.enum(OFFICE_PAYMENT_METHODS).optional(),
-  referenceNumber: z.string().trim().min(1).max(120),
+  referenceNumber: z
+    .string()
+    .trim()
+    .max(120)
+    .nullish()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   notes: z.string().trim().max(2000).optional(),
   idempotencyKey: z.string().trim().min(1).max(120).optional(),
 });

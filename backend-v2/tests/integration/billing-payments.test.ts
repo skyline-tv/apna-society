@@ -283,6 +283,26 @@ describe('Billing payments', () => {
     loadEnv();
   });
 
+  it('records admin offline payments without a reference number', async () => {
+    const setup = await setupOccupiedBill('pay4b');
+    const recorded = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({
+        billId: setup.billId,
+        amountPaise: 400_000,
+        paidAt: '2026-07-05T10:00:00.000Z',
+        paymentMethod: 'CASH',
+      });
+    expect(recorded.status).toBe(201);
+    expect(recorded.body.data.paymentId).toBeTruthy();
+
+    const payment = await PaymentModel.findById(recorded.body.data.paymentId).lean();
+    expect(payment?.referenceNumber).toBeUndefined();
+    expect(payment?.gatewayPaymentId).toMatch(/^offline_/);
+    expect(payment?.status).toBe('SUCCESS');
+  });
+
   it('rejects cross-society bill/payment access and rolls back failed settlement', async () => {
     const setup = await setupOccupiedBill('pay5');
     const other = await createAdminContext(app, 'pay5-other-admin@example.com', 'PAY5B');

@@ -144,7 +144,7 @@ class BillingApi {
     required String billId,
     required int amountPaise,
     required String paidAt,
-    required String referenceNumber,
+    String? referenceNumber,
     String? paymentMethod,
     String? notes,
     String? idempotencyKey,

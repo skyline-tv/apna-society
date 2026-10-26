@@ -1443,8 +1443,12 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
     final ok = await confirmDialog(
       context,
       title: 'Record ${moneyPaise(amountPaise)}?',
-      message:
-          '${_paymentMethodLabel(method)} payment for ${widget.bill.billNumber} with reference “${reference.text.trim()}” will be recorded.',
+      message: [
+        '${_paymentMethodLabel(method)} payment for ${widget.bill.billNumber}',
+        if (reference.text.trim().isNotEmpty)
+          'with reference “${reference.text.trim()}”',
+        'will be recorded.',
+      ].join(' '),
       confirmLabel: 'Record payment',
       icon: Icons.payments_outlined,
     );
@@ -1456,8 +1460,10 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
     try {
       final session = authSession;
       if (session == null) throw StateError('Not signed in.');
+      final referenceNumber =
+          reference.text.trim().isEmpty ? null : reference.text.trim();
       final idempotencyKey =
-          'offline-${widget.bill.id}-$method-${reference.text.trim()}-$amountPaise';
+          'offline-${widget.bill.id}-$method-${referenceNumber ?? DateTime.now().microsecondsSinceEpoch}-$amountPaise';
       final result = await ensureLiveRepositories(session.api)
           .billing
           .recordOfflinePayment(
@@ -1465,7 +1471,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
             amountPaise: amountPaise,
             paidAt: DateTime.now().toUtc().toIso8601String(),
             paymentMethod: method,
-            referenceNumber: reference.text.trim(),
+            referenceNumber: referenceNumber,
             notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
             idempotencyKey: idempotencyKey,
           );
@@ -1564,12 +1570,12 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           textInputAction: TextInputAction.next,
           decoration: InputDecoration(
             labelText: method == 'CHEQUE'
-                ? 'Cheque number *'
+                ? 'Cheque number'
                 : method == 'NEFT'
-                    ? 'NEFT / UTR *'
+                    ? 'NEFT / UTR'
                     : method == 'UPI'
-                        ? 'UPI reference *'
-                        : 'Reference number *',
+                        ? 'UPI reference'
+                        : 'Reference number',
             hintText: method == 'CHEQUE'
                 ? 'Cheque number'
                 : method == 'NEFT'
@@ -1579,8 +1585,6 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
                         : 'Receipt book or slip number',
             prefixIcon: const Icon(Icons.tag_rounded),
           ),
-          validator: (v) =>
-              (v ?? '').trim().isEmpty ? 'Reference number is required.' : null,
         ),
         const SizedBox(height: 12),
         TextFormField(

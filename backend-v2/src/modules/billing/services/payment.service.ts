@@ -688,7 +688,7 @@ export async function recordOfflinePayment(
     amountPaise: number;
     paidAt: Date;
     paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
-    referenceNumber: string;
+    referenceNumber?: string;
     notes?: string;
     idempotencyKey?: string;
   },
@@ -721,6 +721,9 @@ export async function recordOfflinePayment(
 
   const payment = await withTransaction(async (session) => {
     const paymentNumber = await nextPaymentNumber(societyId, session);
+    const gatewayPaymentId = input.referenceNumber
+      ? `offline_${input.referenceNumber}`
+      : `offline_${paymentNumber}`;
     const [doc] = await PaymentModel.create(
       [
         {
@@ -738,7 +741,7 @@ export async function recordOfflinePayment(
           notes: input.notes,
           createdBy: actor.userId,
           idempotencyKey: input.idempotencyKey,
-          gatewayPaymentId: `offline_${input.referenceNumber}`,
+          gatewayPaymentId,
         },
       ],
       { session },
@@ -749,7 +752,7 @@ export async function recordOfflinePayment(
   return settleAndNotify({
     societyId,
     payment,
-    gatewayPaymentId: `offline_${input.referenceNumber}`,
+    gatewayPaymentId: payment.gatewayPaymentId ?? `offline_${payment.paymentNumber}`,
     signatureVerified: true,
     paidAt: input.paidAt,
     actor,
