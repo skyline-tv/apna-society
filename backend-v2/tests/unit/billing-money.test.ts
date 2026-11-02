@@ -106,6 +106,10 @@ describe('receipt pdf', () => {
     expect(text).toContain('BILL-2026-000001');
     expect(text).toContain('pay_abc');
     expect(text).toContain('authorized receipt');
+    expect(text).toContain('PARTICULARS / CHARGE DESCRIPTION');
+    expect(text).toContain('PERIOD / TENURE');
+    expect(text).toContain('Base Maintenance Charges');
+    expect(text).toContain('TOTAL AMOUNT PAID');
     expect(text).toContain('MediaBox [0 0 595 842]');
   });
 

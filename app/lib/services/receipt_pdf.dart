@@ -5,9 +5,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class _Kv {
-  const _Kv(this.label, this.value, {this.total = false});
+  const _Kv(this.label, this.value, {this.period = '-', this.total = false});
   final String label;
   final String value;
+  final String period;
   final bool total;
 }
 
@@ -17,10 +18,13 @@ class ReceiptPdf {
   ReceiptPdf._();
 
   static const societyName = 'Monarch Solitaire A to E';
-  static const brandBlue = PdfColor.fromInt(0xFF1B4F8A);
-  static const muted = PdfColor.fromInt(0xFF6B726E);
-  static const ink = PdfColor.fromInt(0xFF1A1A18);
-  static const rule = PdfColor.fromInt(0xFFD6E0EA);
+  static const brandBlue = PdfColor.fromInt(0xFF0B3C68);
+  static const muted = PdfColor.fromInt(0xFF94A3B8);
+  static const ink = PdfColor.fromInt(0xFF0F172A);
+  static const rule = PdfColor.fromInt(0xFF94A3B8);
+  static const border = PdfColor.fromInt(0xFFE2E8F0);
+  static const headerBg = PdfColor.fromInt(0xFFF1F5F9);
+  static const footerBg = PdfColor.fromInt(0xFFF8FAFC);
 
   static String money(int value) =>
       'Rs ${value.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
@@ -102,9 +106,9 @@ class ReceiptPdf {
     final flat = '${source['flat_number'] ?? ''}'.trim();
     final building = '${source['building'] ?? ''}'.trim();
     final wing = '${source['wing'] ?? source['wing_code'] ?? ''}'.trim();
-    if (wing.isNotEmpty && flat.isNotEmpty) return 'Wing $wing · Flat $flat';
+    if (wing.isNotEmpty && flat.isNotEmpty) return 'Wing $wing - Flat $flat';
     if (building.isNotEmpty && flat.isNotEmpty) {
-      return '$building · Flat $flat';
+      return '$building - Flat $flat';
     }
     if (flat.isNotEmpty) return 'Flat $flat';
     if (wing.isNotEmpty) return 'Wing $wing';
@@ -138,17 +142,20 @@ class ReceiptPdf {
     final billed = (maintenance ?? 0) + ((other ?? 0) > 0 ? other! : 0);
     final paidInFull = billed == 0 || principal >= billed;
     if (paidInFull && maintenance != null) {
-      breakdown.add(_Kv('Base maintenance', money(maintenance)));
+      breakdown.add(_Kv('Base Maintenance Charges', money(maintenance),
+          period: period));
       if (other != null && other > 0) {
-        breakdown.add(_Kv('Additional services', money(other)));
+        breakdown.add(
+            _Kv('Additional services', money(other), period: period));
       }
     } else {
-      breakdown.add(_Kv('Applied to principal', money(principal)));
+      breakdown.add(
+          _Kv('Applied to principal', money(principal), period: period));
     }
     if (interest > 0) {
-      breakdown.add(_Kv('Interest', money(interest)));
+      breakdown.add(_Kv('Interest', money(interest), period: period));
     }
-    breakdown.add(_Kv('Total amount paid', money(amount), total: true));
+    breakdown.add(_Kv('Total Amount Paid', money(amount), total: true));
 
     final refs = <_Kv>[
       _Kv('Bill number', billNo),
@@ -198,7 +205,7 @@ class ReceiptPdf {
     final breakdown = <_Kv>[
       _Kv('Applied to principal', money(principal)),
       if (interest > 0) _Kv('Interest', money(interest)),
-      _Kv('Total amount paid', money(total), total: true),
+      _Kv('Total Amount Paid', money(total), total: true),
     ];
     final refs = <_Kv>[
       _Kv('Bills settled', '$billsSettled'),
@@ -297,113 +304,159 @@ class ReceiptPdf {
         build: (context) => [
           pw.Container(
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: rule, width: 0.8),
+              border: pw.Border.all(color: border, width: 0.8),
             ),
-            padding: const pw.EdgeInsets.fromLTRB(22, 20, 22, 18),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
-                pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Expanded(
-                      child: pw.Text(societyName,
-                          style: pw.TextStyle(
-                              font: pw.Font.timesBold(),
-                              fontSize: 16,
-                              color: brandBlue)),
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text('RECEIPT',
+            padding: const pw.EdgeInsets.all(12),
+            child: pw.Container(
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: border, width: 0.8),
+              ),
+              padding: const pw.EdgeInsets.fromLTRB(22, 20, 22, 18),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Text(societyName,
                             style: pw.TextStyle(
-                                font: pw.Font.helveticaBold(),
-                                fontSize: 8,
-                                letterSpacing: 1.6,
+                                font: pw.Font.timesBold(),
+                                fontSize: 16,
                                 color: brandBlue)),
-                        pw.SizedBox(height: 2),
-                        pw.Text(receiptNumber,
-                            style: pw.TextStyle(
-                                font: pw.Font.timesBold(), fontSize: 13)),
-                        pw.SizedBox(height: 4),
-                        pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: pw.BoxDecoration(
-                            border: pw.Border.all(color: brandBlue, width: 0.8),
-                          ),
-                          child: pw.Text(status,
+                      ),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text('RECEIPT',
                               style: pw.TextStyle(
                                   font: pw.Font.helveticaBold(),
                                   fontSize: 8,
-                                  letterSpacing: 1.2,
+                                  letterSpacing: 1.6,
                                   color: brandBlue)),
+                          pw.SizedBox(height: 2),
+                          pw.Text(receiptNumber,
+                              style: pw.TextStyle(
+                                  font: pw.Font.timesBold(), fontSize: 13)),
+                          pw.SizedBox(height: 4),
+                          pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: pw.BoxDecoration(
+                              border:
+                                  pw.Border.all(color: brandBlue, width: 0.8),
+                            ),
+                            child: pw.Text(status,
+                                style: pw.TextStyle(
+                                    font: pw.Font.helveticaBold(),
+                                    fontSize: 8,
+                                    letterSpacing: 1.2,
+                                    color: brandBlue)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Container(height: 0.8, color: rule),
+                  pw.SizedBox(height: 14),
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            _meta('Payment date', paidAt),
+                            pw.SizedBox(height: 4),
+                            pw.Text(payer,
+                                style: pw.TextStyle(
+                                    font: pw.Font.helveticaBold(),
+                                    fontSize: 11,
+                                    color: ink)),
+                            pw.SizedBox(height: 4),
+                            pw.Text(flatLabel,
+                                style: pw.TextStyle(
+                                    font: pw.Font.helveticaBold(),
+                                    fontSize: 11,
+                                    color: brandBlue)),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 12),
-                pw.Container(height: 1, color: brandBlue),
-                pw.SizedBox(height: 12),
-                pw.Row(children: [
-                  pw.Expanded(child: _meta('Payment date', paidAt)),
-                  pw.Expanded(child: _meta('Payment method', method)),
-                ]),
-                pw.SizedBox(height: 16),
-                pw.Text(payer,
-                    style: pw.TextStyle(
-                        font: pw.Font.timesBold(), fontSize: 20, color: ink)),
-                pw.SizedBox(height: 4),
-                pw.Text(flatLabel,
-                    style: pw.TextStyle(
-                        font: pw.Font.helveticaBold(),
-                        fontSize: 11,
-                        color: brandBlue)),
-                pw.SizedBox(height: 14),
-                _meta('Towards', towards),
-                pw.SizedBox(height: 10),
-                ...breakdown.map(_breakdownRow),
-                pw.SizedBox(height: 12),
-                ..._refGrid(refs),
-                ...extra,
-                pw.SizedBox(height: 28),
-                pw.Text(
-                  'This is an authorized receipt for a confirmed payment, generated from verified society records.',
-                  style: pw.TextStyle(
-                      font: pw.Font.helvetica(), fontSize: 9, color: muted),
-                ),
-                pw.SizedBox(height: 10),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text(
-                      'No signature is required for digitally issued receipts.',
-                      style: pw.TextStyle(
-                          font: pw.Font.helvetica(), fontSize: 9, color: muted),
-                    ),
-                    pw.Container(
-                      width: 170,
-                      padding: const pw.EdgeInsets.only(top: 6),
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(
-                            top: pw.BorderSide(color: rule, width: 0.6)),
                       ),
-                      child: pw.Text(
-                        'AUTHORIZED - $societyName',
-                        textAlign: pw.TextAlign.right,
-                        style: pw.TextStyle(
-                            font: pw.Font.helvetica(),
-                            fontSize: 8,
-                            letterSpacing: 0.6,
-                            color: muted),
+                      pw.Expanded(child: _meta('Payment method', method)),
+                    ],
+                  ),
+                  pw.SizedBox(height: 14),
+                  _meta('Towards', towards),
+                  pw.SizedBox(height: 10),
+                  _chargeTable(breakdown),
+                  pw.SizedBox(height: 12),
+                  ..._refGrid(refs),
+                  ...extra,
+                  pw.SizedBox(height: 36),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'This is an authorized receipt for a confirmed payment, generated from verified society records.',
+                              style: pw.TextStyle(
+                                  font: pw.Font.helvetica(),
+                                  fontSize: 9,
+                                  color: muted),
+                            ),
+                            pw.SizedBox(height: 2),
+                            pw.Text(
+                              'No signature is required for digitally issued receipts.',
+                              style: pw.TextStyle(
+                                  font: pw.Font.helvetica(),
+                                  fontSize: 9,
+                                  color: muted),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      pw.SizedBox(width: 16),
+                      pw.Container(
+                        width: 170,
+                        padding: const pw.EdgeInsets.only(top: 6),
+                        decoration: const pw.BoxDecoration(
+                          border: pw.Border(
+                              top: pw.BorderSide(color: rule, width: 0.6)),
+                        ),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.end,
+                          children: [
+                            pw.Text(
+                              'AUTHORIZED',
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                  font: pw.Font.helveticaBold(),
+                                  fontSize: 8,
+                                  letterSpacing: 1.0,
+                                  color: muted),
+                            ),
+                            pw.SizedBox(height: 2),
+                            pw.Text(
+                              societyName.toUpperCase(),
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                  font: pw.Font.helvetica(),
+                                  fontSize: 8,
+                                  letterSpacing: 0.6,
+                                  color: ink),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -428,27 +481,90 @@ class ReceiptPdf {
         ],
       );
 
-  static pw.Widget _breakdownRow(_Kv row) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(vertical: 7),
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: rule, width: 0.4)),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(row.label,
-              style: pw.TextStyle(
-                  font: row.total ? pw.Font.helveticaBold() : pw.Font.helvetica(),
-                  fontSize: row.total ? 12 : 11,
-                  color: row.total ? brandBlue : ink)),
-          pw.Text(row.value,
-              style: pw.TextStyle(
-                  font: row.total ? pw.Font.timesBold() : pw.Font.helveticaBold(),
-                  fontSize: row.total ? 16 : 11,
-                  color: row.total ? brandBlue : ink)),
-        ],
-      ),
+  static pw.Widget _chargeTable(List<_Kv> rows) {
+    final items = rows.where((row) => !row.total).toList();
+    final totals = rows.where((row) => row.total);
+    final total = totals.isEmpty ? null : totals.first;
+    pw.Widget head(String text, {pw.TextAlign align = pw.TextAlign.left}) =>
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: pw.Text(
+            text,
+            textAlign: align,
+            style: pw.TextStyle(
+              font: pw.Font.helveticaBold(),
+              fontSize: 7,
+              letterSpacing: 0.4,
+              color: PdfColor.fromInt(0xFF334155),
+            ),
+          ),
+        );
+    pw.Widget cell(String text,
+            {pw.TextAlign align = pw.TextAlign.left,
+            bool bold = false,
+            PdfColor? color}) =>
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: pw.Text(
+            text,
+            textAlign: align,
+            style: pw.TextStyle(
+              font: bold ? pw.Font.helveticaBold() : pw.Font.helvetica(),
+              fontSize: 9,
+              color: color ?? ink,
+            ),
+          ),
+        );
+    return pw.Table(
+      border: pw.TableBorder.all(color: border, width: 0.6),
+      columnWidths: {
+        0: const pw.FixedColumnWidth(28),
+        1: const pw.FlexColumnWidth(2.4),
+        2: const pw.FlexColumnWidth(1.8),
+        3: const pw.FlexColumnWidth(1.2),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: headerBg),
+          children: [
+            head('#', align: pw.TextAlign.center),
+            head('Particulars / Charge Description'),
+            head('Period / Tenure'),
+            head('Amount', align: pw.TextAlign.right),
+          ],
+        ),
+        ...items.asMap().entries.map(
+              (entry) => pw.TableRow(children: [
+                cell('${entry.key + 1}', align: pw.TextAlign.center),
+                cell(entry.value.label, bold: true),
+                cell(entry.value.period),
+                cell(entry.value.value, align: pw.TextAlign.right, bold: true),
+              ]),
+            ),
+        if (total != null)
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: footerBg),
+            children: [
+              cell(''),
+              cell(''),
+              cell('TOTAL AMOUNT PAID',
+                  align: pw.TextAlign.right, bold: true, color: brandBlue),
+              pw.Padding(
+                padding:
+                    const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: pw.Text(
+                  total.value,
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    font: pw.Font.timesBold(),
+                    fontSize: 12,
+                    color: brandBlue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+      ],
     );
   }
 

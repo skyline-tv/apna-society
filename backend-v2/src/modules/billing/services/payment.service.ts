@@ -1103,6 +1103,7 @@ export async function getReceipt(
       ownerNameSnapshot: receipt.ownerNameSnapshot,
       flatNumberSnapshot: receipt.flatNumberSnapshot,
       wingCodeSnapshot: receipt.wingCodeSnapshot,
+      societyNameSnapshot: receipt.societyNameSnapshot,
       transactionReference: receipt.transactionReference,
       billNumber: bill?.billNumber,
       billingPeriodStart: bill?.billingPeriodStart?.toISOString(),

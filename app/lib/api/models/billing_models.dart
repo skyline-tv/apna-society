@@ -693,7 +693,11 @@ class ReceiptBody {
     required this.ownerNameSnapshot,
     required this.flatNumberSnapshot,
     required this.wingCodeSnapshot,
+    this.societyNameSnapshot,
     this.transactionReference,
+    this.billNumber,
+    this.billingPeriodStart,
+    this.billingPeriodEnd,
   });
 
   final String id;
@@ -708,9 +712,13 @@ class ReceiptBody {
   final String ownerNameSnapshot;
   final String flatNumberSnapshot;
   final String wingCodeSnapshot;
+  final String? societyNameSnapshot;
   String get flatLabel =>
       formatFlatLabel(wingCodeSnapshot, flatNumberSnapshot);
   final String? transactionReference;
+  final String? billNumber;
+  final String? billingPeriodStart;
+  final String? billingPeriodEnd;
 
   factory ReceiptBody.fromJson(JsonMap json) {
     return ReceiptBody(
@@ -726,7 +734,11 @@ class ReceiptBody {
       ownerNameSnapshot: requireString(json, 'ownerNameSnapshot'),
       flatNumberSnapshot: requireString(json, 'flatNumberSnapshot'),
       wingCodeSnapshot: requireString(json, 'wingCodeSnapshot'),
+      societyNameSnapshot: optionalString(json, 'societyNameSnapshot'),
       transactionReference: optionalString(json, 'transactionReference'),
+      billNumber: optionalString(json, 'billNumber'),
+      billingPeriodStart: optionalString(json, 'billingPeriodStart'),
+      billingPeriodEnd: optionalString(json, 'billingPeriodEnd'),
     );
   }
 }

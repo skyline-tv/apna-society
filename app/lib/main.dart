@@ -17,11 +17,9 @@ import 'api/models/billing_models.dart'
         AdditionalService,
         Bill,
         ListBillsQuery,
-        activeAdditionalServiceCount,
         billAmountDuePaise,
         canAddActiveAdditionalService,
-        kAdditionalServiceLimitMessage,
-        kMaxActiveAdditionalServicesPerFlat;
+        kAdditionalServiceLimitMessage;
 import 'api/models/collection_models.dart' show CollectionCharge;
 import 'api/models/common.dart' show Paged;
 import 'api/models/resident_home_context.dart';
@@ -33,6 +31,7 @@ import 'data/local_database.dart' show LocalDatabase;
 import 'api/auth/admin_api_messages.dart';
 import 'api/models/admin_user_models.dart';
 import 'features/admin/admin_dashboard.dart';
+import 'features/admin/admin_flat_detail_page.dart';
 import 'features/admin/admin_flats_page.dart';
 import 'features/admin/admin_more_page.dart';
 import 'features/auth/society_selection_screen.dart';
@@ -3043,19 +3042,6 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
       );
 }
 
-BadgeTone _occupancyTone(String status) {
-  switch (status.toUpperCase()) {
-    case 'OWNER_OCCUPIED':
-      return BadgeTone.success;
-    case 'TENANT_OCCUPIED':
-      return BadgeTone.info;
-    case 'VACANT':
-      return BadgeTone.warning;
-    default:
-      return BadgeTone.neutral;
-  }
-}
-
 class _AdminFlatsBundle {
   const _AdminFlatsBundle({
     required this.wings,
@@ -3105,41 +3091,52 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
   }
 
   void _reload() {
-    setState(() => _future = _load(force: true));
+    setState(() {
+      _future = _load(force: true);
+    });
   }
 
-  Widget _flatServiceRow(
-    BuildContext context,
-    AdditionalService service, {
-    required String title,
-    required String subtitle,
-  }) {
-    return ListRow(
-      onTap: () async {
-        final ok = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(
-            builder: (_) => LiveAdditionalServiceFormPage(
-              existing: service,
-              presetFlatId: widget.flatId,
-            ),
-          ),
-        );
-        if (ok == true && mounted) _reload();
-      },
-      leading: AppAvatar(
-        icon: Icons.local_parking_outlined,
-        color: service.isActive ? C.blue : C.muted,
-        size: 42,
+  Future<void> _openService(AdditionalService service) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveAdditionalServiceFormPage(
+          existing: service,
+          presetFlatId: widget.flatId,
+        ),
       ),
-      title: title,
-      subtitle: subtitle,
-      trailing: Text(
-        '${moneyPaise(service.monthlyTotalPaise)}/month',
-        style: T.money.copyWith(fontSize: 14),
-      ),
-      showChevron: true,
     );
+    if (ok == true && mounted) _reload();
+  }
+
+  Future<void> _addService(List<AdditionalService> services) async {
+    if (!canAddActiveAdditionalService(services)) {
+      showAppSnack(
+        context,
+        kAdditionalServiceLimitMessage,
+        tone: SnackTone.warning,
+      );
+      return;
+    }
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveAdditionalServiceFormPage(
+          presetFlatId: widget.flatId,
+        ),
+      ),
+    );
+    if (ok == true && mounted) _reload();
+  }
+
+  Future<void> _openBill(Bill bill) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveAdminBillDetailPage(billId: bill.id),
+      ),
+    );
+    if (mounted) _reload();
   }
 
   Future<void> _assign(String role) async {
@@ -3213,7 +3210,13 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Flat details')),
+      backgroundColor: const Color(0xFFF6F8FC),
+      appBar: AppBar(
+        title: const Text('Flat details'),
+        backgroundColor: const Color(0xFFF6F8FC),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: FutureBuilder<_FlatDetailBundle>(
         future: _future,
         builder: (context, snap) {
@@ -3236,358 +3239,65 @@ class _AdminFlatDetailPageState extends State<AdminFlatDetailPage> {
           final canEndTenant = status == 'TENANT_OCCUPIED';
           final canEndOwner =
               status == 'OWNER_OCCUPIED' && flat.activeTenant == null;
-          final hasActions =
-              canAssignOwner || canAssignTenant || canEndTenant || canEndOwner;
+          final String? stepLabel;
+          final String? stepCaption;
+          final IconData? stepIcon;
+          final VoidCallback? stepAction;
+          if (canAssignOwner) {
+            stepLabel = 'Assign owner';
+            stepCaption = 'Pick an owner account for this flat';
+            stepIcon = Icons.person_add_alt_1_outlined;
+            stepAction = () => _assign('OWNER');
+          } else if (canAssignTenant) {
+            stepLabel = 'Assign tenant';
+            stepCaption = 'Residential access moves to the tenant';
+            stepIcon = Icons.group_add_outlined;
+            stepAction = () => _assign('TENANT');
+          } else if (canEndTenant) {
+            stepLabel = 'End tenant occupancy';
+            stepCaption = 'Flat returns to owner occupied';
+            stepIcon = Icons.person_remove_outlined;
+            stepAction = () => _end(owner: false);
+          } else if (canEndOwner) {
+            stepLabel = 'End owner occupancy';
+            stepCaption = 'Flat becomes vacant';
+            stepIcon = Icons.home_work_outlined;
+            stepAction = () => _end(owner: true);
+          } else {
+            stepLabel = null;
+            stepCaption = null;
+            stepIcon = null;
+            stepAction = null;
+          }
           return RefreshIndicator(
-            color: C.blue,
+            color: const Color(0xFF153B69),
             onRefresh: () async {
               _reload();
               await _future;
             },
-            child: ListView(
-              padding: Sp.pagePadding,
-              children: [
-                DetailHero(
-                  title: flat.number,
-                  subtitle:
-                      '${flat.wingName ?? flat.wingCode ?? 'Wing'} · Floor ${flat.floor} · ${flatTypeLabel(flat.flatType)}',
-                  leading: AppAvatar(
-                    text: flat.number.contains('-')
-                        ? flat.number.split('-').last
-                        : flat.number,
-                    size: Sz.avatarLg,
-                    square: true,
-                    color: flat.isActive ? C.blue : C.muted,
-                  ),
-                  badges: [
-                    StatusBadge(occupancyStatusLabel(flat.occupancyStatus),
-                        tone: _occupancyTone(flat.occupancyStatus)),
-                    StatusBadge(flat.isActive ? 'Active' : 'Inactive'),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                DetailCard(title: 'Flat', children: [
-                  DetailRow('Monthly maintenance', money(flat.maintenanceRate),
-                      emphasize: true),
-                  DetailRow('Type', flatTypeLabel(flat.flatType)),
-                  DetailRow('Floor', '${flat.floor}'),
-                  if (flat.parking != null)
-                    DetailRow('Parking', _parkingLabel(flat.parking!)),
-                  if (flat.notes != null && flat.notes!.trim().isNotEmpty)
-                    DetailRow('Notes', flat.notes!.trim()),
-                ]),
-                const SectionTitle('Who lives here'),
-                _ResidentCard(
-                  title: 'Owner',
-                  icon: Icons.home_outlined,
-                  resident: flat.activeOwner,
-                  emptyText: 'No owner allotted',
-                ),
-                _ResidentCard(
-                  title: 'Tenant',
-                  icon: Icons.person_pin_circle_outlined,
-                  resident: flat.activeTenant,
-                  emptyText: status == 'OWNER_OCCUPIED'
-                      ? 'Owner occupied · no tenant'
-                      : 'No active tenant',
-                ),
-                const SizedBox(height: 12),
-                const SectionTitle('Next occupancy step',
-                    subtitle: 'Vacant → owner → tenant → owner → vacant'),
-                if (!hasActions)
-                  const EmptyState(
-                      'No occupancy change is available in this state',
-                      icon: Icons.lock_clock_outlined,
-                      compact: true)
-                else
-                  ActionRail(
-                    busy: busy,
-                    primary: canAssignOwner
-                        ? ToolLink(
-                            icon: Icons.person_add_alt_1_outlined,
-                            label: 'Assign owner',
-                            subtitle: 'Pick an owner account for this flat',
-                            onTap: () => _assign('OWNER'),
-                          )
-                        : canAssignTenant
-                            ? ToolLink(
-                                icon: Icons.group_add_outlined,
-                                label: 'Assign tenant',
-                                subtitle:
-                                    'Residential access moves to the tenant',
-                                onTap: () => _assign('TENANT'),
-                              )
-                            : canEndTenant
-                                ? ToolLink(
-                                    icon: Icons.person_remove_outlined,
-                                    label: 'End tenant occupancy',
-                                    subtitle: 'Flat returns to owner occupied',
-                                    onTap: () => _end(owner: false),
-                                  )
-                                : canEndOwner
-                                    ? ToolLink(
-                                        icon: Icons.home_work_outlined,
-                                        label: 'End owner occupancy',
-                                        subtitle: 'Flat becomes vacant',
-                                        onTap: () => _end(owner: true),
-                                      )
-                                    : null,
-                  ),
-                const SizedBox(height: 20),
-                const SectionTitle('Billing & services'),
-                Builder(builder: (_) {
-                  final allServices = snap.data!.services;
-                  final extra = allServices
-                      .where((s) => s.isActive)
-                      .fold<int>(0, (sum, s) => sum + s.monthlyTotalPaise);
-                  final recurringPaise =
-                      (flat.maintenanceRate * 100) + extra;
-                  final activeCount =
-                      activeAdditionalServiceCount(allServices);
-                  final atCap = !canAddActiveAdditionalService(allServices);
-                  final activeServices =
-                      allServices.where((s) => s.isActive).toList();
-                  final inactiveServices =
-                      allServices.where((s) => !s.isActive).toList();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      DetailCard(title: 'Recurring monthly', children: [
-                        DetailRow(
-                            'Base maintenance', money(flat.maintenanceRate)),
-                        DetailRow('Additional monthly charges',
-                            moneyPaise(extra)),
-                        DetailRow(
-                            'Total recurring', moneyPaise(recurringPaise),
-                            emphasize: true),
-                      ]),
-                      SectionTitle(
-                        'Additional Services — $activeCount/$kMaxActiveAdditionalServicesPerFlat',
-                      ),
-                      if (atCap) ...[
-                        const InfoNote(kAdditionalServiceLimitMessage,
-                            tone: NoteTone.warning),
-                        const SizedBox(height: 10),
-                      ],
-                      QuickActionTile(
-                        icon: Icons.add_rounded,
-                        label: 'Add additional service',
-                        subtitle: atCap
-                            ? kAdditionalServiceLimitMessage
-                            : 'Parking or other recurring charges for this flat',
-                        enabled: !atCap,
-                        onTap: () async {
-                          if (!canAddActiveAdditionalService(
-                              snap.data!.services)) {
-                            showAppSnack(context,
-                                kAdditionalServiceLimitMessage,
-                                tone: SnackTone.warning);
-                            return;
-                          }
-                          final ok = await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => LiveAdditionalServiceFormPage(
-                                presetFlatId: widget.flatId,
-                              ),
-                            ),
-                          );
-                          if (ok == true && mounted) _reload();
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      if (allServices.isEmpty)
-                        const EmptyState(
-                            'No additional services on this flat',
-                            icon: Icons.local_parking_outlined,
-                            compact: true)
-                      else ...[
-                        ...activeServices.asMap().entries.map((entry) {
-                          final n = entry.key + 1;
-                          final service = entry.value;
-                          return _flatServiceRow(
-                            context,
-                            service,
-                            title: 'Service $n: ${service.name}',
-                            subtitle: 'Qty ${service.quantity}',
-                          );
-                        }),
-                        ...inactiveServices.map(
-                          (service) => _flatServiceRow(
-                            context,
-                            service,
-                            title: service.name,
-                            subtitle: 'Inactive · Qty ${service.quantity}',
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                }),
-                const SizedBox(height: 12),
-                const SectionTitle('Billing history'),
-                if (snap.data!.bills.isEmpty)
-                  const EmptyState('No bills generated for this flat yet',
-                      icon: Icons.receipt_long_outlined, compact: true)
-                else
-                  ...snap.data!.bills.map(
-                    (bill) => ListRow(
-                      onTap: () async {
-                        await Navigator.push<void>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                LiveAdminBillDetailPage(billId: bill.id),
-                          ),
-                        );
-                        if (mounted) _reload();
-                      },
-                      title: bill.billNumber,
-                      subtitle:
-                          '${fmtIsoDate(bill.billingPeriodStart)} · ${humanizeStatus(bill.status)}',
-                      trailing: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(moneyPaise(bill.totalAmountPaise),
-                              style: T.money.copyWith(fontSize: 14)),
-                          Text(
-                            bill.outstandingPrincipalPaise > 0
-                                ? 'Due ${moneyPaise(billAmountDuePaise(bill))}'
-                                : 'Settled',
-                            style: T.caption,
-                          ),
-                        ],
-                      ),
-                      showChevron: true,
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                const SectionTitle('Occupancy history'),
-                if (history.items.isEmpty)
-                  const EmptyState('No occupancy history yet',
-                      icon: Icons.history_rounded, compact: true)
-                else
-                  AppCard(
-                    margin: EdgeInsets.zero,
-                    child: Column(children: [
-                      for (var i = 0; i < history.items.length; i++) ...[
-                        if (i > 0)
-                          const Divider(height: 1, indent: 56, endIndent: 12),
-                        Builder(builder: (_) {
-                          final item = history.items[i];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                AppAvatar(
-                                  icon: item.role == 'OWNER'
-                                      ? Icons.home_outlined
-                                      : Icons.person_pin_circle_outlined,
-                                  color: item.status.toUpperCase() == 'ACTIVE'
-                                      ? C.green
-                                      : C.muted,
-                                  size: 36,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(item.userName ?? item.userId,
-                                          style: T.bodyStrong),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        [
-                                          if (item.userEmail != null)
-                                            item.userEmail!,
-                                          '${occupancyDateLabel(item.startsAt)}${item.endsAt == null ? ' → present' : ' → ${occupancyDateLabel(item.endsAt!)}'}',
-                                          if (item.endReason != null)
-                                            'Reason: ${item.endReason}',
-                                        ].join('\n'),
-                                        style: T.caption,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                          spacing: 6,
-                                          runSpacing: 4,
-                                          children: [
-                                            StatusBadge(
-                                                item.role == 'OWNER'
-                                                    ? 'Owner'
-                                                    : 'Tenant',
-                                                tone: BadgeTone.info),
-                                            StatusBadge(item.status),
-                                          ]),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-                    ]),
-                  ),
-              ],
+            child: AdminFlatDetailBody(
+              flat: flat,
+              history: history,
+              services: snap.data!.services,
+              bills: snap.data!.bills,
+              busy: busy,
+              ownerActionLabel: canAssignOwner ? 'Add' : null,
+              onOwnerAction:
+                  canAssignOwner ? () => _assign('OWNER') : null,
+              tenantActionLabel: canAssignTenant ? 'Add' : null,
+              onTenantAction:
+                  canAssignTenant ? () => _assign('TENANT') : null,
+              occupancyStepLabel: stepLabel,
+              occupancyStepCaption: stepCaption,
+              occupancyStepIcon: stepIcon,
+              onOccupancyStep: stepAction,
+              onAddService: () => _addService(snap.data!.services),
+              onOpenService: _openService,
+              onOpenBill: _openBill,
             ),
           );
         },
       ),
-    );
-  }
-
-  String _parkingLabel(FlatParking p) {
-    if (!p.hasParking) return 'No parking';
-    final slot = p.slotLabel?.trim();
-    return slot == null || slot.isEmpty ? 'Allocated' : 'Slot $slot';
-  }
-}
-
-class _ResidentCard extends StatelessWidget {
-  const _ResidentCard({
-    required this.title,
-    required this.icon,
-    required this.resident,
-    required this.emptyText,
-  });
-  final String title;
-  final IconData icon;
-  final ResidentSummary? resident;
-  final String emptyText;
-
-  @override
-  Widget build(BuildContext context) {
-    final r = resident;
-    return AppCard(
-      padding: const EdgeInsets.all(14),
-      child: Row(children: [
-        AppAvatar(
-          icon: r == null ? icon : null,
-          text: r == null ? null : initialsOf(r.name),
-          color: r == null ? C.muted : C.blue,
-          size: 44,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title.toUpperCase(), style: T.label),
-            const SizedBox(height: 3),
-            Text(r == null ? emptyText : r.name,
-                style: r == null
-                    ? T.secondary
-                    : T.bodyStrong.copyWith(fontSize: 15)),
-            if (r != null && r.displayContact.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(r.displayContact, style: T.secondary),
-            ],
-          ]),
-        ),
-      ]),
     );
   }
 }

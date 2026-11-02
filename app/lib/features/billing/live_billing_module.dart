@@ -8,17 +8,21 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
+import '../../api/models/admin_user_models.dart';
 import '../../api/models/billing_models.dart';
 import '../../api/models/common.dart';
 import '../../api/repositories/live_repositories.dart';
 import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
+import '../admin/admin_bill_detail_page.dart';
 import '../admin/admin_bills_page.dart';
 import '../admin/admin_dashboard.dart';
 import '../admin/admin_payments_page.dart';
+import '../residents/admin_residents_module.dart';
 import 'demo_payment_checkout.dart';
 import 'live_additional_services_module.dart';
+import 'receipt_document.dart';
 
 String billingErrorMessage(Object error) {
   if (error is ApiException) {
@@ -152,7 +156,8 @@ Future<void> _openPaymentReceipt(
   required bool resident,
 }) async {
   if (!_isSuccessfulPayment(payment)) {
-    showWarningSnack(context, 'Receipts are only available for successful payments.');
+    showWarningSnack(
+        context, 'Receipts are only available for successful payments.');
     return;
   }
   final session = authSession;
@@ -165,7 +170,8 @@ Future<void> _openPaymentReceipt(
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => LiveReceiptPage(receiptId: receiptId, resident: resident),
+        builder: (_) =>
+            LiveReceiptPage(receiptId: receiptId, resident: resident),
       ),
     );
     return;
@@ -509,13 +515,15 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
     Future<void> Function(ReceiptDetail detail) action,
   ) async {
     try {
-      final payment = await _latestSuccessfulPaymentForBill(bill, resident: false);
+      final payment =
+          await _latestSuccessfulPaymentForBill(bill, resident: false);
       if (!mounted) return;
       if (payment == null) {
         showWarningSnack(context, 'No receipt yet for ${bill.flatLabel}.');
         return;
       }
-      final detail = await _loadReceiptDetail(context, payment, resident: false);
+      final detail =
+          await _loadReceiptDetail(context, payment, resident: false);
       if (!mounted) return;
       await action(detail);
     } catch (e) {
@@ -530,28 +538,29 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
       child: FutureBuilder<_AdminBillsBundle>(
         future: _future,
         builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const SkeletonList(items: 5, showHeader: true);
-        }
-        if (snap.hasError) {
-          return LoadFailure(
-            error: snap.error!,
-            title: 'Could not load bills',
-            onRetry: () => reload(resetPage: true),
-          );
-        }
-        final bundle = snap.data!;
-        final bills = bundle.bills.items;
-        final summary = bundle.summary;
-        final pagination = bundle.bills.pagination;
-        final collectedPct = summary.collectionPercentage.clamp(0, 100);
-        final period = bills.isNotEmpty
-            ? adminDashMonthLabel(
-                DateTime.tryParse(bills.first.billingPeriodStart) ??
-                    DateTime.now(),
-              )
-            : adminDashMonthLabel();
-        return RefreshIndicator(
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
+            return const SkeletonList(items: 5, showHeader: true);
+          }
+          if (snap.hasError) {
+            return LoadFailure(
+              error: snap.error!,
+              title: 'Could not load bills',
+              onRetry: () => reload(resetPage: true),
+            );
+          }
+          final bundle = snap.data!;
+          final bills = bundle.bills.items;
+          final summary = bundle.summary;
+          final pagination = bundle.bills.pagination;
+          final collectedPct = summary.collectionPercentage.clamp(0, 100);
+          final period = bills.isNotEmpty
+              ? adminDashMonthLabel(
+                  DateTime.tryParse(bills.first.billingPeriodStart) ??
+                      DateTime.now(),
+                )
+              : adminDashMonthLabel();
+          return RefreshIndicator(
             color: AdminDash.primary,
             onRefresh: () async {
               reload(resetPage: true);
@@ -563,8 +572,7 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                 AdminBillsHero(
                   payableLabel: 'Total payable',
                   payable: moneyPaise(billingSummaryPayablePaise(summary)),
-                  principal:
-                      moneyPaise(summary.totalOutstandingPrincipalPaise),
+                  principal: moneyPaise(summary.totalOutstandingPrincipalPaise),
                   interest: moneyPaise(summary.totalAccruedInterestPaise),
                   billCount: summary.billCount,
                   periodLabel: period,
@@ -643,21 +651,19 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                       reload(resetPage: true);
                     },
                   )
-                else
-                  ...[
-                    for (final bill in bills) ...[
-                      AdminBillCard(
-                        bill: bill,
-                        onOpen: () => _openBill(bill),
-                        onRecordPayment: () => _recordPayment(bill),
-                        onReceipt: bill.amountPaidPaise > 0
-                            ? () =>
-                                _runReceiptAction(bill, _downloadReceiptPdf)
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                    ],
+                else ...[
+                  for (final bill in bills) ...[
+                    AdminBillCard(
+                      bill: bill,
+                      onOpen: () => _openBill(bill),
+                      onRecordPayment: () => _recordPayment(bill),
+                      onReceipt: bill.amountPaidPaise > 0
+                          ? () => _runReceiptAction(bill, _downloadReceiptPdf)
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
                   ],
+                ],
                 PaginationBar(
                   page: pagination.page,
                   totalPages: pagination.totalPages,
@@ -672,8 +678,8 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                 ),
               ],
             ),
-        );
-      },
+          );
+        },
       ),
     );
   }
@@ -865,7 +871,8 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                 ),
                 const SizedBox(height: 16),
                 SectionTitle('Billable flats',
-                    subtitle: 'Every configured flat, including vacant and unassigned'),
+                    subtitle:
+                        'Every configured flat, including vacant and unassigned'),
                 if (rows == null || rows.isEmpty)
                   const EmptyState(
                     'No eligible flats for billing',
@@ -1096,7 +1103,17 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
     final bill = await repos.billing.adminBill(widget.billId, force: force);
     final interest =
         await repos.billing.adminInterest(widget.billId, force: force);
-    return _BillDetailBundle(bill: bill, interest: interest);
+    final payments = await repos.billing.listAdminPayments(
+      billId: widget.billId,
+      status: 'SUCCESS',
+      force: force,
+      limit: 10,
+    );
+    return _BillDetailBundle(
+      bill: bill,
+      interest: interest,
+      payments: payments.items,
+    );
   }
 
   Future<void> _adjust(Bill bill) async {
@@ -1169,7 +1186,9 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
           .invalidateAfterFinancialMutation(billId: bill.id);
       if (!mounted) return;
       showSuccessSnack(context, 'Bill adjusted.');
-      setState(() => _future = _load(force: true));
+      setState(() {
+        _future = _load(force: true);
+      });
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, billingErrorMessage(e));
@@ -1203,7 +1222,9 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
           .invalidateAfterFinancialMutation(billId: bill.id);
       if (!mounted) return;
       showAppSnack(context, 'Bill cancelled.', tone: SnackTone.warning);
-      setState(() => _future = _load(force: true));
+      setState(() {
+        _future = _load(force: true);
+      });
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, billingErrorMessage(e));
@@ -1220,163 +1241,349 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
       ),
     );
     if (ok == true && mounted) {
-      setState(() => _future = _load(force: true));
+      setState(() {
+        _future = _load(force: true);
+      });
+    }
+  }
+
+  Future<void> _assignOwner(Bill bill) async {
+    final user = await Navigator.push<AdminUser>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AdminPickResidentPage(role: 'OWNER'),
+      ),
+    );
+    if (user == null || !mounted) return;
+    final assigned = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AssignOccupancyPage(
+          role: 'OWNER',
+          user: user,
+          flatId: bill.flatId,
+        ),
+      ),
+    );
+    if (assigned == true && mounted) {
+      setState(() {
+        _future = _load(force: true);
+      });
+    }
+  }
+
+  PaymentSummary? _latestPayment(List<PaymentSummary> payments) {
+    final successful = payments.where(_isSuccessfulPayment);
+    return successful.isEmpty ? null : successful.first;
+  }
+
+  Future<void> _openReceipt(List<PaymentSummary> payments) async {
+    final payment = _latestPayment(payments);
+    if (payment == null) {
+      showWarningSnack(context, 'No receipt yet for this bill.');
+      return;
+    }
+    await _openPaymentReceipt(context, payment, resident: false);
+  }
+
+  Future<void> _downloadReceipt(List<PaymentSummary> payments) async {
+    final payment = _latestPayment(payments);
+    if (payment == null) {
+      showWarningSnack(context, 'No receipt yet for this bill.');
+      return;
+    }
+    try {
+      final detail =
+          await _loadReceiptDetail(context, payment, resident: false);
+      if (!mounted) return;
+      await _downloadReceiptPdf(detail);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, billingErrorMessage(e));
+    }
+  }
+
+  Future<void> _shareReceipt(List<PaymentSummary> payments) async {
+    final payment = _latestPayment(payments);
+    if (payment == null) {
+      showWarningSnack(context, 'No receipt yet for this bill.');
+      return;
+    }
+    try {
+      final detail =
+          await _loadReceiptDetail(context, payment, resident: false);
+      if (!mounted) return;
+      await _shareReceiptPdf(detail);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, billingErrorMessage(e));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Bill details')),
-      body: FutureBuilder<_BillDetailBundle>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting &&
-              !snap.hasData) {
-            return const LoadingView(label: 'Loading bill…');
-          }
-          if (snap.hasError) {
-            return LoadFailure(
-              error: snap.error!,
-              onRetry: () => setState(() => _future = _load(force: true)),
-            );
-          }
-          final bill = snap.data!.bill;
-          final interest = snap.data!.interest;
-          final due = billAmountDuePaise(bill);
-          final open = bill.status != 'CANCELLED' && bill.status != 'PAID';
-          final adjustPaise = bill.totalAmountPaise - bill.baseAmountPaise;
-          return RefreshIndicator(
-            color: C.blue,
-            onRefresh: () async {
-              setState(() => _future = _load(force: true));
-              await _future;
-            },
-            child: ListView(
-              padding: Sp.pagePadding,
+    return FutureBuilder<_BillDetailBundle>(
+      future: _future,
+      builder: (context, snap) {
+        final payments = snap.data?.payments ?? const <PaymentSummary>[];
+        return Scaffold(
+          backgroundColor: kBillDetailGround,
+          appBar: AppBar(
+            backgroundColor: kBillDetailGround,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              tooltip: 'Go back',
+              onPressed: () => Navigator.maybePop(context),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF334155),
+                side: const BorderSide(color: kBillDetailBorder),
+              ),
+              icon: const Icon(Icons.chevron_left_rounded),
+            ),
+            titleSpacing: 8,
+            title: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _BillHeader(bill: bill),
-                const SizedBox(height: 16),
-                HeroMoneyCard(
-                  label: open ? 'Amount due' : (bill.status == 'PAID' ? 'Outstanding' : 'Bill total'),
-                  amount: moneyPaise(
-                      bill.status == 'CANCELLED' ? bill.totalAmountPaise : due),
-                  subtitle: open
-                      ? 'Principal ${moneyPaise(bill.outstandingPrincipalPaise)} · Interest ${moneyPaise(bill.interestOutstandingPaise ?? interest.accruedInterestPaise)}'
-                      : bill.status == 'PAID'
-                          ? 'Paid ${moneyPaise(bill.amountPaidPaise)} · Outstanding ${moneyPaise(0)}'
-                          : 'Paid ${moneyPaise(bill.amountPaidPaise)}',
+                Text(
+                  'Bill details',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: kBillDetailInk,
+                  ),
                 ),
-                const SizedBox(height: 14),
-                DetailCard(title: 'Bill', children: [
-                  DetailRow('Period', _periodLabel(bill)),
-                  DetailRow('Months', billMonthsProgressLabel(bill)),
-                  DetailRow('Due date', fmtIsoDate(bill.dueDate)),
-                  DetailRow('Owner', bill.ownerNameSnapshot),
-                  DetailRow('Flat type', bill.flatTypeSnapshot),
-                ]),
-                DetailCard(title: 'Breakdown', children: [
-                  ..._billBreakdownRows(bill),
-                  if (adjustPaise != 0)
-                    DetailRow('Adjustment',
-                        '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}'),
-                  DetailRow('Original bill amount',
-                      moneyPaise(bill.totalAmountPaise),
-                      emphasize: true),
-                  DetailRow('Paid', moneyPaise(bill.amountPaidPaise)),
-                  DetailRow('Outstanding principal',
-                      moneyPaise(bill.outstandingPrincipalPaise)),
-                  DetailRow('Accrued interest',
-                      moneyPaise(interest.accruedInterestPaise)),
-                  DetailRow('Interest paid',
-                      moneyPaise(bill.interestPaidPaise)),
-                  DetailRow('Interest outstanding',
-                      moneyPaise(bill.interestOutstandingPaise ??
-                          (open ? interest.accruedInterestPaise : 0))),
-                  DetailRow('Total payable',
-                      moneyPaise(due),
-                      emphasize: true),
-                ]),
-                DetailCard(title: 'Late-payment interest', children: [
-                  DetailRow('Accrued interest',
-                      moneyPaise(interest.accruedInterestPaise),
-                      emphasize: true),
-                  DetailRow('Overdue days', '${interest.overdueDays}'),
-                  DetailRow('Annual rate',
-                      '${interest.annualInterestRatePercent}% p.a.'),
-                  DetailRow('As of', fmtIsoDate(interest.asOf)),
-                ]),
-                if (interest.segments.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  const SectionTitle('Interest segments'),
-                  AppCard(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                    child: Column(children: [
-                      for (var i = 0; i < interest.segments.length; i++) ...[
-                        if (i > 0) const Divider(height: 1),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                        '${fmtIsoDate(interest.segments[i].from)} → ${fmtIsoDate(interest.segments[i].to)}',
-                                        style: T.bodyStrong),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                        '${interest.segments[i].days} days on ${moneyPaise(interest.segments[i].principalPaise)}',
-                                        style: T.caption),
-                                  ]),
-                            ),
-                            Text(moneyPaise(interest.segments[i].interestPaise),
-                                style: T.money.copyWith(fontSize: 14)),
-                          ]),
-                        ),
-                      ],
-                    ]),
+                Text(
+                  '$kSocietyName · Maintenance',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF94A3B8),
                   ),
-                ],
-                const SizedBox(height: 16),
-                const SectionTitle('Collect & manage'),
-                if (!open && bill.amountPaidPaise > 0)
-                  const EmptyState('This bill is settled. No further actions.',
-                      icon: Icons.lock_outline_rounded, compact: true)
-                else
-                  ActionRail(
-                    busy: busy,
-                    primary: open
-                        ? ToolLink(
-                            icon: Icons.payments_outlined,
-                            label: 'Record offline payment',
-                            subtitle: 'Cash, cheque, NEFT or UPI received',
-                            onTap: () => _offline(bill),
-                          )
-                        : null,
-                    secondary: [
-                      if (open)
-                        ToolLink(
-                          icon: Icons.tune_rounded,
-                          label: 'Adjust bill',
-                          subtitle: 'Charge or discount against the base',
-                          onTap: () => _adjust(bill),
-                        ),
-                      if (bill.status != 'CANCELLED' &&
-                          bill.amountPaidPaise == 0)
-                        ToolLink(
-                          icon: Icons.cancel_outlined,
-                          label: 'Cancel bill',
-                          subtitle: 'Only before any payment is recorded',
-                          onTap: () => _cancel(bill),
-                        ),
-                    ],
-                  ),
+                ),
               ],
             ),
-          );
-        },
-      ),
+            actions: [
+              AdminBillCircleIconButton(
+                icon: Icons.ios_share_outlined,
+                tooltip: 'Share invoice',
+                onPressed: () => _shareReceipt(payments),
+              ),
+              AdminBillCircleIconButton(
+                icon: Icons.download_outlined,
+                tooltip: 'Download bill PDF',
+                onPressed: () => _downloadReceipt(payments),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: Builder(
+            builder: (context) {
+              if (snap.connectionState == ConnectionState.waiting &&
+                  !snap.hasData) {
+                return const LoadingView(label: 'Loading bill…');
+              }
+              if (snap.hasError) {
+                return LoadFailure(
+                  error: snap.error!,
+                  onRetry: () => setState(() {
+                    _future = _load(force: true);
+                  }),
+                );
+              }
+              final bill = snap.data!.bill;
+              final interest = snap.data!.interest;
+              final due = billAmountDuePaise(bill);
+              final open = bill.status != 'CANCELLED' && bill.status != 'PAID';
+              final settled = !open && bill.amountPaidPaise > 0;
+              final unassigned = !bill.ownerAssigned;
+              final adjustPaise = bill.totalAmountPaise - bill.baseAmountPaise;
+              final interestOutstanding = bill.interestOutstandingPaise ??
+                  (open ? interest.accruedInterestPaise : 0);
+              final hasReceipt = _latestPayment(payments) != null;
+              final breakdown = <AdminBillAmountLine>[
+                ...adminBillLineItemRows(bill),
+                if (adjustPaise != 0)
+                  AdminBillAmountLine(
+                    label: 'Adjustment',
+                    value:
+                        '${adjustPaise < 0 ? '−' : '+'}${moneyPaise(adjustPaise.abs())}',
+                  ),
+                AdminBillAmountLine(
+                  label: 'Original bill amount',
+                  value: moneyPaise(bill.totalAmountPaise),
+                ),
+                AdminBillAmountLine(
+                  label: 'Paid',
+                  value: '-${moneyPaise(bill.amountPaidPaise)}',
+                  tone: AdminBillAmountTone.credit,
+                ),
+                AdminBillAmountLine(
+                  label: 'Outstanding principal',
+                  value: moneyPaise(bill.outstandingPrincipalPaise),
+                ),
+                AdminBillAmountLine(
+                  label: 'Accrued interest',
+                  value: moneyPaise(interest.accruedInterestPaise),
+                ),
+                AdminBillAmountLine(
+                  label: 'Interest paid',
+                  value: moneyPaise(bill.interestPaidPaise),
+                ),
+                AdminBillAmountLine(
+                  label: 'Interest outstanding',
+                  value: moneyPaise(interestOutstanding),
+                ),
+                AdminBillAmountLine(
+                  label: 'Total payable',
+                  value: moneyPaise(due),
+                  tone: AdminBillAmountTone.total,
+                ),
+              ];
+              return RefreshIndicator(
+                color: kBillDetailNavy,
+                onRefresh: () async {
+                  setState(() {
+                    _future = _load(force: true);
+                  });
+                  await _future;
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                  children: [
+                    AdminBillDetailIdentity(
+                      period: _periodLabel(bill),
+                      flatLabel: bill.flatLabel,
+                      billNumber: bill.billNumber,
+                      status: _billStatusLabel(bill.status),
+                    ),
+                    const SizedBox(height: 12),
+                    AdminBillOutstandingHero(
+                      amount: moneyPaise(
+                        bill.status == 'CANCELLED'
+                            ? bill.totalAmountPaise
+                            : due,
+                      ),
+                      paid: moneyPaise(bill.amountPaidPaise),
+                      outstanding: moneyPaise(
+                        bill.status == 'PAID' ? 0 : due,
+                      ),
+                      settled: bill.status == 'PAID',
+                      caption: bill.status == 'PAID'
+                          ? 'All dues cleared'
+                          : bill.status == 'CANCELLED'
+                              ? 'Cancelled'
+                              : open && due > 0
+                                  ? 'Due now'
+                                  : null,
+                    ),
+                    const SizedBox(height: 12),
+                    AdminBillMetaCard(
+                      lines: [
+                        AdminBillMetaLine(
+                          label: 'Period',
+                          value: _periodLabel(bill),
+                        ),
+                        AdminBillMetaLine(
+                          label: 'Months',
+                          value: billMonthsProgressLabel(bill),
+                          chip: billPaidMonths(bill) >= bill.numberOfMonths &&
+                              bill.numberOfMonths > 0,
+                        ),
+                        AdminBillMetaLine(
+                          label: 'Due date',
+                          value: fmtIsoDate(bill.dueDate),
+                        ),
+                        AdminBillMetaLine(
+                          label: 'Owner',
+                          value: unassigned
+                              ? 'Unassigned'
+                              : (bill.ownerNameSnapshot.trim().isEmpty
+                                  ? '—'
+                                  : bill.ownerNameSnapshot),
+                          italic: unassigned,
+                          actionLabel: unassigned ? 'Assign' : null,
+                          onAction:
+                              unassigned ? () => _assignOwner(bill) : null,
+                        ),
+                        AdminBillMetaLine(
+                          label: 'Flat type',
+                          value: bill.flatTypeSnapshot,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    AdminBillAmountCard(
+                      title: 'BREAKDOWN',
+                      lines: breakdown,
+                    ),
+                    const SizedBox(height: 12),
+                    AdminBillAmountCard(
+                      title: 'LATE-PAYMENT INTEREST',
+                      lines: [
+                        AdminBillAmountLine(
+                          label: 'Accrued interest',
+                          value: moneyPaise(interest.accruedInterestPaise),
+                        ),
+                        AdminBillAmountLine(
+                          label: 'Overdue days',
+                          value: '${interest.overdueDays}',
+                        ),
+                        AdminBillAmountLine(
+                          label: 'Annual rate',
+                          value: '${interest.annualInterestRatePercent}% p.a.',
+                        ),
+                        AdminBillAmountLine(
+                          label: 'As of',
+                          value: fmtIsoDate(interest.asOf),
+                        ),
+                      ],
+                    ),
+                    if (interest.segments.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      AdminBillAmountCard(
+                        title: 'INTEREST SEGMENTS',
+                        lines: [
+                          for (final segment in interest.segments)
+                            AdminBillAmountLine(
+                              label:
+                                  '${fmtIsoDate(segment.from)} → ${fmtIsoDate(segment.to)} · ${segment.days} days',
+                              value: moneyPaise(segment.interestPaise),
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    AdminBillCollectSection(
+                      settled: settled,
+                      busy: busy,
+                      primaryLabel: open ? 'Record offline payment' : null,
+                      onPrimary: open ? () => _offline(bill) : null,
+                      secondaryLabel: open ? 'Adjust bill' : null,
+                      onSecondary: open ? () => _adjust(bill) : null,
+                      tertiaryLabel: bill.status != 'CANCELLED' &&
+                              bill.amountPaidPaise == 0
+                          ? 'Cancel bill'
+                          : null,
+                      onTertiary: bill.status != 'CANCELLED' &&
+                              bill.amountPaidPaise == 0
+                          ? () => _cancel(bill)
+                          : null,
+                      receiptLabel: 'Receipt',
+                      onReceipt:
+                          hasReceipt ? () => _openReceipt(payments) : null,
+                      onDownload:
+                          hasReceipt ? () => _downloadReceipt(payments) : null,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -1387,8 +1594,7 @@ class _BillHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DetailHero(
         title: _periodLabel(bill),
-        subtitle:
-            '${bill.flatLabel} · ${bill.billNumber}',
+        subtitle: '${bill.flatLabel} · ${bill.billNumber}',
         leading: const AppAvatar(
             icon: Icons.receipt_long_outlined, size: Sz.avatarLg, square: true),
         badges: [
@@ -1428,9 +1634,8 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   final _form = GlobalKey<FormState>();
   final reference = TextEditingController();
   final notes = TextEditingController();
-  late int monthsPaid = billPendingMonths(widget.bill) == 0
-      ? 1
-      : billPendingMonths(widget.bill);
+  late int monthsPaid =
+      billPendingMonths(widget.bill) == 0 ? 1 : billPendingMonths(widget.bill);
   String method = 'CASH';
   bool busy = false;
   String? error;
@@ -1445,8 +1650,11 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   String get _monthsPreview {
     final bill = widget.bill;
     final pending = billPendingMonths(bill);
-    final extra = pending == 0 ? monthsPaid : (monthsPaid > pending ? monthsPaid - pending : 0);
-    final onBill = pending == 0 ? 0 : (monthsPaid < pending ? monthsPaid : pending);
+    final extra = pending == 0
+        ? monthsPaid
+        : (monthsPaid > pending ? monthsPaid - pending : 0);
+    final onBill =
+        pending == 0 ? 0 : (monthsPaid < pending ? monthsPaid : pending);
     final afterPaid = billPaidMonths(bill) + onBill;
     final afterPending = bill.numberOfMonths - afterPaid;
     final parts = <String>[
@@ -1545,18 +1753,12 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
               'Outstanding principal',
               moneyPaise(bill.outstandingPrincipalPaise)
             ),
-            (
-              'Accrued interest',
-              moneyPaise(bill.interestAccruedPaise)
-            ),
+            ('Accrued interest', moneyPaise(bill.interestAccruedPaise)),
             (
               'Months',
               billMonthsProgressLabel(bill),
             ),
-            (
-              'Amount due',
-              moneyPaise(billAmountDuePaise(bill))
-            ),
+            ('Amount due', moneyPaise(billAmountDuePaise(bill))),
           ],
         ),
         const SizedBox(height: 8),
@@ -1569,9 +1771,8 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
               AppFilterChip(
                 label: option.$2,
                 selected: method == option.$1,
-                onSelected: busy
-                    ? () {}
-                    : () => setState(() => method = option.$1),
+                onSelected:
+                    busy ? () {} : () => setState(() => method = option.$1),
               ),
           ],
         ),
@@ -1695,10 +1896,11 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => AdminRecordBillSheet(
-        loader: () => ensureLiveRepositories(session.api).billing.listAdminBills(
-              force: true,
-              query: const ListBillsQuery(limit: 50),
-            ),
+        loader: () =>
+            ensureLiveRepositories(session.api).billing.listAdminBills(
+                  force: true,
+                  query: const ListBillsQuery(limit: 50),
+                ),
       ),
     );
     if (bill == null || !mounted) return;
@@ -1716,7 +1918,8 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
       child: FutureBuilder<Paged<PaymentSummary>>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
             return const SkeletonList(items: 6, showHeader: true);
           }
           if (snap.hasError) {
@@ -1727,9 +1930,8 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
           }
           final rows = snap.data?.items ?? [];
           final query = _search.text;
-          final searched = rows
-              .where((p) => adminPaymentMatches(p, query: query))
-              .toList();
+          final searched =
+              rows.where((p) => adminPaymentMatches(p, query: query)).toList();
           final wings = adminPaymentWings(searched);
           final counts = <String, int>{'ALL': searched.length};
           for (final wing in wings) {
@@ -1747,8 +1949,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                     offlineOnly: offlineOnly,
                   ))
               .toList();
-          final successTotal =
-              adminPaymentSuccessTotalPaise(visible);
+          final successTotal = adminPaymentSuccessTotalPaise(visible);
           return RefreshIndicator(
             color: AdminDash.primary,
             onRefresh: _refresh,
@@ -1794,8 +1995,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                     wingFilter = wingFilter == wing ? null : wing;
                   }),
                   onToggleSuccessful: () => setState(() {
-                    statusFilter =
-                        statusFilter == 'SUCCESS' ? null : 'SUCCESS';
+                    statusFilter = statusFilter == 'SUCCESS' ? null : 'SUCCESS';
                   }),
                   onToggleOffline: () =>
                       setState(() => offlineOnly = !offlineOnly),
@@ -1908,7 +2108,8 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
           .cancelPayment(payment.id, reason: reason);
       ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
       if (!mounted) return;
-      showAppSnack(context, 'Office payment cancelled.', tone: SnackTone.warning);
+      showAppSnack(context, 'Office payment cancelled.',
+          tone: SnackTone.warning);
       setState(() {
         _future = _load(force: true);
       });
@@ -2222,8 +2423,9 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                     const SizedBox(height: 16),
                     HeroMoneyCard(
                       label: open ? 'Amount due' : 'Outstanding',
-                      amount: moneyPaise(
-                          bill.status == 'CANCELLED' ? bill.totalAmountPaise : due),
+                      amount: moneyPaise(bill.status == 'CANCELLED'
+                          ? bill.totalAmountPaise
+                          : due),
                       subtitle: open
                           ? 'Principal ${moneyPaise(bill.outstandingPrincipalPaise)} · Interest ${moneyPaise(bill.interestOutstandingPaise ?? interest.accruedInterestPaise)}'
                           : bill.status == 'PAID'
@@ -2234,13 +2436,13 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                     DetailCard(title: 'Bill', children: [
                       DetailRow('Period', _periodLabel(bill)),
                       DetailRow('Due date', fmtIsoDate(bill.dueDate)),
-                      DetailRow('Flat',
-                          bill.flatLabel),
+                      DetailRow('Flat', bill.flatLabel),
                       DetailRow('Bill number', bill.billNumber),
                       DetailRow('Status', '',
                           valueWidget: Align(
                               alignment: Alignment.centerLeft,
-                              child: StatusBadge(_billStatusLabel(bill.status)))),
+                              child:
+                                  StatusBadge(_billStatusLabel(bill.status)))),
                     ]),
                     DetailCard(title: 'Breakdown', children: [
                       ..._billBreakdownRows(bill),
@@ -2256,13 +2458,13 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                           moneyPaise(bill.outstandingPrincipalPaise)),
                       DetailRow('Accrued interest',
                           moneyPaise(interest.accruedInterestPaise)),
-                      DetailRow('Interest paid',
-                          moneyPaise(bill.interestPaidPaise)),
-                      DetailRow('Interest outstanding',
+                      DetailRow(
+                          'Interest paid', moneyPaise(bill.interestPaidPaise)),
+                      DetailRow(
+                          'Interest outstanding',
                           moneyPaise(bill.interestOutstandingPaise ??
                               (open ? interest.accruedInterestPaise : 0))),
-                      DetailRow('Outstanding',
-                          moneyPaise(due),
+                      DetailRow('Outstanding', moneyPaise(due),
                           emphasize: true),
                     ]),
                     if (payments.isNotEmpty)
@@ -2285,7 +2487,8 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                             ),
                           ),
                           if (payment.paidAt != null)
-                            DetailRow('Paid at', fmtIsoDateTime(payment.paidAt)),
+                            DetailRow(
+                                'Paid at', fmtIsoDateTime(payment.paidAt)),
                           if (_isSuccessfulPayment(payment))
                             Padding(
                               padding: const EdgeInsets.only(top: 6, bottom: 8),
@@ -2445,7 +2648,8 @@ class _LiveOwnerPaymentsPageState extends State<LiveOwnerPaymentsPage> {
                       DetailRow('Paid at', fmtIsoDateTime(p.paidAt)),
                       if (p.displayFlat.isNotEmpty)
                         DetailRow('Flat', p.displayFlat),
-                      if (p.billNumber != null) DetailRow('Bill', p.billNumber!),
+                      if (p.billNumber != null)
+                        DetailRow('Bill', p.billNumber!),
                       if (p.referenceNumber != null)
                         DetailRow('Reference', p.referenceNumber!),
                       if (_isSuccessfulPayment(p)) ...[
@@ -2540,7 +2744,13 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Receipt')),
+      backgroundColor: kReceiptPage,
+      appBar: AppBar(
+        title: const Text('Receipt'),
+        backgroundColor: kReceiptPage,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: FutureBuilder<ReceiptDetail>(
         future: _future,
         builder: (context, snap) {
@@ -2552,64 +2762,25 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
             return LoadFailure(
               error: snap.error!,
               title: 'Receipt not available yet',
-              onRetry: () => setState(() => _future = _load(force: true)),
+              onRetry: () => setState(() {
+                _future = _load(force: true);
+              }),
             );
           }
           final detail = snap.data!;
-          final r = detail.receipt;
-          return Column(children: [
-            Expanded(
-              child: ListView(
-                padding: Sp.pagePadding,
-                children: [
-                  Center(
-                    child: Column(children: [
-                      const AppAvatar(
-                          icon: Icons.check_rounded, color: C.green, size: 64),
-                      const SizedBox(height: 14),
-                      Text('Payment received', style: T.h2),
-                      const SizedBox(height: 4),
-                      Text(r.receiptNumber, style: T.secondary),
-                      const SizedBox(height: 14),
-                      Text(moneyPaise(r.amountPaise),
-                          style: T.display.copyWith(color: C.blue)),
-                    ]),
-                  ),
-                  const SizedBox(height: 24),
-                  DetailCard(children: [
-                    DetailRow('Paid at', fmtIsoDateTime(r.paidAt)),
-                    DetailRow('Method', _paymentMethodLabel(r.paymentMethod)),
-                    DetailRow('Flat',
-                        r.flatLabel),
-                    DetailRow('Owner', r.ownerNameSnapshot),
-                    DetailRow('Status', '',
-                        valueWidget: const Align(
-                          alignment: Alignment.centerLeft,
-                          child: StatusBadge('SUCCESSFUL',
-                              tone: BadgeTone.success),
-                        )),
-                    if (r.transactionReference != null)
-                      DetailRow('Reference', r.transactionReference!),
-                    DetailRow('Generated', fmtIsoDateTime(r.generatedAt)),
-                  ]),
-                ],
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: [
+              ReceiptActionBar(
+                printing: _downloading,
+                downloading: _sharing,
+                onPrint: () => _download(detail),
+                onDownload: () => _share(detail),
               ),
-            ),
-            BottomActionBar(children: [
-              PrimaryButton(
-                label: 'Download receipt',
-                icon: Icons.download_outlined,
-                busy: _downloading,
-                onPressed: () => _download(detail),
-              ),
-              SecondaryButton(
-                label: 'Share PDF receipt',
-                icon: Icons.ios_share_outlined,
-                busy: _sharing,
-                onPressed: () => _share(detail),
-              ),
-            ]),
-          ]);
+              const SizedBox(height: 12),
+              ReceiptSheet.fromBody(detail.receipt),
+            ],
+          );
         },
       ),
     );

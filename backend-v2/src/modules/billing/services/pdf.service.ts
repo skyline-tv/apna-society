@@ -29,10 +29,14 @@ export type ReceiptPdfInput = {
 
 const LEFT = 50;
 const RIGHT = 545;
-const BLUE = '0.106 0.310 0.541';
-const MUTED = '0.420 0.447 0.431';
-const INK = '0.102 0.102 0.094';
-const RULE = '0.839 0.878 0.918';
+const BLUE = '0.043 0.235 0.408';
+const MUTED = '0.580 0.639 0.722';
+const INK = '0.059 0.090 0.165';
+const RULE = '0.580 0.639 0.722';
+const BORDER = '0.886 0.910 0.941';
+const HEADER_BG = '0.945 0.961 0.973';
+const FOOTER_BG = '0.976 0.980 0.984';
+const COL = [50, 86, 298, 436, 545];
 
 function formatPaidAtIst(paidAt: Date): string {
   return new Intl.DateTimeFormat('en-GB', {
@@ -151,12 +155,22 @@ function isCollectionReceipt(input: ReceiptPdfInput): boolean {
   );
 }
 
-type AmountLine = { label: string; amountPaise: number; total?: boolean };
+type AmountLine = {
+  label: string;
+  amountPaise: number;
+  period?: string;
+  total?: boolean;
+};
 
 function amountLines(input: ReceiptPdfInput): AmountLine[] {
+  const period = input.billingPeriod?.trim() || undefined;
   const lines: AmountLine[] = [];
   if (isCollectionReceipt(input)) {
-    lines.push({ label: 'Special collection', amountPaise: input.amountPaise });
+    lines.push({
+      label: 'Special collection',
+      amountPaise: input.amountPaise,
+      period: input.collectionNumber,
+    });
   } else {
     const additional =
       input.additionalServicesPaise != null && input.additionalServicesPaise > 0
@@ -168,19 +182,39 @@ function amountLines(input: ReceiptPdfInput): AmountLine[] {
       paidPrincipal == null || billed === 0 || paidPrincipal >= billed;
 
     if (paidInFull && input.baseAmountPaise != null) {
-      lines.push({ label: 'Base maintenance', amountPaise: input.baseAmountPaise });
+      lines.push({
+        label: 'Base Maintenance Charges',
+        amountPaise: input.baseAmountPaise,
+        period,
+      });
       if (additional > 0) {
-        lines.push({ label: 'Additional services', amountPaise: additional });
+        lines.push({
+          label: 'Additional services',
+          amountPaise: additional,
+          period,
+        });
       }
     } else if (paidPrincipal != null) {
-      lines.push({ label: 'Applied to principal', amountPaise: paidPrincipal });
+      lines.push({
+        label: 'Applied to principal',
+        amountPaise: paidPrincipal,
+        period,
+      });
     }
 
     if (input.interestAmountPaise != null && input.interestAmountPaise > 0) {
-      lines.push({ label: 'Interest', amountPaise: input.interestAmountPaise });
+      lines.push({
+        label: 'Interest',
+        amountPaise: input.interestAmountPaise,
+        period,
+      });
     }
   }
-  lines.push({ label: 'Total amount paid', amountPaise: input.amountPaise, total: true });
+  lines.push({
+    label: 'Total Amount Paid',
+    amountPaise: input.amountPaise,
+    total: true,
+  });
   return lines;
 }
 
@@ -247,8 +281,8 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     ops.push('Q');
   }
 
-  // Inner border
-  ops.push(`${RULE} RG 0.8 w 28 28 539 786 re S`);
+  ops.push(`${BORDER} RG 0.8 w 18 18 559 806 re S`);
+  ops.push(`${BORDER} RG 0.8 w 32 32 531 778 re S`);
 
   let titleY = 766;
   for (const line of society) {
@@ -257,16 +291,15 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   }
 
   rightText('F2', 8, 772, 'RECEIPT', BLUE, true);
-  rightText('F4', 14, 754, pdfLatin(input.receiptNumber), INK, true);
+  rightText('F4', 13, 754, pdfLatin(input.receiptNumber), INK, true);
 
-  // Status badge
   const statusLabel = status.toUpperCase();
   const badgeW = Math.max(72, estimateWidth(statusLabel, 8, true) + 14);
   const badgeX = RIGHT - badgeW;
   ops.push(`${BLUE} RG 0.8 w ${badgeX.toFixed(2)} 736 ${badgeW.toFixed(2)} 14 re S`);
   text('F2', 8, badgeX + 7, 740, statusLabel, BLUE);
 
-  ops.push(`${BLUE} RG 1 w ${LEFT} 726 m ${RIGHT} 726 l S`);
+  ops.push(`${RULE} RG 0.8 w ${LEFT} 726 m ${RIGHT} 726 l S`);
 
   let y = 706;
   text('F1', 8, LEFT, y, 'PAYMENT DATE', MUTED);
@@ -275,10 +308,10 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   text('F2', 11, LEFT, y, paidAt);
   text('F2', 11, 320, y, method);
 
-  y -= 28;
+  y -= 16;
   for (const line of payerLines) {
-    text('F3', 20, LEFT, y, line, INK);
-    y -= 22;
+    text('F2', 11, LEFT, y, line, INK);
+    y -= 13;
   }
   text('F2', 11, LEFT, y, pdfLatin(wingFlat), BLUE);
 
@@ -286,23 +319,80 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   text('F1', 8, LEFT, y, 'TOWARDS', MUTED);
   y -= 14;
   for (const line of towards) {
-    text('F2', 12, LEFT, y, line);
-    y -= 15;
+    text('F2', 11, LEFT, y, line);
+    y -= 14;
   }
 
-  y -= 8;
-  for (const row of lines) {
-    ops.push(`${RULE} RG 0.4 w ${LEFT} ${y + 10} m ${RIGHT} ${y + 10} l S`);
-    if (row.total) {
-      y -= 6;
-      text('F2', 12, LEFT, y, row.label, BLUE);
-      rightText('F4', 16, y - 1, inr(row.amountPaise), BLUE, true);
-      y -= 22;
-    } else {
-      text('F1', 11, LEFT, y, row.label);
-      rightText('F2', 11, y, inr(row.amountPaise), INK, true);
-      y -= 18;
+  y -= 6;
+  const items = lines.filter((row) => !row.total);
+  const total = lines.find((row) => row.total);
+  const tableW = RIGHT - LEFT;
+  const vlines = (top: number, bot: number, splits: number[]) => {
+    ops.push(`${BORDER} RG 0.5 w`);
+    for (const x of splits) {
+      ops.push(`${x.toFixed(2)} ${bot.toFixed(2)} m ${x.toFixed(2)} ${top.toFixed(2)} l S`);
     }
+  };
+  const box = (bot: number, h: number, fill?: string) => {
+    if (fill) {
+      ops.push(
+        `${fill} rg ${LEFT.toFixed(2)} ${bot.toFixed(2)} ${tableW.toFixed(2)} ${h.toFixed(2)} re f`,
+      );
+    }
+    ops.push(
+      `${BORDER} RG 0.6 w ${LEFT.toFixed(2)} ${bot.toFixed(2)} ${tableW.toFixed(2)} ${h.toFixed(2)} re S`,
+    );
+  };
+  const cellRight = (
+    right: number,
+    ty: number,
+    value: string,
+    size: number,
+    color = INK,
+    font: 'F1' | 'F2' | 'F3' | 'F4' = 'F2',
+  ) => {
+    text(font, size, right - 8 - estimateWidth(value, size, font !== 'F1'), ty, value, color);
+  };
+
+  const headerH = 22;
+  box(y - headerH, headerH, HEADER_BG);
+  vlines(y, y - headerH, [COL[1], COL[2], COL[3]]);
+  text('F2', 7, COL[0] + 12, y - 14, '#', MUTED);
+  text('F2', 7, COL[1] + 8, y - 14, 'PARTICULARS / CHARGE DESCRIPTION', MUTED);
+  text('F2', 7, COL[2] + 8, y - 14, 'PERIOD / TENURE', MUTED);
+  cellRight(COL[4], y - 14, 'AMOUNT', 7, MUTED);
+  y -= headerH;
+
+  items.forEach((row, idx) => {
+    const labelLines = wrapText(row.label, 36);
+    const periodLines = wrapText(row.period?.trim() ? row.period : '-', 22);
+    const h = Math.max(24, 12 + Math.max(labelLines.length, periodLines.length) * 11);
+    box(y - h, h);
+    vlines(y, y - h, [COL[1], COL[2], COL[3]]);
+    text('F1', 9, COL[0] + 14, y - 15, String(idx + 1), MUTED);
+    let ly = y - 15;
+    for (const line of labelLines) {
+      text('F1', 9, COL[1] + 8, ly, line);
+      ly -= 11;
+    }
+    ly = y - 15;
+    for (const line of periodLines) {
+      text('F1', 8, COL[2] + 8, ly, line, MUTED);
+      ly -= 11;
+    }
+    cellRight(COL[4], y - 15, inr(row.amountPaise), 9);
+    y -= h;
+  });
+
+  if (total) {
+    const h = 28;
+    box(y - h, h, FOOTER_BG);
+    ops.push(
+      `${BORDER} RG 0.5 w ${COL[3].toFixed(2)} ${(y - h).toFixed(2)} m ${COL[3].toFixed(2)} ${y.toFixed(2)} l S`,
+    );
+    cellRight(COL[3], y - 17, 'TOTAL AMOUNT PAID', 9, BLUE);
+    cellRight(COL[4], y - 17, inr(total.amountPaise), 12, BLUE, 'F4');
+    y -= h;
   }
 
   if (refs.length) {
