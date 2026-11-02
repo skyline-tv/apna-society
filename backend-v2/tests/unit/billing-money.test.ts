@@ -192,6 +192,12 @@ describe('billing calendar', () => {
       new Date('2026-06-30T23:59:59.999+05:30').toISOString(),
     );
 
+    const twelve = billingPeriodBounds(start, 12);
+    expect(twelve.periodEnd.toISOString()).toBe(
+      new Date('2027-03-31T23:59:59.999+05:30').toISOString(),
+    );
+    expect(() => billingPeriodBounds(start, 13)).toThrow(/1 and 12/);
+
     const due = dueDateForBillingPeriod(start);
     expect(due.toISOString()).toBe(new Date('2026-04-10T23:59:59.999+05:30').toISOString());
     expect(resolveBillDueDate(one.periodStart, one.periodEnd, undefined).toISOString()).toBe(

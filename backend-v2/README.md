@@ -182,7 +182,7 @@ Optional header `x-society-id` is accepted only when the admin belongs to that s
 | GET | `/api/v1/resident/flats` | Accessible flats |
 | GET | `/api/v1/resident/flats/:flatId` | Flat detail (access-filtered) |
 | GET | `/api/v1/resident/flats/:flatId/occupancy` | Permitted occupancy view |
-| POST | `/api/v1/admin/billing/generate` | Generate 1- or 3-month bills |
+| POST | `/api/v1/admin/billing/generate` | Generate 1- to 12-month bills |
 | GET | `/api/v1/admin/billing/bills` | List bills (filters) |
 | GET | `/api/v1/admin/billing/bills/:billId` | Bill detail |
 | GET | `/api/v1/admin/billing/bills/:billId/interest` | Interest as-of date |
@@ -191,6 +191,7 @@ Optional header `x-society-id` is accepted only when the admin belongs to that s
 | POST | `/api/v1/admin/payments/offline` | Record offline payment (config-gated) |
 | GET | `/api/v1/admin/payments` | List payments |
 | GET | `/api/v1/admin/payments/:paymentId` | Payment detail |
+| POST | `/api/v1/admin/payments/:paymentId/cancel` | Cancel a mistaken office-recorded payment |
 | GET | `/api/v1/admin/receipts/:receiptId` | Immutable receipt + PDF |
 | GET | `/api/v1/resident/billing/bills` | Owner bills only |
 | POST | `/api/v1/resident/billing/bills/:billId/payment-order` | Create UPI order |
@@ -319,7 +320,7 @@ Role middleware is provided for coarse gates. Flat-level authorization must stil
 - Bills are generated for periods starting on the **1st** of a calendar month (society timezone, default `Asia/Kolkata`).
 - Payment due date is the **10th** of that first month (end of day IST).
 - Late interest begins on the **11th**.
-- `numberOfMonths` is `1` or `3`. Three-month prepaid bills cover three consecutive calendar months (not 90 days).
+- `numberOfMonths` is `1` through `12`. A 6-month prepaid bill covers six consecutive calendar months (not a fixed day count).
 
 ### Amounts
 

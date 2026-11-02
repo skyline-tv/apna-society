@@ -43,9 +43,13 @@ class DemoEnvironment {
   static const _prefsKey = 'play_review_demo_mode';
 
   static ApiConfig config({String demoBaseUrl = ''}) {
+    const fromDefine = String.fromEnvironment('DEMO_API_URL');
+    final resolved = demoBaseUrl.isNotEmpty
+        ? demoBaseUrl
+        : (fromDefine.isNotEmpty ? fromDefine : productionBaseUrl);
     return ApiConfig.resolve(
       flavorName: 'demo',
-      demoBaseUrl: demoBaseUrl,
+      demoBaseUrl: resolved,
     );
   }
 

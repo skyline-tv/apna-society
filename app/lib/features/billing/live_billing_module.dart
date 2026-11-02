@@ -14,6 +14,9 @@ import '../../api/repositories/live_repositories.dart';
 import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
+import '../admin/admin_bills_page.dart';
+import '../admin/admin_dashboard.dart';
+import '../admin/admin_payments_page.dart';
 import 'demo_payment_checkout.dart';
 import 'live_additional_services_module.dart';
 
@@ -49,6 +52,16 @@ String billingErrorMessage(Object error) {
       case 'RECEIPT_ACCESS_DENIED':
       case 'PAYMENT_ACCESS_DENIED':
         return 'You do not have access to this receipt.';
+      case 'PAYMENT_NOT_OFFLINE':
+        return 'Only office-recorded payments can be cancelled.';
+      case 'PAYMENT_NOT_CANCELLABLE':
+        return 'This payment is already cancelled.';
+      case 'INVALID_PAYMENT_STATUS':
+        return 'Only a successful office payment can be cancelled.';
+      case 'INVALID_BILLING_MONTHS':
+        return 'Choose between 1 and 12 months.';
+      case 'OVERLAPPING_BILLING_PERIOD':
+        return 'Those extra months overlap another bill for this flat.';
       default:
         return error.message;
     }
@@ -374,7 +387,7 @@ class _PaymentRow extends StatelessWidget {
     final (tone, icon, label) = switch (status) {
       'SUCCESS' => (C.green, Icons.check_circle_outline, 'Successful'),
       'FAILED' => (C.error, Icons.error_outline_rounded, 'Failed'),
-      'REFUNDED' => (C.muted, Icons.undo_rounded, 'Refunded'),
+      'REFUNDED' => (C.muted, Icons.undo_rounded, 'Cancelled'),
       'PENDING' || 'PROCESSING' || 'INITIATED' => (
           C.amber,
           Icons.hourglass_top_rounded,
@@ -460,7 +473,9 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
 
   void reload({bool resetPage = false}) {
     if (resetPage) page = 1;
-    setState(() => _future = _load(force: true));
+    setState(() {
+      _future = _load(force: true);
+    });
   }
 
   Future<void> _generate() async {
@@ -510,9 +525,11 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_AdminBillsBundle>(
-      future: _future,
-      builder: (context, snap) {
+    return ColoredBox(
+      color: AdminDash.surface,
+      child: FutureBuilder<_AdminBillsBundle>(
+        future: _future,
+        builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const SkeletonList(items: 5, showHeader: true);
         }
@@ -528,147 +545,136 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
         final summary = bundle.summary;
         final pagination = bundle.bills.pagination;
         final collectedPct = summary.collectionPercentage.clamp(0, 100);
+        final period = bills.isNotEmpty
+            ? adminDashMonthLabel(
+                DateTime.tryParse(bills.first.billingPeriodStart) ??
+                    DateTime.now(),
+              )
+            : adminDashMonthLabel();
         return RefreshIndicator(
-          color: C.blue,
-          onRefresh: () async {
-            reload(resetPage: true);
-            await _future;
-          },
-          child: ListView(
-            padding: Sp.pagePadding,
-            children: [
-              HeroMoneyCard(
-                label: 'Total payable',
-                amount: moneyPaise(billingSummaryPayablePaise(summary)),
-                subtitle:
-                    'Principal ${moneyPaise(summary.totalOutstandingPrincipalPaise)}'
-                    ' · Interest ${moneyPaise(summary.totalAccruedInterestPaise)}'
-                    ' · ${summary.billCount} bills',
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: C.navy),
-                  onPressed: _generate,
-                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                  label: const Text('Generate bills'),
+            color: AdminDash.primary,
+            onRefresh: () async {
+              reload(resetPage: true);
+              await _future;
+            },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                AdminBillsHero(
+                  payableLabel: 'Total payable',
+                  payable: moneyPaise(billingSummaryPayablePaise(summary)),
+                  principal:
+                      moneyPaise(summary.totalOutstandingPrincipalPaise),
+                  interest: moneyPaise(summary.totalAccruedInterestPaise),
+                  billCount: summary.billCount,
+                  periodLabel: period,
+                  generateLabel: 'Generate bills',
+                  onGenerate: _generate,
                 ),
-              ),
-              const SizedBox(height: 12),
-              CollectionBar(
-                title: 'Collections',
-                progress: collectedPct / 100,
-                valueLabel: '${collectedPct.toStringAsFixed(0)}%',
-                caption:
-                    '${moneyPaise(summary.totalCollectedPaise)} collected of ${moneyPaise(summary.totalBilledPaise)} billed',
-              ),
-              const SizedBox(height: 12),
-              MiniStatStrip(children: [
-                MiniStat('Collected', moneyPaise(summary.totalCollectedPaise),
-                    tone: BadgeTone.success),
-                MiniStat('Overdue bills', '${summary.overdueBills}',
-                    tone: BadgeTone.danger),
-                MiniStat('Paid bills', '${summary.paidBills}',
-                    tone: BadgeTone.success),
-                MiniStat('Accrued interest',
-                    moneyPaise(summary.totalAccruedInterestPaise)),
-              ]),
-              const SizedBox(height: 10),
-              QuickActionTile(
-                icon: Icons.local_parking_outlined,
-                label: 'Additional services',
-                subtitle: 'Recurring charges on individual flats',
-                onTap: () => Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const LiveAdditionalServicesPage()),
+                const SizedBox(height: 16),
+                AdminBillsCollectionsCard(
+                  percent: collectedPct,
+                  collected: moneyPaise(summary.totalCollectedPaise),
+                  billed: moneyPaise(summary.totalBilledPaise),
                 ),
-              ),
-              const SizedBox(height: 14),
-              const SectionTitle('Bills'),
-              FilterBar(children: [
-                for (final s in const [
-                  null,
-                  'ISSUED',
-                  'OVERDUE',
-                  'PAID',
-                ])
-                  AppFilterChip(
-                    label: s == null ? 'All' : _billStatusLabel(s),
-                    selected: statusFilter == s,
-                    onSelected: () {
-                      statusFilter = s;
+                const SizedBox(height: 12),
+                AdminBillsKpiGrid(
+                  collected: moneyPaise(summary.totalCollectedPaise),
+                  collectedCaption: summary.paidBills == 1
+                      ? '1 flat received'
+                      : '${summary.paidBills} flats received',
+                  overdueCount: summary.overdueBills,
+                  paidCount: summary.paidBills,
+                  pendingCount: summary.pendingBills,
+                  accruedLabel: 'Accrued interest',
+                  accrued: moneyPaise(summary.totalAccruedInterestPaise),
+                ),
+                const SizedBox(height: 12),
+                AdminBillsServicesLink(
+                  onTap: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LiveAdditionalServicesPage(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                AdminBillsDirectoryHeader(
+                  total: pagination.total,
+                  onSort: () => showAdminBillsFilterSheet(
+                    context,
+                    occupancyFilter: occupancyFilter,
+                    ownerAssignedFilter: ownerAssignedFilter,
+                    onApply: (occupancy, assigned) {
+                      occupancyFilter = occupancy;
+                      ownerAssignedFilter = assigned;
                       reload(resetPage: true);
                     },
                   ),
-              ]),
-              const SizedBox(height: 8),
-              FilterBar(children: [
-                AppFilterChip(
-                  label: 'All wings',
-                  selected: wingFilter == null,
-                  onSelected: () {
-                    wingFilter = null;
+                ),
+                const SizedBox(height: 8),
+                AdminBillsStatusChips(
+                  selected: statusFilter,
+                  onSelect: (value) {
+                    statusFilter = value;
                     reload(resetPage: true);
                   },
                 ),
-                for (final w in summary.wingWise)
-                  AppFilterChip(
-                    label: 'Wing ${w.wingCode}',
-                    selected: wingFilter == w.wingCode,
-                    onSelected: () {
-                      wingFilter = w.wingCode;
-                      reload(resetPage: true);
-                    },
-                  ),
-              ]),
-              ResultCount(pagination.total, 'bill'),
-              if (bills.isEmpty)
-                EmptyState(
-                  'No bills match these filters',
-                  icon: Icons.receipt_long_outlined,
-                  actionLabel: 'Clear filters',
-                  onAction: () {
-                    statusFilter = null;
-                    wingFilter = null;
-                    occupancyFilter = null;
-                    ownerAssignedFilter = null;
+                const SizedBox(height: 8),
+                AdminBillsWingChips(
+                  wings: summary.wingWise,
+                  selected: wingFilter,
+                  onSelect: (value) {
+                    wingFilter = value;
                     reload(resetPage: true);
                   },
-                )
-              else
-                ...bills.map((bill) {
-                  final open =
-                      bill.status != 'PAID' && bill.status != 'CANCELLED';
-                  final hasReceipt = bill.amountPaidPaise > 0;
-                  return _BillRow(
-                    bill: bill,
-                    onTap: () => _openBill(bill),
-                    onRecordPayment:
-                        open ? () => _recordPayment(bill) : null,
-                    onDownloadReceipt: hasReceipt
-                        ? () => _runReceiptAction(bill, _downloadReceiptPdf)
-                        : null,
-                    onShareReceipt: hasReceipt
-                        ? () => _runReceiptAction(bill, _shareReceiptPdf)
-                        : null,
-                  );
-                }),
-              PaginationBar(
-                page: pagination.page,
-                totalPages: pagination.totalPages,
-                onPrevious: () {
-                  page -= 1;
-                  reload();
-                },
-                onNext: () {
-                  page += 1;
-                  reload();
-                },
-              ),
-            ],
-          ),
+                ),
+                const SizedBox(height: 12),
+                if (bills.isEmpty)
+                  EmptyState(
+                    'No bills match these filters',
+                    icon: Icons.receipt_long_outlined,
+                    actionLabel: 'Clear filters',
+                    onAction: () {
+                      statusFilter = null;
+                      wingFilter = null;
+                      occupancyFilter = null;
+                      ownerAssignedFilter = null;
+                      reload(resetPage: true);
+                    },
+                  )
+                else
+                  ...[
+                    for (final bill in bills) ...[
+                      AdminBillCard(
+                        bill: bill,
+                        onOpen: () => _openBill(bill),
+                        onRecordPayment: () => _recordPayment(bill),
+                        onReceipt: bill.amountPaidPaise > 0
+                            ? () =>
+                                _runReceiptAction(bill, _downloadReceiptPdf)
+                            : null,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                PaginationBar(
+                  page: pagination.page,
+                  totalPages: pagination.totalPages,
+                  onPrevious: () {
+                    page -= 1;
+                    reload();
+                  },
+                  onNext: () {
+                    page += 1;
+                    reload();
+                  },
+                ),
+              ],
+            ),
         );
       },
+      ),
     );
   }
 }
@@ -699,6 +705,13 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
 
   DateTime get _periodEndDate =>
       DateTime(periodStart.year, periodStart.month + months, 0);
+
+  void _setMonths(int value) {
+    setState(() {
+      months = value;
+      if (dueDate.isAfter(_periodEndDate)) dueDate = _periodEndDate;
+    });
+  }
 
   String get _periodLabel {
     if (months == 1) return monthName(periodStart);
@@ -953,38 +966,18 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
               ),
               const SizedBox(height: 16),
               const FormSectionLabel('Months covered'),
-              FilterBar(children: [
-                AppFilterChip(
-                  label: '1 month',
-                  selected: months == 1,
-                  onSelected: busy
-                      ? () {}
-                      : () => setState(() {
-                            months = 1;
-                            final last = DateTime(
-                              periodStart.year,
-                              periodStart.month + months,
-                              0,
-                            );
-                            if (dueDate.isAfter(last)) dueDate = last;
-                          }),
-                ),
-                AppFilterChip(
-                  label: '3 months',
-                  selected: months == 3,
-                  onSelected: busy
-                      ? () {}
-                      : () => setState(() {
-                            months = 3;
-                            final last = DateTime(
-                              periodStart.year,
-                              periodStart.month + months,
-                              0,
-                            );
-                            if (dueDate.isAfter(last)) dueDate = last;
-                          }),
-                ),
-              ]),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var m = 1; m <= 12; m++)
+                    AppFilterChip(
+                      label: m == 1 ? '1 month' : '$m months',
+                      selected: months == m,
+                      onSelected: busy ? () {} : () => _setMonths(m),
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
               Text('Selected: $_periodLabel', style: T.secondary),
               InlineError(error),
@@ -1277,6 +1270,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                 const SizedBox(height: 14),
                 DetailCard(title: 'Bill', children: [
                   DetailRow('Period', _periodLabel(bill)),
+                  DetailRow('Months', billMonthsProgressLabel(bill)),
                   DetailRow('Due date', fmtIsoDate(bill.dueDate)),
                   DetailRow('Owner', bill.ownerNameSnapshot),
                   DetailRow('Flat type', bill.flatTypeSnapshot),
@@ -1434,8 +1428,9 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   final _form = GlobalKey<FormState>();
   final reference = TextEditingController();
   final notes = TextEditingController();
-  late final amount = TextEditingController(
-      text: paiseToRupeeInput(billAmountDuePaise(widget.bill)));
+  late int monthsPaid = billPendingMonths(widget.bill) == 0
+      ? 1
+      : billPendingMonths(widget.bill);
   String method = 'CASH';
   bool busy = false;
   String? error;
@@ -1444,22 +1439,39 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   void dispose() {
     reference.dispose();
     notes.dispose();
-    amount.dispose();
     super.dispose();
+  }
+
+  String get _monthsPreview {
+    final bill = widget.bill;
+    final pending = billPendingMonths(bill);
+    final extra = pending == 0 ? monthsPaid : (monthsPaid > pending ? monthsPaid - pending : 0);
+    final onBill = pending == 0 ? 0 : (monthsPaid < pending ? monthsPaid : pending);
+    final afterPaid = billPaidMonths(bill) + onBill;
+    final afterPending = bill.numberOfMonths - afterPaid;
+    final parts = <String>[
+      if (onBill > 0 || (pending == 0 && billAmountDuePaise(bill) > 0))
+        afterPending > 0
+            ? 'This bill: $afterPaid paid · $afterPending pending'
+            : 'This bill: paid in full',
+      if (extra > 0)
+        '$extra extra month${extra == 1 ? '' : 's'} will be billed and marked paid',
+    ];
+    return parts.join('. ');
   }
 
   Future<void> submit() async {
     FocusManager.instance.primaryFocus?.unfocus();
     if (!(_form.currentState?.validate() ?? false)) return;
-    final amountPaise = parseRupeesToPaise(amount.text)!;
+    final amountPaise = billEstimateForMonthsPaise(widget.bill, monthsPaid);
     final ok = await confirmDialog(
       context,
-      title: 'Record ${moneyPaise(amountPaise)}?',
+      title: 'Record $monthsPaid month${monthsPaid == 1 ? '' : 's'}?',
       message: [
-        '${_paymentMethodLabel(method)} payment for ${widget.bill.billNumber}',
+        '${_paymentMethodLabel(method)} payment of ${moneyPaise(amountPaise)} for ${widget.bill.billNumber}.',
+        _monthsPreview,
         if (reference.text.trim().isNotEmpty)
-          'with reference “${reference.text.trim()}”',
-        'will be recorded.',
+          'Reference “${reference.text.trim()}”.',
       ].join(' '),
       confirmLabel: 'Record payment',
       icon: Icons.payments_outlined,
@@ -1480,7 +1492,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           .billing
           .recordOfflinePayment(
             billId: widget.bill.id,
-            amountPaise: amountPaise,
+            monthsPaid: monthsPaid,
             paidAt: DateTime.now().toUtc().toIso8601String(),
             paymentMethod: method,
             referenceNumber: referenceNumber,
@@ -1490,11 +1502,18 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
       ensureLiveRepositories(session.api)
           .invalidateAfterFinancialMutation(billId: widget.bill.id);
       if (!mounted) return;
+      final extras = result.advanceBills.length;
       showSuccessSnack(
           context,
           result.alreadySettled
               ? 'Payment already settled.'
-              : 'Offline payment recorded.');
+              : extras > 0
+                  ? 'Recorded $monthsPaid months, including $extras advance bill${extras == 1 ? '' : 's'}.'
+                  : result.pendingMonths == null
+                      ? 'Offline payment recorded.'
+                      : result.pendingMonths == 0
+                          ? 'Offline payment recorded. This bill is paid in full.'
+                          : 'Offline payment recorded. ${result.paidMonths} paid · ${result.pendingMonths} pending.');
       Navigator.pop(context, true);
     } catch (e) {
       setState(() => error = billingErrorMessage(e));
@@ -1531,6 +1550,10 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
               moneyPaise(bill.interestAccruedPaise)
             ),
             (
+              'Months',
+              billMonthsProgressLabel(bill),
+            ),
+            (
               'Amount due',
               moneyPaise(billAmountDuePaise(bill))
             ),
@@ -1552,27 +1575,29 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: amount,
-          enabled: !busy,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+        const SizedBox(height: 16),
+        const FormSectionLabel('Months paid'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var m = 1; m <= 12; m++)
+              AppFilterChip(
+                label: m == 1 ? '1 month' : '$m months',
+                selected: monthsPaid == m,
+                onSelected: busy ? () {} : () => setState(() => monthsPaid = m),
+              ),
           ],
-          textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: 'Amount received (₹) *',
-            prefixText: '₹ ',
-            helperText:
-                'Defaults to principal plus current overdue interest. The server recalculates interest at settlement.',
-          ),
-          validator: (v) {
-            final paise = parseRupeesToPaise(v ?? '');
-            if (paise == null) return 'Enter a valid rupee amount.';
-            if (paise <= 0) return 'Amount must be greater than zero.';
-            return null;
-          },
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${moneyPaise(billEstimateForMonthsPaise(bill, monthsPaid))} · $_monthsPreview',
+          style: T.secondary,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Choose how many months were received. Extra months beyond this bill are created and marked paid. Additional services on advance bills are included on the server.',
+          style: T.caption,
         ),
         const SizedBox(height: 12),
         TextFormField(
@@ -1625,6 +1650,16 @@ class LiveAdminPaymentsPage extends StatefulWidget {
 
 class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
   late Future<Paged<PaymentSummary>> _future = _load();
+  final _search = TextEditingController();
+  String? wingFilter;
+  String? statusFilter;
+  bool offlineOnly = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   Future<Paged<PaymentSummary>> _load({bool force = false}) async {
     final session = authSession;
@@ -1635,69 +1670,170 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load(force: true));
-    await _future;
+    late final Future<Paged<PaymentSummary>> next;
+    setState(() {
+      next = _load(force: true);
+      _future = next;
+    });
+    await next;
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _load(force: true);
+    });
+  }
+
+  Future<void> _record() async {
+    final session = authSession;
+    if (session == null) return;
+    final bill = await showModalBottomSheet<Bill>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AdminDash.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => AdminRecordBillSheet(
+        loader: () => ensureLiveRepositories(session.api).billing.listAdminBills(
+              force: true,
+              query: const ListBillsQuery(limit: 50),
+            ),
+      ),
+    );
+    if (bill == null || !mounted) return;
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => LiveOfflinePaymentPage(bill: bill)),
+    );
+    if (ok == true && mounted) await _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Paged<PaymentSummary>>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const SkeletonList(items: 6, showHeader: true);
-        }
-        if (snap.hasError) {
-          return LoadFailure(
-            error: snap.error!,
-            onRetry: () => setState(() => _future = _load(force: true)),
+    return ColoredBox(
+      color: AdminDash.surface,
+      child: FutureBuilder<Paged<PaymentSummary>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const SkeletonList(items: 6, showHeader: true);
+          }
+          if (snap.hasError) {
+            return LoadFailure(
+              error: snap.error!,
+              onRetry: _reload,
+            );
+          }
+          final rows = snap.data?.items ?? [];
+          final query = _search.text;
+          final searched = rows
+              .where((p) => adminPaymentMatches(p, query: query))
+              .toList();
+          final wings = adminPaymentWings(searched);
+          final counts = <String, int>{'ALL': searched.length};
+          for (final wing in wings) {
+            counts[wing] = searched
+                .where((p) =>
+                    (p.wingCodeSnapshot ?? '').trim().toUpperCase() == wing)
+                .length;
+          }
+          final visible = searched
+              .where((p) => adminPaymentMatches(
+                    p,
+                    query: '',
+                    wing: wingFilter,
+                    status: statusFilter,
+                    offlineOnly: offlineOnly,
+                  ))
+              .toList();
+          final successTotal =
+              adminPaymentSuccessTotalPaise(visible);
+          return RefreshIndicator(
+            color: AdminDash.primary,
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              children: [
+                AdminPaymentsHeader(onRecord: _record),
+                const SizedBox(height: 16),
+                AdminPaymentsMetrics(
+                  shownCount: visible.length,
+                  successTotal: moneyPaise(successTotal),
+                ),
+                const SizedBox(height: 12),
+                const AdminPaymentsCancelTip(),
+                const SizedBox(height: 12),
+                AdminPaymentsSearchBar(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  onClear: () {
+                    _search.clear();
+                    setState(() {});
+                  },
+                  onFilter: () => showAdminPaymentStatusSheet(
+                    context,
+                    selected: statusFilter,
+                    onSelect: (value) => setState(() => statusFilter = value),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                AdminPaymentsFilterChips(
+                  wings: wings,
+                  counts: counts,
+                  selectedWing: wingFilter,
+                  statusFilter: statusFilter,
+                  offlineOnly: offlineOnly,
+                  onSelectAll: () => setState(() {
+                    wingFilter = null;
+                    statusFilter = null;
+                    offlineOnly = false;
+                  }),
+                  onSelectWing: (wing) => setState(() {
+                    wingFilter = wingFilter == wing ? null : wing;
+                  }),
+                  onToggleSuccessful: () => setState(() {
+                    statusFilter =
+                        statusFilter == 'SUCCESS' ? null : 'SUCCESS';
+                  }),
+                  onToggleOffline: () =>
+                      setState(() => offlineOnly = !offlineOnly),
+                ),
+                const SizedBox(height: 12),
+                if (rows.isEmpty)
+                  const EmptyState('No payments recorded yet',
+                      icon: Icons.payments_outlined)
+                else if (visible.isEmpty)
+                  EmptyState(
+                    'No payments match these filters',
+                    icon: Icons.payments_outlined,
+                    actionLabel: 'Clear filters',
+                    onAction: () {
+                      _search.clear();
+                      setState(() {
+                        wingFilter = null;
+                        statusFilter = null;
+                        offlineOnly = false;
+                      });
+                    },
+                  )
+                else
+                  for (final payment in visible) ...[
+                    AdminPaymentCard(
+                      payment: payment,
+                      onTap: () => _showPayment(payment),
+                      onLongPress: adminPaymentIsCancellable(payment)
+                          ? () => _cancel(payment)
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+              ],
+            ),
           );
-        }
-        final rows = snap.data?.items ?? [];
-        if (rows.isEmpty) {
-          return _emptyScrollable(
-              const EmptyState('No payments recorded yet',
-                  icon: Icons.payments_outlined),
-              _refresh);
-        }
-        final successTotal = rows
-            .where((p) => p.status.toUpperCase() == 'SUCCESS')
-            .fold<int>(0, (s, p) => s + p.amountPaise);
-        return RefreshIndicator(
-          color: C.blue,
-          onRefresh: _refresh,
-          child: ListView.builder(
-            padding: Sp.pagePadding,
-            itemCount: rows.length + 1,
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const PageHeader('Payments',
-                          subtitle: 'Latest 50 payments across the society',
-                          showTitle: false),
-                      MiniStatStrip(children: [
-                        MiniStat('Shown', '${rows.length}'),
-                        MiniStat('Successful total', moneyPaise(successTotal),
-                            tone: BadgeTone.success),
-                      ]),
-                      const SizedBox(height: 8),
-                      Text('Long-press a successful payment to refund it.',
-                          style: T.caption.copyWith(color: C.faint)),
-                      const SizedBox(height: 10),
-                    ]);
-              }
-              final p = rows[i - 1];
-              return _PaymentRow(
-                payment: p,
-                onTap: () => _showPayment(p),
-                onLongPress: p.status == 'SUCCESS' ? () => _refund(p) : null,
-              );
-            },
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -1715,7 +1851,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
           DetailRow('Status', '',
               valueWidget: Align(
                   alignment: Alignment.centerLeft,
-                  child: StatusBadge(p.status))),
+                  child: StatusBadge(adminPaymentStatusLabel(p.status)))),
           DetailRow('Paid at', fmtIsoDateTime(p.paidAt)),
           if (p.displayFlat.isNotEmpty) DetailRow('Flat', p.displayFlat),
           if (p.billNumber != null) DetailRow('Bill', p.billNumber!),
@@ -1733,30 +1869,32 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                 _openPaymentReceipt(context, p, resident: false);
               },
             ),
-            const SizedBox(height: 8),
-            SecondaryButton(
-              label: 'Refund payment',
-              icon: Icons.undo_rounded,
-              destructive: true,
-              onPressed: () {
-                Navigator.pop(ctx);
-                _refund(p);
-              },
-            ),
+            if (adminPaymentIsCancellable(p)) ...[
+              const SizedBox(height: 8),
+              SecondaryButton(
+                label: 'Cancel payment',
+                icon: Icons.cancel_outlined,
+                destructive: true,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _cancel(p);
+                },
+              ),
+            ],
           ],
         ],
       ),
     );
   }
 
-  Future<void> _refund(PaymentSummary payment) async {
+  Future<void> _cancel(PaymentSummary payment) async {
     final reason = await promptTextDialog(
       context,
-      title: 'Refund ${moneyPaise(payment.amountPaise)}?',
+      title: 'Cancel ${moneyPaise(payment.amountPaise)}?',
       message:
-          'Payment ${payment.paymentNumber} will be marked refunded on the server. This cannot be undone.',
+          'This undoes office payment ${payment.paymentNumber} and puts the amount back on the bill. Use this if it was recorded by mistake. This cannot be undone.',
       label: 'Reason',
-      confirmLabel: 'Refund',
+      confirmLabel: 'Cancel payment',
       required: true,
       minLength: 3,
       destructive: true,
@@ -1767,11 +1905,13 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
       final session = authSession!;
       await ensureLiveRepositories(session.api)
           .billing
-          .refundPayment(payment.id, reason: reason);
+          .cancelPayment(payment.id, reason: reason);
       ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
       if (!mounted) return;
-      showAppSnack(context, 'Payment refunded.', tone: SnackTone.warning);
-      setState(() => _future = _load(force: true));
+      showAppSnack(context, 'Office payment cancelled.', tone: SnackTone.warning);
+      setState(() {
+        _future = _load(force: true);
+      });
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, billingErrorMessage(e));

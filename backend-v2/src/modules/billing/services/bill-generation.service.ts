@@ -196,8 +196,12 @@ export async function generateBills(
   input: GenerateBillsInput,
   actor: Actor,
 ) {
-  if (input.numberOfMonths !== 1 && input.numberOfMonths !== 3) {
-    throw badRequest('numberOfMonths must be 1 or 3', 'INVALID_BILLING_MONTHS');
+  if (
+    !Number.isInteger(input.numberOfMonths) ||
+    input.numberOfMonths < 1 ||
+    input.numberOfMonths > 12
+  ) {
+    throw badRequest('numberOfMonths must be between 1 and 12', 'INVALID_BILLING_MONTHS');
   }
 
   const society = await SocietyModel.findById(parseObjectId(societyId, 'societyId'));
@@ -491,6 +495,213 @@ export async function generateBills(
     skipped,
     conflicts,
   };
+}
+
+/**
+ * Issue a bill for one flat, or return the existing bill that already starts
+ * on this period. Overlap with a different start is rejected so coverage stays aligned.
+ */
+export async function generateBillForFlat(
+  societyId: string,
+  input: {
+    flatId: string;
+    billingPeriodStart: Date;
+    numberOfMonths: number;
+    notes?: string;
+  },
+  actor: Actor,
+) {
+  if (
+    !Number.isInteger(input.numberOfMonths) ||
+    input.numberOfMonths < 1 ||
+    input.numberOfMonths > 12
+  ) {
+    throw badRequest('numberOfMonths must be between 1 and 12', 'INVALID_BILLING_MONTHS');
+  }
+
+  const society = await SocietyModel.findById(parseObjectId(societyId, 'societyId'));
+  if (!society) throw notFound('Society not found');
+  const timeZone = society.config?.timezone ?? 'Asia/Kolkata';
+
+  let periodStart: Date;
+  let periodEnd: Date;
+  try {
+    const bounds = billingPeriodBounds(input.billingPeriodStart, input.numberOfMonths, timeZone);
+    periodStart = bounds.periodStart;
+    periodEnd = bounds.periodEnd;
+  } catch {
+    throw badRequest(
+      'billingPeriodStart must be the 1st of a calendar month',
+      'INVALID_BILLING_PERIOD_START',
+    );
+  }
+
+  const dueDate = resolveBillDueDate(periodStart, periodEnd, undefined, timeZone);
+  const flat = await FlatModel.findOne({
+    _id: parseObjectId(input.flatId, 'flatId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  }).lean();
+  if (!flat) throw notFound('Flat not found');
+
+  const existing = await BillModel.find({
+    societyId,
+    flatId: flat._id,
+    status: { $ne: 'CANCELLED' },
+  }).lean();
+  const sameStart = existing.find(
+    (bill) => bill.billingPeriodStart.getTime() === periodStart.getTime(),
+  );
+  if (sameStart) {
+    return { bill: serializeBill(sameStart), created: false as const };
+  }
+  const overlap = existing.find((bill) =>
+    periodsOverlap(periodStart, periodEnd, bill.billingPeriodStart, bill.billingPeriodEnd),
+  );
+  if (overlap) {
+    throw badRequest(
+      'Advance months overlap an existing bill for this flat',
+      'OVERLAPPING_BILLING_PERIOD',
+    );
+  }
+
+  const wing = await WingModel.findById(flat.wingId).lean();
+  const owner = flat.activeOwnerUserId
+    ? await UserModel.findById(flat.activeOwnerUserId).lean()
+    : null;
+  const monthlyRatePaise = rupeesIntegerToPaise(flat.maintenanceRate);
+  const baseAmountPaise = multiplyPaise(monthlyRatePaise, input.numberOfMonths);
+  const lineItems: BillLineItem[] = [
+    {
+      type: 'MAINTENANCE',
+      name: 'Monthly maintenance',
+      quantity: input.numberOfMonths,
+      unitAmountPaise: monthlyRatePaise,
+      amountPaise: baseAmountPaise,
+    },
+  ];
+  const services = await FlatAdditionalServiceModel.find({
+    societyId,
+    flatId: flat._id,
+  }).lean();
+  let additionalServicesTotalPaise = 0;
+  for (const service of services) {
+    const snapshot = chargeAdditionalServiceForPeriod(
+      {
+        id: String(service._id),
+        name: service.name,
+        description: service.description,
+        monthlyChargePaise: service.monthlyChargePaise,
+        quantity: service.quantity,
+        effectiveFrom: service.effectiveFrom,
+        effectiveTo: service.effectiveTo,
+        isActive: service.isActive,
+      },
+      periodStart,
+      periodEnd,
+      timeZone,
+    );
+    if (!snapshot) continue;
+    additionalServicesTotalPaise += snapshot.amountPaise;
+    lineItems.push({
+      type: 'ADDITIONAL_SERVICE',
+      serviceId: service._id,
+      name: snapshot.name,
+      description: snapshot.description,
+      quantity: snapshot.quantity,
+      unitAmountPaise: snapshot.unitAmountPaise,
+      amountPaise: snapshot.amountPaise,
+      applicableDays: snapshot.applicableDays,
+      billedDays: snapshot.billedDays,
+      prorationPolicy: snapshot.prorationPolicy,
+    });
+  }
+  const totalAmountPaise = billComputedTotalPaise({
+    baseAmountPaise,
+    additionalServicesTotalPaise,
+    adjustmentsPaise: 0,
+  });
+
+  const bill = await withTransaction(async (session) => {
+    const billNumber = await createBillNumber(societyId, periodStart, session);
+    const [doc] = await BillModel.create(
+      [
+        {
+          societyId,
+          flatId: flat._id,
+          billNumber,
+          billingPeriodStart: periodStart,
+          billingPeriodEnd: periodEnd,
+          numberOfMonths: input.numberOfMonths,
+          ownerUserId: owner?._id,
+          ownerNameSnapshot: owner?.name ?? UNASSIGNED_OWNER_NAME,
+          ownerEmailSnapshot: owner?.email || 'unassigned',
+          flatNumberSnapshot: flat.number,
+          wingCodeSnapshot: wing?.code ?? '',
+          flatTypeSnapshot: flat.flatType,
+          occupancyStatusSnapshot: flat.occupancyStatus,
+          floorSnapshot: flat.floor,
+          flatIsActiveSnapshot: flat.isActive,
+          monthlyRatePaise,
+          baseAmountPaise,
+          additionalServicesTotalPaise,
+          adjustmentsPaise: 0,
+          lineItems,
+          totalAmountPaise,
+          amountPaidPaise: 0,
+          outstandingPrincipalPaise: totalAmountPaise,
+          interestAccruedPaise: 0,
+          dueDate,
+          status: 'ISSUED',
+          generatedAt: new Date(),
+          notes: input.notes,
+          createdBy: actor.userId,
+        },
+      ],
+      { session },
+    );
+
+    await appendPrincipalEvent(
+      {
+        societyId,
+        billId: doc._id,
+        eventType: 'OPENING',
+        deltaPrincipalPaise: totalAmountPaise,
+        principalAfterPaise: totalAmountPaise,
+        effectiveAt: startOfCivilDay(periodStart, timeZone),
+        sourceType: 'bill',
+        sourceId: String(doc._id),
+        notes: 'Bill opening principal',
+      },
+      session,
+    );
+
+    await writeAuditLog(
+      {
+        action: 'BILL_GENERATED',
+        actorUserId: actor.userId,
+        societyId,
+        targetType: 'Bill',
+        targetId: String(doc._id),
+        metadata: {
+          billNumber,
+          flatId: String(flat._id),
+          ownerUserId: owner ? String(owner._id) : null,
+          numberOfMonths: input.numberOfMonths,
+          baseAmountPaise,
+          additionalServicesTotalPaise,
+          totalAmountPaise,
+          source: 'office_advance',
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+
+    return doc;
+  });
+
+  return { bill: serializeBill(bill), created: true as const };
 }
 
 /**

@@ -32,6 +32,9 @@ import 'app_core.dart';
 import 'data/local_database.dart' show LocalDatabase;
 import 'api/auth/admin_api_messages.dart';
 import 'api/models/admin_user_models.dart';
+import 'features/admin/admin_dashboard.dart';
+import 'features/admin/admin_flats_page.dart';
+import 'features/admin/admin_more_page.dart';
 import 'features/auth/society_selection_screen.dart';
 import 'features/billing/collect_payment_page.dart';
 import 'features/billing/live_additional_services_module.dart';
@@ -282,6 +285,24 @@ class _SplashScreen extends StatelessWidget {
       );
 }
 
+String _sessionRestoreError(Object error) {
+  final base = authErrorMessage(error);
+  if (error is! ApiException) {
+    return '$base\n\nYour sign-in was kept. Check your connection and try again.';
+  }
+  final network = error.code == 'NETWORK_TIMEOUT' ||
+      error.code == 'NETWORK_UNAVAILABLE' ||
+      error.code == 'NETWORK_ERROR';
+  if (!network) {
+    return '$base\n\nYour sign-in was kept. Check your connection and try again.';
+  }
+  final config = ApiConfig.fromEnvironment();
+  if (config.flavor == ApiFlavor.development) {
+    return '$base\n\nThis debug build is calling ${config.baseUrl} (local API). Your internet cannot reach that host unless the backend is running on that LAN address.\n\nQuit flutter run and start it with:\nflutter run --dart-define-from-file=dart_defines.production.json';
+  }
+  return '$base\n\nYour sign-in was kept. Check your connection and try again.';
+}
+
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
@@ -351,9 +372,12 @@ class _AuthGateState extends State<AuthGate> {
           if (snapshot.hasError) {
             return _SplashScreen(
               label: 'Could not restore your session',
-              error:
-                  '${authErrorMessage(snapshot.error!)}\n\nYour sign-in was kept. Check your connection and try again.',
-              onRetry: () => setState(() => _boot = _resolveHome()),
+              error: _sessionRestoreError(snapshot.error!),
+              onRetry: () {
+                setState(() {
+                  _boot = _resolveHome();
+                });
+              },
             );
           }
           if (!snapshot.hasData) {
@@ -2596,41 +2620,7 @@ class _AdminHomeState extends State<AdminHome> {
   String? _morePage;
   late Future<_AdminDashboardBundle> _dashboardFuture = _loadDashboard();
 
-  static const _moreGroups = <(String, List<(String, String, IconData)>)>[
-    (
-      'People',
-      [
-        ('residents', 'Residents', Icons.people_outline_rounded),
-        ('guards', 'Security guards', Icons.shield_outlined),
-        ('visitors', 'Visitors', Icons.groups_outlined),
-        ('vehicles', 'Vehicles & parking', Icons.directions_car_outlined),
-      ]
-    ),
-    (
-      'Operations',
-      [
-        ('announcements', 'Announcements', Icons.campaign_outlined),
-        ('collections', 'One-time collections', Icons.celebration_outlined),
-      ]
-    ),
-    (
-      'Insights & setup',
-      [
-        ('additional-services', 'Additional services', Icons.local_parking_outlined),
-        ('reports', 'Reports & analytics', Icons.assessment_outlined),
-        ('settings', 'Society settings', Icons.settings_outlined),
-      ]
-    ),
-  ];
-
-  static String _moreLabel(String key) {
-    for (final (_, items) in _moreGroups) {
-      for (final (k, label, _) in items) {
-        if (k == key) return label;
-      }
-    }
-    return 'More';
-  }
+  static String _moreLabel(String key) => adminMoreLabel(key);
 
   Future<_AdminDashboardBundle> _loadDashboard({bool force = false}) async {
     final session = authSession;
@@ -2669,6 +2659,17 @@ class _AdminHomeState extends State<AdminHome> {
     if (ok) await logout();
   }
 
+  Future<void> _confirmSwitchSociety() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Switch society?',
+      message: 'You will be signed out and can pick another society.',
+      confirmLabel: 'Switch',
+      icon: Icons.swap_horiz_rounded,
+    );
+    if (ok) await logout();
+  }
+
   Future<void> logout() async {
     final session = authSession;
     if (session != null) {
@@ -2686,7 +2687,10 @@ class _AdminHomeState extends State<AdminHome> {
         _morePage = key;
       });
 
-  Widget _adminMoreBody() {
+  Widget _adminMoreBody({
+    SocietySummary? society,
+    DashboardStats? dashboard,
+  }) {
     switch (_morePage) {
       case 'residents':
         return const AdminResidentsPage();
@@ -2707,55 +2711,21 @@ class _AdminHomeState extends State<AdminHome> {
       case 'settings':
         return const AdminSettingsPage();
       default:
-        return _moreHub();
-    }
-  }
-
-  Widget _moreHub() => ListView(
-        padding: Sp.pagePadding,
-        children: [
-          const PageHeader('Directory',
-              subtitle: 'People, operations and reports'),
-          for (var g = 0; g < _moreGroups.length; g++) ...[
-            if (g > 0) const SizedBox(height: 18),
-            ToolDirectory(
-              title: _moreGroups[g].$1,
-              links: [
-                for (final (key, label, icon) in _moreGroups[g].$2)
-                  ToolLink(
-                    icon: icon,
-                    label: label,
-                    subtitle: _adminToolHint(key),
-                    onTap: () => _openMore(key),
-                  ),
-              ],
-            ),
-          ],
-        ],
-      );
-
-  String _adminToolHint(String key) {
-    switch (key) {
-      case 'residents':
-        return 'Provision owners and tenants';
-      case 'visitors':
-        return 'Society-wide visitor records';
-      case 'vehicles':
-        return 'Assign vehicles and parking numbers to flats';
-      case 'guards':
-        return 'Provision gate logins';
-      case 'announcements':
-        return 'Publish a notice';
-      case 'additional-services':
-        return 'Recurring charges on individual flats';
-      case 'collections':
-        return 'Festival, repair and special charges';
-      case 'reports':
-        return 'Collections and outstanding dues';
-      case 'settings':
-        return 'Society profile and wings';
-      default:
-        return '';
+        return ColoredBox(
+          color: AdminDash.surface,
+          child: AdminMoreHub(
+            society: society,
+            dashboard: dashboard,
+            onOpen: _openMore,
+            onExport: () => _openMore('reports'),
+            onSwitchSociety: _confirmSwitchSociety,
+            onSignOut: _confirmLogout,
+            onRefresh: () async {
+              reloadDashboard();
+              await _dashboardFuture;
+            },
+          ),
+        );
     }
   }
 
@@ -2769,80 +2739,58 @@ class _AdminHomeState extends State<AdminHome> {
         }
       });
 
-  static const _tabTitles = ['Overview', 'Flats', 'Bills', 'Payments', 'More'];
-
   @override
   Widget build(BuildContext context) {
     final inSubPage = tab == 4 && _morePage != null;
-    return PopScope(
-      canPop: !_canPopInternally,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _popInternally();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: inSubPage
-              ? IconButton(
-                  tooltip: 'Back',
-                  onPressed: _popInternally,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                )
-              : null,
-          title: inSubPage
-              ? Text(_moreLabel(_morePage!))
-              : brandAppBarTitle(
-                  title: tab == 0 ? '$kAppName Admin' : _tabTitles[tab],
-                  subtitle: kSocietyName),
-          actions: [
-            IconButton(
-              tooltip: 'Logout',
-              onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded),
+    return FutureBuilder<_AdminDashboardBundle>(
+      future: _dashboardFuture,
+      builder: (context, snapshot) {
+        final societyName = snapshot.data?.society.name ?? kSocietyName;
+        return PopScope(
+          canPop: !_canPopInternally,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _popInternally();
+          },
+          child: Scaffold(
+            backgroundColor: AdminDash.surface,
+            body: Column(
+              children: [
+                AdminDashHeader(
+                  societyName: societyName,
+                  backLabel: inSubPage ? _moreLabel(_morePage!) : null,
+                  onBack: inSubPage ? _popInternally : null,
+                  onSocietyTap: () => _openMore('settings'),
+                  onProfileTap: _confirmLogout,
+                ),
+                Expanded(
+                  child: IndexedStack(
+                    index: tab,
+                    children: [
+                      adminDashboard(),
+                      AdminFlatsPage(onChanged: refresh),
+                      const LiveAdminBillsPage(),
+                      const LiveAdminPaymentsPage(),
+                      _adminMoreBody(
+                        society: snapshot.data?.society,
+                        dashboard: snapshot.data?.dashboard,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        body: IndexedStack(
-          index: tab,
-          children: [
-            adminDashboard(),
-            AdminFlatsPage(onChanged: refresh),
-            const LiveAdminBillsPage(),
-            const LiveAdminPaymentsPage(),
-            _adminMoreBody(),
-          ],
-        ),
-        bottomNavigationBar: AppBottomNav(
-          selectedIndex: tab,
-          onDestinationSelected: (v) => setState(() {
-            if (v == 4 && tab == 4) _morePage = null;
-            tab = v;
-            if (v != 4) _morePage = null;
-            if (v == 0) reloadDashboard();
-          }),
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.space_dashboard_outlined),
-                selectedIcon: Icon(Icons.space_dashboard_rounded),
-                label: 'Overview'),
-            NavigationDestination(
-                icon: Icon(Icons.apartment_outlined),
-                selectedIcon: Icon(Icons.apartment_rounded),
-                label: 'Flats'),
-            NavigationDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                selectedIcon: Icon(Icons.receipt_long_rounded),
-                label: 'Bills'),
-            NavigationDestination(
-                icon: Icon(Icons.payments_outlined),
-                selectedIcon: Icon(Icons.payments_rounded),
-                label: 'Payments'),
-            NavigationDestination(
-                icon: Icon(Icons.grid_view_outlined),
-                selectedIcon: Icon(Icons.grid_view_rounded),
-                label: 'More'),
-          ],
-        ),
-      ),
+            bottomNavigationBar: AdminDashBottomNav(
+              selectedIndex: tab,
+              onDestinationSelected: (v) => setState(() {
+                if (v == 4 && tab == 4) _morePage = null;
+                tab = v;
+                if (v != 4) _morePage = null;
+                if (v == 0) reloadDashboard();
+              }),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2868,196 +2816,22 @@ class _AdminHomeState extends State<AdminHome> {
               onRetry: reloadDashboard,
             );
           }
-          final society = bundle.society;
-          final totals = bundle.dashboard.totals;
-          final wings = bundle.dashboard.wings;
-          final occupied =
-              totals.ownerOccupiedFlats + totals.tenantOccupiedFlats;
-          final occRate =
-              totals.flats == 0 ? 0 : (occupied * 100 / totals.flats).round();
-          return RefreshIndicator(
-            color: C.blue,
+          return AdminDashboardOverview(
+            society: bundle.society,
+            dashboard: bundle.dashboard,
+            onOpenFlats: () => setState(() => tab = 1),
+            onOpenBills: () => setState(() => tab = 2),
+            onOpenPayments: () => setState(() => tab = 3),
+            onOpenResidents: () => _openMore('residents'),
+            onOpenGuards: () => _openMore('guards'),
+            onOpenAnnouncements: () => _openMore('announcements'),
+            onOpenCollections: () => _openMore('collections'),
+            onOpenReports: () => _openMore('reports'),
+            onOpenSettings: () => _openMore('settings'),
             onRefresh: () async {
               reloadDashboard();
               await _dashboardFuture;
             },
-            child: ListView(
-              padding: Sp.pagePadding,
-              children: [
-                Text('${dayGreeting()}, Admin',
-                    style: T.caption.copyWith(color: C.faint)),
-                const SizedBox(height: 4),
-                Text(society.name,
-                    style: T.h1, maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Text(
-                    '${monthName(DateTime.now())} · ${totals.wings} wings · ${society.code}',
-                    style: T.secondary),
-                const SizedBox(height: 18),
-                StatGrid(children: [
-                  StatCard(
-                    title: 'Total flats',
-                    value: '${totals.flats}',
-                    icon: Icons.apartment_outlined,
-                    caption: '${totals.wings} wings',
-                    onTap: () => setState(() => tab = 1),
-                  ),
-                  StatCard(
-                    title: 'Occupied',
-                    value: '$occupied',
-                    icon: Icons.groups_outlined,
-                    caption: '${totals.vacantFlats} vacant',
-                    onTap: () => setState(() => tab = 1),
-                  ),
-                  StatCard(
-                    title: 'This month',
-                    value: money(totals.monthlyMaintenanceTotal),
-                    icon: Icons.payments_outlined,
-                    caption: 'Maintenance',
-                    onTap: () => setState(() => tab = 2),
-                  ),
-                  StatCard(
-                    title: 'Occupancy',
-                    value: '$occRate%',
-                    icon: Icons.pie_chart_outline_rounded,
-                    accent: C.green,
-                    caption: '${totals.activeFlats} active',
-                  ),
-                ]),
-                const SizedBox(height: 12),
-                CollectionBar(
-                  title: 'Occupancy',
-                  progress: totals.flats == 0 ? 0 : occupied / totals.flats,
-                  valueLabel: '$occRate%',
-                  caption:
-                      '${totals.ownerOccupiedFlats} owner · ${totals.tenantOccupiedFlats} tenant · ${totals.vacantFlats} vacant · ${totals.twoBhkCount} × 2 BHK · ${totals.threeBhkCount} × 3 BHK',
-                ),
-                const SizedBox(height: 20),
-                const SectionTitle('Quick actions'),
-                QuickAccessGrid(items: [
-                  QuickAccessItem(
-                    icon: Icons.person_add_alt_1_outlined,
-                    label: 'Residents',
-                    onTap: () => _openMore('residents'),
-                  ),
-                  QuickAccessItem(
-                    icon: Icons.shield_outlined,
-                    label: 'Guards',
-                    color: C.softBlue,
-                    onTap: () => _openMore('guards'),
-                  ),
-                  QuickAccessItem(
-                    icon: Icons.receipt_long_outlined,
-                    label: 'Create bill',
-                    color: C.amber,
-                    onTap: () => setState(() => tab = 2),
-                  ),
-                  QuickAccessItem(
-                    icon: Icons.campaign_outlined,
-                    label: 'Notice',
-                    color: C.blueDark,
-                    onTap: () => _openMore('announcements'),
-                  ),
-                ]),
-                const SizedBox(height: 22),
-                ToolDirectory(
-                  title: 'Operate',
-                  links: [
-                    ToolLink(
-                      icon: Icons.apartment_outlined,
-                      label: 'Find a flat',
-                      subtitle: 'Occupancy, residents and rates',
-                      onTap: () => setState(() => tab = 1),
-                    ),
-                    ToolLink(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Maintenance bills',
-                      subtitle: 'Generate, adjust and collect',
-                      onTap: () => setState(() => tab = 2),
-                    ),
-                    ToolLink(
-                      icon: Icons.payments_outlined,
-                      label: 'Payments',
-                      subtitle: 'Recent collections and receipts',
-                      onTap: () => setState(() => tab = 3),
-                    ),
-                    ToolLink(
-                      icon: Icons.celebration_outlined,
-                      label: 'One-time collections',
-                      subtitle: 'Festival, repair and special charges',
-                      onTap: () => _openMore('collections'),
-                    ),
-                    ToolLink(
-                      icon: Icons.shield_outlined,
-                      label: 'Security guards',
-                      subtitle: 'Create and manage gate logins',
-                      onTap: () => _openMore('guards'),
-                    ),
-                    ToolLink(
-                      icon: Icons.campaign_outlined,
-                      label: 'Announcements',
-                      subtitle: 'Publish a notice',
-                      onTap: () => _openMore('announcements'),
-                    ),
-                    ToolLink(
-                      icon: Icons.assessment_outlined,
-                      label: 'Reports',
-                      subtitle: 'Collections and outstanding dues',
-                      onTap: () => _openMore('reports'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                SectionTitle('Wings',
-                    action: TextButton(
-                        onPressed: () => _openMore('settings'),
-                        child: const Text('Society'))),
-                if (wings.isEmpty)
-                  const EmptyState('No wings configured yet',
-                      icon: Icons.domain_outlined, compact: true)
-                else
-                  AppCard(
-                    margin: EdgeInsets.zero,
-                    child: Column(children: [
-                      for (var i = 0; i < wings.length; i++) ...[
-                        if (i > 0)
-                          const Divider(height: 1, indent: 56, endIndent: 12),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                          child: Row(children: [
-                            AppAvatar(
-                                text: wings[i].code, square: true, size: 36),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(wings[i].name, style: T.bodyStrong),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${wings[i].activeFlats} active · ${wings[i].vacantFlats} vacant',
-                                    style: T.caption,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(money(wings[i].monthlyMaintenanceTotal),
-                                    style: T.money.copyWith(fontSize: 13)),
-                                Text('per month', style: T.caption),
-                              ],
-                            ),
-                          ]),
-                        ),
-                      ],
-                    ]),
-                  ),
-              ],
-            ),
           );
         },
       );
@@ -3073,7 +2847,8 @@ class AdminFlatsPage extends StatefulWidget {
 class _AdminFlatsPageState extends State<AdminFlatsPage> {
   String query = '';
   String? wingId;
-  String statusFilter = 'all'; // all | active | inactive
+  String occupancyFilter = 'all'; // all | owner | tenant | vacant
+  String activeFilter = 'all'; // all | active | inactive
   int page = 1;
   static const _limit = 30;
   late Future<_AdminFlatsBundle> _future;
@@ -3097,23 +2872,35 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
     final repos = ensureLiveRepositories(session.api);
-    final wings = await repos.society.wings(force: force);
     bool? isActive;
-    if (statusFilter == 'active') isActive = true;
-    if (statusFilter == 'inactive') isActive = false;
-    final flats = await repos.society.listFlats(
-      force: force,
-      query: ListFlatsQuery(
-        wingId: wingId,
-        isActive: isActive,
-        search: query.trim().isEmpty ? null : query.trim(),
-        page: page,
-        limit: _limit,
-        sortBy: 'number',
-        sortOrder: 'asc',
+    if (activeFilter == 'active') isActive = true;
+    if (activeFilter == 'inactive') isActive = false;
+    String? occupancy;
+    if (occupancyFilter == 'owner') occupancy = 'OWNER_OCCUPIED';
+    if (occupancyFilter == 'tenant') occupancy = 'TENANT_OCCUPIED';
+    if (occupancyFilter == 'vacant') occupancy = 'VACANT';
+    final results = await Future.wait([
+      repos.society.wings(force: force),
+      repos.society.listFlats(
+        force: force,
+        query: ListFlatsQuery(
+          wingId: wingId,
+          isActive: isActive,
+          occupancyStatus: occupancy,
+          search: query.trim().isEmpty ? null : query.trim(),
+          page: page,
+          limit: _limit,
+          sortBy: 'number',
+          sortOrder: 'asc',
+        ),
       ),
+      repos.society.dashboard(force: force),
+    ]);
+    return _AdminFlatsBundle(
+      wings: results[0] as List<WingSummary>,
+      flats: results[1] as Paged<FlatSummary>,
+      dashboard: results[2] as DashboardStats,
     );
-    return _AdminFlatsBundle(wings: wings, flats: flats);
   }
 
   void reload({bool resetPage = false}) {
@@ -3152,150 +2939,106 @@ class _AdminFlatsPageState extends State<AdminFlatsPage> {
           final pageData = bundle.flats;
           final rows = pageData.items;
           final pagination = pageData.pagination;
-          final refreshing =
-              snapshot.connectionState == ConnectionState.waiting;
-          return Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              child: SearchField(
-                controller: _searchCtrl,
-                hint: 'Search flat number',
-                onChanged: (v) {
-                  query = v;
-                  _searchDebounce.run(() => reload(resetPage: true));
-                },
-              ),
-            ),
-            FilterBar(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                AppFilterChip(
-                  label: 'All wings',
-                  selected: wingId == null,
-                  onSelected: () {
-                    wingId = null;
-                    reload(resetPage: true);
-                  },
-                ),
-                for (final w in wings)
-                  AppFilterChip(
-                    label: 'Wing ${w.code}',
-                    selected: wingId == w.id,
-                    onSelected: () {
-                      wingId = w.id;
-                      reload(resetPage: true);
-                    },
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [
-                Expanded(
-                  child: FilterBar(children: [
-                    for (final f in const [
-                      ('all', 'All'),
-                      ('active', 'Active'),
-                      ('inactive', 'Inactive'),
-                    ])
-                      AppFilterChip(
-                        label: f.$2,
-                        selected: statusFilter == f.$1,
-                        onSelected: () {
-                          statusFilter = f.$1;
-                          reload(resetPage: true);
-                        },
-                      ),
-                  ]),
-                ),
-                const SizedBox(width: 8),
-                if (refreshing)
-                  const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  ResultCount(pagination.total, 'flat'),
-              ]),
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: rows.isEmpty
-                  ? EmptyState(
-                      'No flats match your filters',
-                      icon: Icons.apartment_outlined,
-                      actionLabel: 'Clear filters',
-                      onAction: () {
+          return ColoredBox(
+            color: AdminDash.surface,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: Column(
+                  children: [
+                    AdminFlatsSearchBar(
+                      controller: _searchCtrl,
+                      onChanged: (v) {
+                        query = v;
+                        _searchDebounce.run(() => reload(resetPage: true));
+                      },
+                      onClear: () {
                         _searchCtrl.clear();
                         query = '';
-                        wingId = null;
-                        statusFilter = 'all';
                         reload(resetPage: true);
                       },
-                    )
-                  : RefreshIndicator(
-                      color: C.blue,
-                      onRefresh: () async {
+                      onTune: () async {
+                        final next = await showAdminFlatsTuneSheet(
+                          context,
+                          activeFilter: activeFilter,
+                        );
+                        if (next == null || !mounted) return;
+                        activeFilter = next;
                         reload(resetPage: true);
-                        await _future;
                       },
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                        itemCount: rows.length + 1,
-                        itemBuilder: (context, i) {
-                          if (i == rows.length) {
-                            return PaginationBar(
-                              page: pagination.page,
-                              totalPages: pagination.totalPages,
-                              onPrevious: () {
-                                page -= 1;
-                                reload();
-                              },
-                              onNext: () {
-                                page += 1;
-                                reload();
-                              },
-                            );
-                          }
-                          final r = rows[i];
-                          final label = r.number.contains('-')
-                              ? r.number.split('-').last
-                              : r.number;
-                          final owner = r.activeOwner?.name.trim() ?? '';
-                          return ListRow(
-                            onTap: () => openDetail(r),
-                            leading: AppAvatar(
-                              text: label,
-                              square: true,
-                              color: r.isActive ? C.blue : C.muted,
-                            ),
-                            title: r.number,
-                            subtitle:
-                                '${r.wingName ?? r.wingCode ?? 'Wing'} · Floor ${r.floor} · ${flatTypeLabel(r.flatType)}\n'
-                                '${owner.isEmpty ? 'No owner allotted' : owner}',
-                            badges: [
-                              StatusBadge(
-                                  occupancyStatusLabel(r.occupancyStatus),
-                                  tone: _occupancyTone(r.occupancyStatus)),
-                              if (!r.isActive) const StatusBadge('Inactive'),
-                            ],
-                            trailing: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(money(r.maintenanceRate),
-                                    style: T.money.copyWith(fontSize: 14)),
-                                Text('per month', style: T.caption),
-                              ],
-                            ),
-                            showChevron: true,
-                          );
-                        },
-                      ),
                     ),
-            ),
-          ]);
+                    const SizedBox(height: 12),
+                    AdminFlatsWingChips(
+                      wings: wings,
+                      selectedWingId: wingId,
+                      onSelect: (id) {
+                        wingId = id;
+                        reload(resetPage: true);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    AdminFlatsStatusRow(
+                      selected: occupancyFilter,
+                      unitCount: pagination.total,
+                      onSelect: (value) {
+                        occupancyFilter = value;
+                        reload(resetPage: true);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    AdminFlatsSummaryStrip(totals: bundle.dashboard.totals),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: rows.isEmpty
+                    ? AdminFlatsEmpty(
+                        onReset: () {
+                          _searchCtrl.clear();
+                          query = '';
+                          wingId = null;
+                          occupancyFilter = 'all';
+                          activeFilter = 'all';
+                          reload(resetPage: true);
+                        },
+                      )
+                    : RefreshIndicator(
+                        color: AdminDash.primary,
+                        onRefresh: () async {
+                          reload(resetPage: true);
+                          await _future;
+                        },
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                          itemCount: rows.length + 1,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, i) {
+                            if (i == rows.length) {
+                              return PaginationBar(
+                                page: pagination.page,
+                                totalPages: pagination.totalPages,
+                                onPrevious: () {
+                                  page -= 1;
+                                  reload();
+                                },
+                                onNext: () {
+                                  page += 1;
+                                  reload();
+                                },
+                              );
+                            }
+                            return AdminFlatUnitCard(
+                              flat: rows[i],
+                              onTap: () => openDetail(rows[i]),
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ]),
+          );
         },
       );
 }
@@ -3314,9 +3057,14 @@ BadgeTone _occupancyTone(String status) {
 }
 
 class _AdminFlatsBundle {
-  const _AdminFlatsBundle({required this.wings, required this.flats});
+  const _AdminFlatsBundle({
+    required this.wings,
+    required this.flats,
+    required this.dashboard,
+  });
   final List<WingSummary> wings;
   final Paged<FlatSummary> flats;
+  final DashboardStats dashboard;
 }
 
 class AdminFlatDetailPage extends StatefulWidget {
@@ -4686,11 +4434,10 @@ class CreateBillPage extends StatefulWidget {
 
 class _CreateBillPageState extends State<CreateBillPage> {
   final remarks = TextEditingController();
-  final customMonths = TextEditingController(text: '4');
   DateTime period = DateTime(DateTime.now().year, DateTime.now().month);
   late DateTime issueDate;
   late DateTime dueDate;
-  int monthsChoice = 1; // 1,2,3 or -1 for custom
+  int monthsChoice = 1;
   bool confirming = false;
   bool generating = false;
   String? error;
@@ -4703,10 +4450,7 @@ class _CreateBillPageState extends State<CreateBillPage> {
     _refreshPreview();
   }
 
-  int get monthsCovered {
-    if (monthsChoice == -1) return int.tryParse(customMonths.text.trim()) ?? 0;
-    return monthsChoice;
-  }
+  int get monthsCovered => monthsChoice;
 
   void _syncDefaultDates() {
     issueDate = DateTime(period.year, period.month, 1);
@@ -4726,7 +4470,6 @@ class _CreateBillPageState extends State<CreateBillPage> {
   @override
   void dispose() {
     remarks.dispose();
-    customMonths.dispose();
     super.dispose();
   }
 
@@ -4744,7 +4487,7 @@ class _CreateBillPageState extends State<CreateBillPage> {
   Future<void> goToConfirmation() async {
     setState(() => error = null);
     if (monthsCovered < 1) {
-      setState(() => error = 'Enter a valid number of months (1 or more).');
+      setState(() => error = 'Enter a valid number of months (1 to 12).');
       return;
     }
     await _refreshPreview();
@@ -4879,7 +4622,7 @@ class _CreateBillPageState extends State<CreateBillPage> {
                 style: TextStyle(fontWeight: FontWeight.w700, color: C.navy)),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final m in [1, 2, 3])
+              for (var m = 1; m <= 12; m++)
                 ChoiceChip(
                   label: Text('$m month${m == 1 ? '' : 's'}'),
                   selected: monthsChoice == m,
@@ -4888,30 +4631,7 @@ class _CreateBillPageState extends State<CreateBillPage> {
                     _refreshPreview();
                   },
                 ),
-              ChoiceChip(
-                label: const Text('Custom'),
-                selected: monthsChoice == -1,
-                onSelected: (_) {
-                  setState(() => monthsChoice = -1);
-                  _refreshPreview();
-                },
-              ),
             ]),
-            if (monthsChoice == -1) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: customMonths,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                    labelText: 'Custom months',
-                    prefixIcon: Icon(Icons.pin_outlined)),
-                onChanged: (_) {
-                  setState(() {});
-                  _refreshPreview();
-                },
-              ),
-            ],
             if (monthsCovered >= 1) ...[
               const SizedBox(height: 12),
               AppCard(

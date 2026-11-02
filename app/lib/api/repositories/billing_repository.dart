@@ -191,7 +191,8 @@ class BillingRepository {
 
   Future<PaymentSettlement> recordOfflinePayment({
     required String billId,
-    required int amountPaise,
+    int? amountPaise,
+    int? monthsPaid,
     required String paidAt,
     String? referenceNumber,
     String? paymentMethod,
@@ -206,6 +207,7 @@ class BillingRepository {
       final result = await _api.recordOfflinePayment(
         billId: billId,
         amountPaise: amountPaise,
+        monthsPaid: monthsPaid,
         paidAt: paidAt,
         paymentMethod: paymentMethod,
         referenceNumber: referenceNumber,
@@ -319,13 +321,13 @@ class BillingRepository {
     return result;
   }
 
-  Future<PaymentSummary> refundPayment(
+  Future<PaymentCancelResult> cancelPayment(
     String paymentId, {
     required String reason,
   }) async {
-    final payment = await _api.refundPayment(paymentId, reason: reason);
-    invalidateFinancialCaches(billId: payment.billId);
-    return payment;
+    final result = await _api.cancelPayment(paymentId, reason: reason);
+    invalidateFinancialCaches();
+    return result;
   }
 
   Future<ReceiptDetail> adminReceipt(String receiptId, {bool force = false}) async {

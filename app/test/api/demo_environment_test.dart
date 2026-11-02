@@ -56,11 +56,11 @@ void main() {
   });
 
   test('demo config never uses the production API host', () {
-    final config = DemoEnvironment.config(
-      demoBaseUrl: 'https://demo-apiapnasociety.skylinetv.in',
-    );
+    final config = DemoEnvironment.config();
     expect(config.flavor, ApiFlavor.demo);
+    expect(config.baseUrl, DemoEnvironment.productionBaseUrl);
     expect(config.baseUrl, isNot(ApiConfig.productionBaseUrl));
+    expect(config.baseUrl, isNot(ApiConfig.developmentBaseUrl));
   });
 
   test('production login errors stay generic', () {

@@ -1,4 +1,5 @@
 {
   "API_ENV": "production",
-  "PRODUCTION_API_URL": "https://apiapnasociety.skylinetv.in"
+  "PRODUCTION_API_URL": "https://apiapnasociety.skylinetv.in",
+  "DEMO_API_URL": "https://demo-apiapnasociety.skylinetv.in"
 }

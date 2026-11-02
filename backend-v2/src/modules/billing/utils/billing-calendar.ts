@@ -56,6 +56,13 @@ export function addCalendarMonths(start: CivilDate, months: number): CivilDate {
   return { year, month, day: 1 };
 }
 
+/** First day of the calendar month after `periodEnd`. */
+export function nextPeriodStart(periodEnd: Date, timeZone = 'Asia/Kolkata'): Date {
+  const end = civilDateInTimeZone(periodEnd, timeZone);
+  const next = addCalendarMonths({ year: end.year, month: end.month, day: 1 }, 1);
+  return zonedMidnight(next.year, next.month, 1);
+}
+
 export function addCalendarDays(start: CivilDate, days: number): CivilDate {
   const utc = new Date(Date.UTC(start.year, start.month - 1, start.day + days));
   return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
@@ -67,9 +74,12 @@ export function addCalendarDays(start: CivilDate, days: number): CivilDate {
  */
 export function billingPeriodBounds(
   billingPeriodStart: Date,
-  numberOfMonths: 1 | 3,
+  numberOfMonths: number,
   timeZone = 'Asia/Kolkata',
 ): { periodStart: Date; periodEnd: Date; startCivil: CivilDate } {
+  if (!Number.isInteger(numberOfMonths) || numberOfMonths < 1 || numberOfMonths > 12) {
+    throw new Error('numberOfMonths must be between 1 and 12');
+  }
   const startCivil = civilDateInTimeZone(billingPeriodStart, timeZone);
   if (startCivil.day !== 1) {
     throw new Error('billingPeriodStart must be the 1st of a calendar month');

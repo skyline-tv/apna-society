@@ -16,7 +16,7 @@ import { notifyBusinessEvent } from '../../notifications/services/business-notif
 import { SocietyModel } from '../../society/models/society.model';
 import { assertFinancialAccess } from '../../users/services/access-control.service';
 import { BillModel } from '../models/bill.model';
-import { PaymentModel } from '../models/payment.model';
+import { isOfficeRecordedPayment, PaymentModel } from '../models/payment.model';
 import {
   appendPrincipalEvent,
   PrincipalLedgerModel,
@@ -24,8 +24,10 @@ import {
 import { ReceiptModel } from '../models/receipt.model';
 import { nextSequence } from '../models/sequence.model';
 import { getPaymentProvider } from '../providers/payment-provider.factory';
-import { startOfCivilDay } from '../utils/billing-calendar';
+import { nextPeriodStart, startOfCivilDay } from '../utils/billing-calendar';
+import { billedMonthsProgress } from '../utils/bill-months';
 import { unpaidInterestPaise } from '../utils/bill-totals';
+import { generateBillForFlat } from './bill-generation.service';
 import { computeInterestForBillWithEvents, getBillInterest } from './interest.service';
 import { assertBillFinancialInvariants } from './financial-invariants.service';
 import { buildReceiptPdf } from './pdf.service';
@@ -685,7 +687,8 @@ export async function recordOfflinePayment(
   societyId: string,
   input: {
     billId: string;
-    amountPaise: number;
+    amountPaise?: number;
+    monthsPaid?: number;
     paidAt: Date;
     paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
     referenceNumber?: string;
@@ -694,7 +697,11 @@ export async function recordOfflinePayment(
   },
   actor: Actor,
 ) {
-  if (input.amountPaise <= 0) {
+  if (input.monthsPaid != null) {
+    return recordOfflineMonthsPayment(societyId, input, actor);
+  }
+  const amountPaise = input.amountPaise;
+  if (amountPaise == null || amountPaise <= 0) {
     throw badRequest('amountPaise must be positive', 'INVALID_AMOUNT');
   }
 
@@ -732,7 +739,7 @@ export async function recordOfflinePayment(
           flatId: bill.flatId,
           ownerUserId: bill.ownerUserId,
           paymentNumber,
-          amountPaise: input.amountPaise,
+          amountPaise,
           allocatedToPrincipalPaise: 0,
           allocatedToInterestPaise: 0,
           paymentMethod: input.paymentMethod ?? 'CASH',
@@ -758,6 +765,181 @@ export async function recordOfflinePayment(
     actor,
     source: 'offline',
   });
+}
+
+async function currentBillDuePaise(
+  societyId: string,
+  bill: { _id: { toString(): string }; outstandingPrincipalPaise: number; interestPaidPaise?: number; status: string },
+  asOf: Date,
+) {
+  const interest = await getBillInterest(societyId, String(bill._id), asOf);
+  const remainingInterest = unpaidInterestPaise({
+    outstandingPrincipalPaise: interest.principalOutstandingPaise,
+    interestAccruedPaise: interest.accruedInterestPaise,
+    interestPaidPaise: bill.interestPaidPaise ?? 0,
+    status: bill.status,
+  });
+  return Math.max(0, bill.outstandingPrincipalPaise + remainingInterest);
+}
+
+async function recordOfflineMonthsPayment(
+  societyId: string,
+  input: {
+    billId: string;
+    monthsPaid?: number;
+    paidAt: Date;
+    paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
+    referenceNumber?: string;
+    notes?: string;
+    idempotencyKey?: string;
+  },
+  actor: Actor,
+) {
+  const monthsPaid = input.monthsPaid ?? 0;
+  if (!Number.isInteger(monthsPaid) || monthsPaid < 1 || monthsPaid > 12) {
+    throw badRequest('monthsPaid must be between 1 and 12', 'INVALID_BILLING_MONTHS');
+  }
+
+  const bill = await BillModel.findOne({
+    _id: parseObjectId(input.billId, 'billId'),
+    societyId: parseObjectId(societyId, 'societyId'),
+  });
+  if (!bill) throw notFound('Bill not found');
+  if (bill.status === 'CANCELLED') throw badRequest('Bill is cancelled', 'BILL_CANCELLED');
+
+  if (input.idempotencyKey) {
+    const existing = await PaymentModel.findOne({
+      societyId,
+      idempotencyKey: `${input.idempotencyKey}:0`,
+    });
+    if (existing) {
+      const progress = billedMonthsProgress(bill);
+      return {
+        paymentId: String(existing._id),
+        alreadySettled: existing.status === 'SUCCESS',
+        status: existing.status,
+        monthsPaid,
+        paidMonths: progress.paidMonths,
+        pendingMonths: progress.pendingMonths,
+        advanceBills: [],
+      };
+    }
+  }
+
+  const currentProgress = billedMonthsProgress(bill);
+  const extraMonths =
+    currentProgress.pendingMonths === 0
+      ? monthsPaid
+      : Math.max(0, monthsPaid - currentProgress.pendingMonths);
+
+  const advanceBills: Array<{ id: string; numberOfMonths: number }> = [];
+  if (extraMonths > 0) {
+    let start = nextPeriodStart(bill.billingPeriodEnd);
+    let pendingNeeded = extraMonths;
+    let guard = 0;
+    while (pendingNeeded > 0 && guard < 12) {
+      guard += 1;
+      const issued = await generateBillForFlat(
+        societyId,
+        {
+          flatId: String(bill.flatId),
+          billingPeriodStart: start,
+          numberOfMonths: Math.min(pendingNeeded, 12),
+          notes: 'Advance months from office payment',
+        },
+        actor,
+      );
+      advanceBills.push({ id: issued.bill.id, numberOfMonths: issued.bill.numberOfMonths });
+      const issuedDoc = await BillModel.findById(issued.bill.id);
+      if (!issuedDoc) throw notFound('Advance bill not found');
+      const progress = billedMonthsProgress(issuedDoc);
+      if (progress.pendingMonths <= 0 && issuedDoc.outstandingPrincipalPaise <= 0) {
+        start = nextPeriodStart(issuedDoc.billingPeriodEnd);
+        continue;
+      }
+      pendingNeeded -= Math.max(progress.pendingMonths, 0);
+      start = nextPeriodStart(issuedDoc.billingPeriodEnd);
+    }
+  }
+
+  const targets = [String(bill._id), ...advanceBills.map((row) => row.id)];
+  let remaining = monthsPaid;
+  let firstResult: Awaited<ReturnType<typeof recordOfflinePayment>> | undefined;
+  const extras: Array<{
+    billId: string;
+    paymentId: string;
+    receiptId?: string;
+    numberOfMonths: number;
+  }> = [];
+
+  for (let index = 0; index < targets.length; index += 1) {
+    const target = await BillModel.findById(targets[index]);
+    if (!target || target.status === 'CANCELLED') continue;
+    const progress = billedMonthsProgress(target);
+    const leftoverDue = progress.pendingMonths === 0 && target.outstandingPrincipalPaise > 0;
+    if (progress.pendingMonths <= 0 && target.outstandingPrincipalPaise <= 0) continue;
+
+    let amountPaise = 0;
+    let take = 0;
+    if (leftoverDue) {
+      amountPaise = await currentBillDuePaise(societyId, target, input.paidAt);
+    } else {
+      if (remaining <= 0) break;
+      take = Math.min(remaining, progress.pendingMonths);
+      if (take <= 0) break;
+      amountPaise =
+        take >= progress.pendingMonths
+          ? await currentBillDuePaise(societyId, target, input.paidAt)
+          : take * target.monthlyRatePaise;
+      remaining -= take;
+    }
+    if (amountPaise <= 0) continue;
+
+    const monthNote = leftoverDue
+      ? 'Closing remaining charges'
+      : `${take} month${take === 1 ? '' : 's'}`;
+    const result = await recordOfflinePayment(
+      societyId,
+      {
+        billId: String(target._id),
+        amountPaise,
+        paidAt: input.paidAt,
+        paymentMethod: input.paymentMethod,
+        referenceNumber: index === 0 ? input.referenceNumber : undefined,
+        notes: [input.notes, monthNote].filter(Boolean).join(' · '),
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:${index}`
+          : undefined,
+      },
+      actor,
+    );
+    if (!firstResult) firstResult = result;
+    else {
+      extras.push({
+        billId: String(target._id),
+        paymentId: result.paymentId,
+        receiptId: 'receiptId' in result ? result.receiptId : undefined,
+        numberOfMonths: leftoverDue ? 0 : take,
+      });
+    }
+  }
+
+  if (!firstResult) {
+    throw badRequest('No months could be recorded against this bill', 'INVALID_AMOUNT');
+  }
+
+  const latest = await BillModel.findById(bill._id);
+  const latestProgress = latest
+    ? billedMonthsProgress(latest)
+    : { paidMonths: 0, pendingMonths: currentProgress.pendingMonths };
+
+  return {
+    ...firstResult,
+    monthsPaid,
+    paidMonths: latestProgress.paidMonths,
+    pendingMonths: latestProgress.pendingMonths,
+    advanceBills: extras,
+  };
 }
 
 export async function listPayments(
@@ -1057,7 +1239,7 @@ export async function listReceipts(
   };
 }
 
-export async function refundPayment(
+export async function cancelOfficePayment(
   societyId: string,
   paymentId: string,
   reason: string,
@@ -1069,7 +1251,13 @@ export async function refundPayment(
   });
   if (!payment) throw notFound('Payment not found');
   if (payment.status !== 'SUCCESS') {
-    throw badRequest('Only successful payments can be refunded', 'INVALID_PAYMENT_STATUS');
+    throw badRequest('Only successful office payments can be cancelled', 'INVALID_PAYMENT_STATUS');
+  }
+  if (!isOfficeRecordedPayment(payment)) {
+    throw badRequest(
+      'Only office-recorded cash, cheque, NEFT, or UPI payments can be cancelled',
+      'PAYMENT_NOT_OFFLINE',
+    );
   }
 
   const society = await SocietyModel.findById(societyId).lean();
@@ -1089,7 +1277,7 @@ export async function refundPayment(
       { session, new: true },
     );
     if (!claimed) {
-      throw conflict('Payment already refunded or not refundable', 'PAYMENT_NOT_REFUNDABLE');
+      throw conflict('Payment already cancelled', 'PAYMENT_NOT_CANCELLABLE');
     }
 
     const bill = await BillModel.findById(claimed.billId).session(session);

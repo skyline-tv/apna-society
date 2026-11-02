@@ -55,6 +55,13 @@ void main() {
     expect(config.baseUrl, 'https://society.example.test');
   });
 
+  test('demo flavor defaults to the hosted demo API', () {
+    final config = ApiConfig.resolve(flavorName: 'demo');
+    expect(config.flavor, ApiFlavor.demo);
+    expect(config.baseUrl, 'https://demo-apiapnasociety.skylinetv.in');
+    expect(config.baseUrl.contains('/api/v1'), isFalse);
+  });
+
   test('demo flavor uses the isolated demo host', () {
     final config = ApiConfig.resolve(
       flavorName: 'demo',

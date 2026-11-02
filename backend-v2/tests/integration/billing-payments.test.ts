@@ -171,6 +171,13 @@ describe('Billing payments', () => {
     expect(again.status).toBe(200);
     expect(again.body.data.alreadySettled).toBe(true);
 
+    const cancelOnline = await request(app)
+      .post(`/api/v1/admin/payments/${verify.body.data.paymentId}/cancel`)
+      .set('Authorization', `Bearer ${setup.ctx.token}`)
+      .send({ reason: 'Mistake' });
+    expect(cancelOnline.status).toBe(400);
+    expect(cancelOnline.body.error.code).toBe('PAYMENT_NOT_OFFLINE');
+
     const receiptCount = await ReceiptModel.countDocuments({
       societyId: setup.ctx.societyId,
       billId: setup.billId,
@@ -258,12 +265,12 @@ describe('Billing payments', () => {
     expect(recorded.status).toBe(201);
 
     const paymentId = recorded.body.data.paymentId as string;
-    const refund = await request(app)
-      .post(`/api/v1/admin/payments/${paymentId}/refund`)
+    const cancelled = await request(app)
+      .post(`/api/v1/admin/payments/${paymentId}/cancel`)
       .set('Authorization', `Bearer ${setup.ctx.token}`)
       .send({ reason: 'Duplicate entry' });
-    expect(refund.status).toBe(200);
-    expect(refund.body.data.status).toBe('REFUNDED');
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.data.status).toBe('REFUNDED');
 
     const payment = await PaymentModel.findById(paymentId).lean();
     expect(payment?.status).toBe('REFUNDED');
@@ -580,6 +587,97 @@ describe('Billing payments', () => {
     expect(settled.body.data.outstandingPrincipalPaise).toBe(0);
     expect(settled.body.data.totalPayablePaise).toBe(0);
     expect(await ReceiptModel.countDocuments({ billId: setup.billId })).toBe(2);
+
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
+    resetEnvCache();
+    loadEnv();
+  });
+
+  it('records office payments by months, including advance coverage', async () => {
+    process.env.OFFLINE_PAYMENTS_ENABLED = 'true';
+    resetEnvCache();
+    loadEnv();
+
+    const ctx = await createAdminContext(app, 'pay-months-admin@example.com', 'PAYMTH');
+    const { flats } = await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'M',
+      flatRates: [4000, 4000],
+    });
+    const firstOwner = await createUser({
+      email: 'pay-months-one@example.com',
+      roles: ['OWNER'],
+      societyId: ctx.societyId,
+    });
+    const secondOwner = await createUser({
+      email: 'pay-months-six@example.com',
+      roles: ['OWNER'],
+      societyId: ctx.societyId,
+    });
+    await FlatModel.updateOne(
+      { _id: flats[0]._id },
+      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: firstOwner._id },
+    );
+    await FlatModel.updateOne(
+      { _id: flats[1]._id },
+      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: secondOwner._id },
+    );
+
+    const generated = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ billingPeriodStart: '2027-01-01T00:00:00.000+05:30', numberOfMonths: 3 });
+    expect(generated.status).toBe(201);
+    const firstBill = generated.body.data.created.find(
+      (row: { flatId: string }) => row.flatId === String(flats[0]._id),
+    );
+    const secondBill = generated.body.data.created.find(
+      (row: { flatId: string }) => row.flatId === String(flats[1]._id),
+    );
+
+    const oneMonth = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billId: firstBill.id,
+        monthsPaid: 1,
+        paidAt: '2027-01-12T10:00:00.000+05:30',
+        paymentMethod: 'CASH',
+        idempotencyKey: 'months-one',
+      });
+    expect(oneMonth.status).toBe(201);
+    expect(oneMonth.body.data.paidMonths).toBe(1);
+    expect(oneMonth.body.data.pendingMonths).toBe(2);
+    const afterOne = await BillModel.findById(firstBill.id).lean();
+    expect(afterOne?.status).toBe('PARTIALLY_PAID');
+    expect(afterOne?.amountPaidPaise).toBe(400_000);
+    expect(afterOne?.outstandingPrincipalPaise).toBe(800_000);
+
+    const sixMonths = await request(app)
+      .post('/api/v1/admin/payments/offline')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billId: secondBill.id,
+        monthsPaid: 6,
+        paidAt: '2027-01-12T10:00:00.000+05:30',
+        paymentMethod: 'CASH',
+        idempotencyKey: 'months-six',
+      });
+    expect(sixMonths.status).toBe(201);
+    expect(sixMonths.body.data.paidMonths).toBe(3);
+    expect(sixMonths.body.data.pendingMonths).toBe(0);
+    expect(sixMonths.body.data.advanceBills).toHaveLength(1);
+
+    const current = await BillModel.findById(secondBill.id).lean();
+    expect(current?.status).toBe('PAID');
+    expect(current?.outstandingPrincipalPaise).toBe(0);
+
+    const advance = await BillModel.findById(sixMonths.body.data.advanceBills[0].billId).lean();
+    expect(advance?.numberOfMonths).toBe(3);
+    expect(advance?.status).toBe('PAID');
+    expect(advance?.billingPeriodStart.toISOString()).toBe(
+      new Date('2027-04-01T00:00:00.000+05:30').toISOString(),
+    );
 
     process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
     resetEnvCache();

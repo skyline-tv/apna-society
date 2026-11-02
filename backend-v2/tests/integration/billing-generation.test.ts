@@ -246,6 +246,67 @@ describe('Bill generation', () => {
     );
   });
 
+  it('generates six-month and twelve-month prepaid bills', async () => {
+    const ctx = await createAdminContext(app, 'bill-12m@example.com', 'BILL_12M');
+    const { flats } = await createWingWithFlats({
+      societyId: ctx.societyId,
+      code: 'C',
+      flatRates: [4000, 4000],
+    });
+    const sixOwner = await createUser({
+      email: 'owner-6m@example.com',
+      roles: ['OWNER'],
+      societyId: ctx.societyId,
+    });
+    const yearOwner = await createUser({
+      email: 'owner-12m@example.com',
+      roles: ['OWNER'],
+      societyId: ctx.societyId,
+    });
+    await FlatModel.updateOne(
+      { _id: flats[0]._id },
+      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: sixOwner._id },
+    );
+    await FlatModel.updateOne(
+      { _id: flats[1]._id },
+      { occupancyStatus: 'OWNER_OCCUPIED', activeOwnerUserId: yearOwner._id },
+    );
+
+    const six = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        billingPeriodStart: '2026-01-01T00:00:00.000+05:30',
+        numberOfMonths: 6,
+      });
+    expect(six.status).toBe(201);
+    expect(six.body.data.createdCount).toBe(2);
+    expect(six.body.data.created[0].numberOfMonths).toBe(6);
+    expect(six.body.data.created[0].totalAmountPaise).toBe(2_400_000);
+    expect(six.body.data.periodEnd).toBe(
+      new Date('2026-06-30T23:59:59.999+05:30').toISOString(),
+    );
+
+    const year = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ billingPeriodStart: '2026-07-01T00:00:00.000+05:30', numberOfMonths: 12 });
+    expect(year.status).toBe(201);
+    expect(year.body.data.createdCount).toBe(2);
+    expect(year.body.data.created[0].numberOfMonths).toBe(12);
+    expect(year.body.data.created[0].totalAmountPaise).toBe(4_800_000);
+    expect(year.body.data.periodEnd).toBe(
+      new Date('2027-06-30T23:59:59.999+05:30').toISOString(),
+    );
+
+    const rejected = await request(app)
+      .post('/api/v1/admin/billing/generate')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ billingPeriodStart: '2026-01-01T00:00:00.000+05:30', numberOfMonths: 13 });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('rejects overlapping duplicate billing periods and leaves seed rates unchanged', async () => {
     const ctx = await createAdminContext(app, 'bill-dup@example.com', 'BILL_DUP');
     await seedMonarchLikeSociety(ctx.societyId);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OCCUPANCY_STATUSES } from '../../../config/constants';
-import { BILL_STATUSES } from '../models/bill.model';
+import { BILLING_MONTH_COUNTS, BILL_STATUSES } from '../models/bill.model';
 import { OFFICE_PAYMENT_METHODS, PAYMENT_STATUSES } from '../models/payment.model';
 
 const optionalBoolQuery = z
@@ -12,7 +12,12 @@ const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid ObjectId');
 
 export const generateBillsSchema = z.object({
   billingPeriodStart: z.coerce.date(),
-  numberOfMonths: z.union([z.literal(1), z.literal(3)]),
+  numberOfMonths: z.coerce
+    .number()
+    .int()
+    .refine((n) => (BILLING_MONTH_COUNTS as readonly number[]).includes(n), {
+      message: 'numberOfMonths must be between 1 and 12',
+    }),
   dueDate: z.coerce.date().optional(),
   notes: z.string().trim().max(2000).optional(),
 });
@@ -71,20 +76,26 @@ export const cancelBillSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-export const offlinePaymentSchema = z.object({
-  billId: objectId,
-  amountPaise: z.number().int().positive(),
-  paidAt: z.coerce.date(),
-  paymentMethod: z.enum(OFFICE_PAYMENT_METHODS).optional(),
-  referenceNumber: z
-    .string()
-    .trim()
-    .max(120)
-    .nullish()
-    .transform((value) => (value && value.length > 0 ? value : undefined)),
-  notes: z.string().trim().max(2000).optional(),
-  idempotencyKey: z.string().trim().min(1).max(120).optional(),
-});
+export const offlinePaymentSchema = z
+  .object({
+    billId: objectId,
+    amountPaise: z.number().int().positive().optional(),
+    monthsPaid: z.number().int().min(1).max(12).optional(),
+    paidAt: z.coerce.date(),
+    paymentMethod: z.enum(OFFICE_PAYMENT_METHODS).optional(),
+    referenceNumber: z
+      .string()
+      .trim()
+      .max(120)
+      .nullish()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    notes: z.string().trim().max(2000).optional(),
+    idempotencyKey: z.string().trim().min(1).max(120).optional(),
+  })
+  .refine((value) => value.amountPaise != null || value.monthsPaid != null, {
+    message: 'amountPaise or monthsPaid is required',
+    path: ['amountPaise'],
+  });
 export type OfflinePaymentInput = z.infer<typeof offlinePaymentSchema>;
 
 export const listPaymentsQuerySchema = z.object({

@@ -127,7 +127,8 @@ class BillingApi {
     );
   }
 
-  Future<PaymentSummary> refundPayment(
+  /// Cancels a mistaken office-recorded payment. Uses the existing reversal route.
+  Future<PaymentCancelResult> cancelPayment(
     String paymentId, {
     required String reason,
     String? societyId,
@@ -136,13 +137,14 @@ class BillingApi {
       '$_admin/payments/$paymentId/refund',
       societyId: societyId,
       body: {'reason': reason.trim()},
-      decode: (data) => PaymentSummary.fromJson(requireMap(data, 'payment')),
+      decode: PaymentCancelResult.fromJson,
     );
   }
 
   Future<PaymentSettlement> recordOfflinePayment({
     required String billId,
-    required int amountPaise,
+    int? amountPaise,
+    int? monthsPaid,
     required String paidAt,
     String? referenceNumber,
     String? paymentMethod,
@@ -155,6 +157,7 @@ class BillingApi {
       body: omitNulls({
         'billId': billId,
         'amountPaise': amountPaise,
+        'monthsPaid': monthsPaid,
         'paidAt': paidAt,
         'paymentMethod': paymentMethod,
         'referenceNumber': referenceNumber,

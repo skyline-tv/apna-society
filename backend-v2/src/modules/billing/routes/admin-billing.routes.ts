@@ -16,7 +16,7 @@ import {
   listBillsHandler,
   listPaymentsHandler,
   offlinePaymentHandler,
-  refundPaymentHandler,
+  cancelPaymentHandler,
 } from '../controllers/admin-billing.controller';
 import {
   createAdditionalServiceHandler,
@@ -135,10 +135,16 @@ router.get(
   asyncHandler(getPaymentHandler),
 );
 router.post(
+  '/payments/:paymentId/cancel',
+  validateParams(paymentIdParamSchema),
+  validateBody(refundPaymentSchema),
+  asyncHandler(cancelPaymentHandler),
+);
+router.post(
   '/payments/:paymentId/refund',
   validateParams(paymentIdParamSchema),
   validateBody(refundPaymentSchema),
-  asyncHandler(refundPaymentHandler),
+  asyncHandler(cancelPaymentHandler),
 );
 
 router.get(

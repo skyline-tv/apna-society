@@ -13,6 +13,9 @@ export type BillStatus = (typeof BILL_STATUSES)[number];
 export const BILL_LINE_ITEM_TYPES = ['MAINTENANCE', 'ADDITIONAL_SERVICE', 'ADJUSTMENT'] as const;
 export type BillLineItemType = (typeof BILL_LINE_ITEM_TYPES)[number];
 
+export const BILLING_MONTH_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+export type BillingMonthCount = (typeof BILLING_MONTH_COUNTS)[number];
+
 export interface BillLineItem {
   type: BillLineItemType;
   serviceId?: Types.ObjectId;
@@ -74,7 +77,7 @@ const billSchema = new Schema<BillDocument>(
     billNumber: { type: String, required: true, trim: true },
     billingPeriodStart: { type: Date, required: true },
     billingPeriodEnd: { type: Date, required: true },
-    numberOfMonths: { type: Number, required: true, enum: [1, 3] },
+    numberOfMonths: { type: Number, required: true, enum: [...BILLING_MONTH_COUNTS] },
     ownerUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     ownerNameSnapshot: { type: String, required: true, default: 'Unassigned' },
     ownerEmailSnapshot: { type: String, required: true, default: 'unassigned' },

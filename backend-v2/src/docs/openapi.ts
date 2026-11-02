@@ -713,7 +713,7 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/admin/billing/generate`]: {
           post: {
             tags: ['Admin Billing'],
-            summary: 'Generate monthly or 3-month prepaid maintenance bills',
+            summary: 'Generate 1- to 12-month prepaid maintenance bills',
             description:
               'Bills every configured flat. Idempotent for overlapping periods (conflicts returned, not overwritten). Optional dueDate defaults to the 10th of the first billing month (end of day, society timezone). Interest starts the following civil day. Historical bills are never rewritten.',
             security: adminSecurity,
@@ -726,7 +726,7 @@ export function buildOpenApiSpec() {
                     required: ['billingPeriodStart', 'numberOfMonths'],
                     properties: {
                       billingPeriodStart: { type: 'string', format: 'date-time', example: '2026-04-01T00:00:00.000+05:30' },
-                      numberOfMonths: { type: 'integer', enum: [1, 3] },
+                      numberOfMonths: { type: 'integer', minimum: 1, maximum: 12 },
                       dueDate: {
                         type: 'string',
                         format: 'date-time',
@@ -820,6 +820,15 @@ export function buildOpenApiSpec() {
             security: adminSecurity,
             parameters: [{ name: 'paymentId', in: 'path', required: true, schema: { type: 'string' } }],
             responses: { 200: { description: 'Payment' }, ...errorResponses },
+          },
+        },
+        [`${API_PREFIX}/admin/payments/{paymentId}/cancel`]: {
+          post: {
+            tags: ['Admin Payments'],
+            summary: 'Cancel a mistaken office-recorded payment (cash, cheque, NEFT, or UPI)',
+            security: adminSecurity,
+            parameters: [{ name: 'paymentId', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: { 200: { description: 'Cancelled payment' }, ...errorResponses },
           },
         },
         [`${API_PREFIX}/admin/receipts/{receiptId}`]: {

@@ -110,9 +110,7 @@ class ApiConfig {
             ApiFlavor.demo => _normalizeBaseUrl(
                 demoBaseUrl.isNotEmpty
                     ? demoBaseUrl
-                    : (kReleaseMode
-                        ? 'https://demo-apiapnasociety.skylinetv.in'
-                        : 'http://192.168.1.130:4001'),
+                    : 'https://demo-apiapnasociety.skylinetv.in',
               ),
           };
     if (baseUrl.isEmpty) {

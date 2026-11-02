@@ -16,8 +16,8 @@ import {
   getReceiptForPayment,
   listPayments,
   listReceipts,
+  cancelOfficePayment,
   recordOfflinePayment,
-  refundPayment,
 } from '../services/payment.service';
 import type {
   AdjustBillInput,
@@ -114,8 +114,8 @@ export async function getPaymentHandler(req: Request, res: Response): Promise<vo
   res.json({ success: true, data });
 }
 
-export async function refundPaymentHandler(req: Request, res: Response): Promise<void> {
-  const data = await refundPayment(
+export async function cancelPaymentHandler(req: Request, res: Response): Promise<void> {
+  const data = await cancelOfficePayment(
     getRequestSocietyId(req),
     String(req.params.paymentId),
     String((req.body as { reason: string }).reason),

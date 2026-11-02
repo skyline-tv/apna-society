@@ -30,7 +30,12 @@ void main() {
         expect(mainSrc.contains(needle), isFalse, reason: needle);
       }
       expect(mainSrc.contains('LiveAdminGuardsPage'), isTrue);
-      expect(mainSrc.contains('Security guards'), isTrue);
+      expect(
+        File('lib/features/admin/admin_more_page.dart')
+            .readAsStringSync()
+            .contains('Security guards'),
+        isTrue,
+      );
     });
 
     test('legacy AdminMorePage no longer lists removed modules', () {

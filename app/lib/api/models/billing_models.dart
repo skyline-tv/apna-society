@@ -466,6 +466,10 @@ class PaymentSettlement {
     this.billStatus,
     this.outstandingPrincipalPaise,
     this.ownerUserId,
+    this.monthsPaid,
+    this.paidMonths,
+    this.pendingMonths,
+    this.advanceBills = const [],
   });
 
   final String paymentId;
@@ -474,9 +478,14 @@ class PaymentSettlement {
   final String? billStatus;
   final int? outstandingPrincipalPaise;
   final String? ownerUserId;
+  final int? monthsPaid;
+  final int? paidMonths;
+  final int? pendingMonths;
+  final List<AdvanceBillPayment> advanceBills;
 
   factory PaymentSettlement.fromJson(Object? data) {
     final json = requireMap(data, 'payment settlement');
+    final extras = json['advanceBills'];
     return PaymentSettlement(
       paymentId: requireString(json, 'paymentId'),
       alreadySettled: requireBool(json, 'alreadySettled'),
@@ -484,6 +493,38 @@ class PaymentSettlement {
       billStatus: optionalString(json, 'billStatus'),
       outstandingPrincipalPaise: optionalInt(json, 'outstandingPrincipalPaise'),
       ownerUserId: optionalString(json, 'ownerUserId'),
+      monthsPaid: optionalInt(json, 'monthsPaid'),
+      paidMonths: optionalInt(json, 'paidMonths'),
+      pendingMonths: optionalInt(json, 'pendingMonths'),
+      advanceBills: extras is List
+          ? extras
+              .map((item) =>
+                  AdvanceBillPayment.fromJson(requireMap(item, 'advance bill')))
+              .toList()
+          : const [],
+    );
+  }
+}
+
+class AdvanceBillPayment {
+  const AdvanceBillPayment({
+    required this.billId,
+    required this.paymentId,
+    this.receiptId,
+    required this.numberOfMonths,
+  });
+
+  final String billId;
+  final String paymentId;
+  final String? receiptId;
+  final int numberOfMonths;
+
+  factory AdvanceBillPayment.fromJson(JsonMap json) {
+    return AdvanceBillPayment(
+      billId: requireString(json, 'billId'),
+      paymentId: requireString(json, 'paymentId'),
+      receiptId: optionalString(json, 'receiptId'),
+      numberOfMonths: requireInt(json, 'numberOfMonths'),
     );
   }
 }
@@ -558,6 +599,27 @@ class PaymentSummary {
       wingCodeSnapshot: optionalString(json, 'wingCodeSnapshot'),
       flatNumberSnapshot: optionalString(json, 'flatNumberSnapshot'),
       flatLabel: optionalString(json, 'flatLabel'),
+    );
+  }
+}
+
+class PaymentCancelResult {
+  const PaymentCancelResult({
+    required this.paymentId,
+    required this.status,
+    this.refundedAt,
+  });
+
+  final String paymentId;
+  final String status;
+  final String? refundedAt;
+
+  factory PaymentCancelResult.fromJson(Object? data) {
+    final json = requireMap(data, 'payment cancel');
+    return PaymentCancelResult(
+      paymentId: requireString(json, 'paymentId'),
+      status: requireString(json, 'status'),
+      refundedAt: optionalString(json, 'refundedAt'),
     );
   }
 }
@@ -976,6 +1038,52 @@ class UpdateAdditionalServiceRequest {
 ///
 /// Fully settled bills always return 0 even if a stale `totalPayablePaise`
 /// or lifetime `interestAccruedPaise` is still present on the payload.
+int billPaidMonths(Bill bill) {
+  if (bill.status == 'PAID' ||
+      bill.status == 'CANCELLED' ||
+      bill.outstandingPrincipalPaise <= 0) {
+    return bill.numberOfMonths;
+  }
+  if (bill.monthlyRatePaise <= 0 || bill.numberOfMonths <= 0) return 0;
+  final paidTowardBase = bill.amountPaidPaise < bill.baseAmountPaise
+      ? (bill.amountPaidPaise < 0 ? 0 : bill.amountPaidPaise)
+      : bill.baseAmountPaise;
+  final paid = paidTowardBase ~/ bill.monthlyRatePaise;
+  if (paid < 0) return 0;
+  if (paid > bill.numberOfMonths) return bill.numberOfMonths;
+  return paid;
+}
+
+int billPendingMonths(Bill bill) {
+  final pending = bill.numberOfMonths - billPaidMonths(bill);
+  return pending < 0 ? 0 : pending;
+}
+
+String billMonthsProgressLabel(Bill bill) {
+  final paid = billPaidMonths(bill);
+  final total = bill.numberOfMonths;
+  if (total <= 0) return '';
+  if (paid >= total) return '$total of $total months paid';
+  return '$paid of $total months paid · ${total - paid} pending';
+}
+
+int billEstimateForMonthsPaise(Bill bill, int monthsPaid) {
+  if (monthsPaid <= 0) return 0;
+  final pending = billPendingMonths(bill);
+  final extra = pending == 0 ? monthsPaid : (monthsPaid > pending ? monthsPaid - pending : 0);
+  final onBill = pending == 0 ? 0 : (monthsPaid < pending ? monthsPaid : pending);
+  var amount = 0;
+  if (pending == 0 && billAmountDuePaise(bill) > 0) {
+    amount += billAmountDuePaise(bill);
+  } else if (onBill > 0) {
+    amount += onBill >= pending
+        ? billAmountDuePaise(bill)
+        : onBill * bill.monthlyRatePaise;
+  }
+  if (extra > 0) amount += extra * bill.monthlyRatePaise;
+  return amount;
+}
+
 int billAmountDuePaise(Bill bill) {
   if (bill.status == 'PAID' || bill.status == 'CANCELLED') return 0;
   if (bill.totalPayablePaise != null) return bill.totalPayablePaise!;

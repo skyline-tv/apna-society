@@ -56,8 +56,8 @@ void main() {
       expect(billAmountDuePaise(page.items.first), 400000 + 1200);
     });
 
-    test('generates 1-month and 3-month bills', () async {
-      for (final months in [1, 3]) {
+    test('generates 1-month through 12-month bills', () async {
+      for (final months in [1, 6, 12]) {
         final adapter = ScriptedAdapter((options) async {
           expect(options.path.endsWith('/billing/generate'), isTrue);
           expect(options.data['numberOfMonths'], months);
@@ -382,6 +382,25 @@ void main() {
       await repo.cancelBill(billId, reason: 'Duplicate');
     });
 
+    test('month progress helpers for partial prepaid bills', () {
+      final bill = Bill.fromJson({
+        ..._bill(billId, flatId, status: 'PARTIALLY_PAID'),
+        'numberOfMonths': 3,
+        'baseAmountPaise': 1200000,
+        'totalAmountPaise': 1200000,
+        'amountPaidPaise': 400000,
+        'outstandingPrincipalPaise': 800000,
+        'interestAccruedPaise': 0,
+        'billingPeriodEnd': '2026-06-30T18:29:59.999Z',
+      });
+      expect(billPaidMonths(bill), 1);
+      expect(billPendingMonths(bill), 2);
+      expect(billMonthsProgressLabel(bill), '1 of 3 months paid · 2 pending');
+      expect(billEstimateForMonthsPaise(bill, 1), 400000);
+      expect(billEstimateForMonthsPaise(bill, 2), 800000);
+      expect(billEstimateForMonthsPaise(bill, 6), 2400000);
+    });
+
     test('offline settlement and duplicate lock', () async {
       final adapter = ScriptedAdapter((options) async {
         expect(options.path.endsWith('/payments/offline'), isTrue);
@@ -406,6 +425,31 @@ void main() {
       );
       expect(result.receiptId, isNotNull);
       expect(repo.paymentSubmitLocked, isFalse);
+    });
+
+    test('cancels a mistaken office payment', () async {
+      final adapter = ScriptedAdapter((options) async {
+        expect(
+          options.path.endsWith('/payments/507f1f77bcf86cd799439051/refund'),
+          isTrue,
+        );
+        expect(options.data['reason'], 'Recorded on the wrong flat');
+        return jsonBody(200, {
+          'success': true,
+          'data': {
+            'paymentId': '507f1f77bcf86cd799439051',
+            'status': 'REFUNDED',
+            'refundedAt': '2026-04-11T12:00:00.000Z',
+          },
+        });
+      });
+      final repo = BillingRepository(_api(adapter).billing);
+      final result = await repo.cancelPayment(
+        '507f1f77bcf86cd799439051',
+        reason: 'Recorded on the wrong flat',
+      );
+      expect(result.status, 'REFUNDED');
+      expect(repo.lastAdminPayments, isNull);
     });
   });
 

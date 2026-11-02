@@ -10,6 +10,18 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const OFFICE_PAYMENT_METHODS = ['CASH', 'CHEQUE', 'NEFT', 'UPI'] as const;
 export type OfficePaymentMethod = (typeof OFFICE_PAYMENT_METHODS)[number];
 
+const OFFICE_RECORDED_METHODS = new Set<string>([...OFFICE_PAYMENT_METHODS, 'OFFLINE']);
+
+/** Office ledger entries (no gateway order) that an admin can cancel if recorded by mistake. */
+export function isOfficeRecordedPayment(payment: {
+  paymentMethod: string;
+  gatewayOrderId?: string | null;
+}): boolean {
+  const orderId = payment.gatewayOrderId?.trim();
+  if (orderId) return false;
+  return OFFICE_RECORDED_METHODS.has(payment.paymentMethod);
+}
+
 export interface PaymentDocument extends Document {
   societyId: Types.ObjectId;
   billId: Types.ObjectId;
