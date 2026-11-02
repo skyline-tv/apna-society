@@ -17,6 +17,7 @@ import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import '../admin/admin_bill_detail_page.dart';
 import '../admin/admin_bills_page.dart';
+import '../admin/admin_offline_payment_page.dart';
 import '../admin/admin_dashboard.dart';
 import '../admin/admin_payments_page.dart';
 import '../residents/admin_residents_module.dart';
@@ -1636,15 +1637,95 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   final notes = TextEditingController();
   late int monthsPaid =
       billPendingMonths(widget.bill) == 0 ? 1 : billPendingMonths(widget.bill);
+  late final monthsInput = TextEditingController(
+    text: adminOfflineMonthsFieldText(monthsPaid),
+  );
+  final monthsFocus = FocusNode();
   String method = 'CASH';
+  DateTime paidAt = DateTime.now();
+  bool monthsMenuOpen = true;
   bool busy = false;
   String? error;
 
   @override
+  void initState() {
+    super.initState();
+    monthsFocus.addListener(_onMonthsFocusChange);
+  }
+
+  @override
   void dispose() {
+    monthsFocus.removeListener(_onMonthsFocusChange);
+    monthsFocus.dispose();
     reference.dispose();
     notes.dispose();
+    monthsInput.dispose();
     super.dispose();
+  }
+
+  void _onMonthsFocusChange() {
+    if (!mounted || monthsFocus.hasFocus) return;
+    final parsed = parseOfflineMonthsInput(monthsInput.text);
+    _commitMonths(parsed ?? monthsPaid);
+  }
+
+  void _setMonths(int months) {
+    _commitMonths(months);
+  }
+
+  void _commitMonths(int months) {
+    if (!mounted) return;
+    final label = adminOfflineMonthsFieldText(months);
+    setState(() {
+      monthsPaid = months;
+      monthsInput.value = TextEditingValue(
+        text: label,
+        selection: TextSelection.collapsed(offset: label.length),
+      );
+    });
+    _closeMonthsMenuAfterFrame();
+  }
+
+  void _closeMonthsMenuAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !monthsMenuOpen) return;
+      setState(() => monthsMenuOpen = false);
+    });
+  }
+
+  void _onMonthsTyped(String value) {
+    final parsed = parseOfflineMonthsInput(value);
+    if (parsed == null) return;
+    if (isCompleteOfflineMonthsInput(value)) {
+      setState(() => monthsPaid = parsed);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _commitMonths(parsed);
+      });
+      return;
+    }
+    setState(() => monthsPaid = parsed);
+  }
+
+  void _onMonthsFieldTap() {
+    monthsInput.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: monthsInput.text.length,
+    );
+    if (!monthsMenuOpen) setState(() => monthsMenuOpen = true);
+  }
+
+  Future<void> _pickPaidAt() async {
+    final now = DateTime.now();
+    final initial = paidAt.isAfter(now) ? now : paidAt;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      helpText: 'Payment date',
+    );
+    if (picked != null && mounted) setState(() => paidAt = picked);
   }
 
   String get _monthsPreview {
@@ -1670,6 +1751,12 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
 
   Future<void> submit() async {
     FocusManager.instance.primaryFocus?.unfocus();
+    final typedMonths = parseOfflineMonthsInput(monthsInput.text);
+    if (typedMonths != null && typedMonths != monthsPaid) {
+      _setMonths(typedMonths);
+    } else if (typedMonths == null) {
+      _setMonths(monthsPaid);
+    }
     if (!(_form.currentState?.validate() ?? false)) return;
     final amountPaise = billEstimateForMonthsPaise(widget.bill, monthsPaid);
     final ok = await confirmDialog(
@@ -1701,7 +1788,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           .recordOfflinePayment(
             billId: widget.bill.id,
             monthsPaid: monthsPaid,
-            paidAt: DateTime.now().toUtc().toIso8601String(),
+            paidAt: civilDateToIso(paidAt),
             paymentMethod: method,
             referenceNumber: referenceNumber,
             notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
@@ -1733,112 +1820,170 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
   @override
   Widget build(BuildContext context) {
     final bill = widget.bill;
-    return FormScaffold(
-      title: 'Record offline payment',
-      formKey: _form,
-      bottom: PrimaryButton(
-        label: 'Review & record',
-        icon: Icons.check_rounded,
-        busy: busy,
-        onPressed: submit,
+    final estimate = moneyPaise(billEstimateForMonthsPaise(bill, monthsPaid));
+    const caption =
+        'Choose how many months were received. Extra months beyond this bill are created and marked paid. Additional services on advance bills are included on the server.';
+    return Scaffold(
+      backgroundColor: kOfflineCream,
+      appBar: AppBar(
+        backgroundColor: kOfflineCream,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        toolbarHeight: 72,
+        leading: IconButton(
+          tooltip: 'Go back',
+          onPressed: () => Navigator.maybePop(context),
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: kOfflineNavy,
+            side: const BorderSide(color: kOfflineBorder),
+          ),
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        titleSpacing: 8,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Record offline payment',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+                height: 1.2,
+              ),
+            ),
+            Text(
+              '$kSocietyName · Flat ${bill.flatLabel}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+                color: kOfflineNavy,
+              ),
+            ),
+          ],
+        ),
+        actions: const [AdminOfflineActiveBadge()],
       ),
-      children: [
-        ReviewSummary(
-          title: 'Applying to',
-          rows: [
-            ('Bill', bill.billNumber),
-            ('Flat', bill.flatLabel),
-            ('Period', _periodLabel(bill)),
-            (
-              'Outstanding principal',
-              moneyPaise(bill.outstandingPrincipalPaise)
-            ),
-            ('Accrued interest', moneyPaise(bill.interestAccruedPaise)),
-            (
-              'Months',
-              billMonthsProgressLabel(bill),
-            ),
-            ('Amount due', moneyPaise(billAmountDuePaise(bill))),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const FormSectionLabel('Payment received'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final option in _offlinePaymentMethods)
-              AppFilterChip(
-                label: option.$2,
-                selected: method == option.$1,
-                onSelected:
-                    busy ? () {} : () => setState(() => method = option.$1),
+      body: KeyboardDismissOnTap(
+        child: Form(
+          key: _form,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            children: [
+              AdminOfflineBillCard(
+                billNumber: bill.billNumber,
+                flatLabel: bill.flatLabel,
+                period: _periodLabel(bill),
+                principal: moneyPaise(bill.outstandingPrincipalPaise),
+                interest: moneyPaise(bill.interestAccruedPaise),
+                monthsLabel: billMonthsProgressLabel(bill),
+                amountDue: moneyPaise(billAmountDuePaise(bill)),
               ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        const FormSectionLabel('Months paid'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (var m = 1; m <= 12; m++)
-              AppFilterChip(
-                label: m == 1 ? '1 month' : '$m months',
-                selected: monthsPaid == m,
-                onSelected: busy ? () {} : () => setState(() => monthsPaid = m),
+              const SizedBox(height: 22),
+              AdminOfflineMethodPills(
+                methods: _offlinePaymentMethods,
+                selected: method,
+                enabled: !busy,
+                onSelected: (value) => setState(() => method = value),
               ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '${moneyPaise(billEstimateForMonthsPaise(bill, monthsPaid))} · $_monthsPreview',
-          style: T.secondary,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Choose how many months were received. Extra months beyond this bill are created and marked paid. Additional services on advance bills are included on the server.',
-          style: T.caption,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: reference,
-          enabled: !busy,
-          textCapitalization: TextCapitalization.characters,
-          textInputAction: TextInputAction.next,
-          decoration: InputDecoration(
-            labelText: method == 'CHEQUE'
-                ? 'Cheque number'
-                : method == 'NEFT'
-                    ? 'NEFT / UTR'
-                    : method == 'UPI'
-                        ? 'UPI reference'
-                        : 'Reference number',
-            hintText: method == 'CHEQUE'
-                ? 'Cheque number'
-                : method == 'NEFT'
-                    ? 'Bank UTR'
-                    : method == 'UPI'
-                        ? 'UPI transaction ID'
-                        : 'Receipt book or slip number',
-            prefixIcon: const Icon(Icons.tag_rounded),
+              const SizedBox(height: 22),
+              AdminOfflineMonthsPicker(
+                controller: monthsInput,
+                focusNode: monthsFocus,
+                selectedMonths: monthsPaid,
+                expanded: monthsMenuOpen,
+                options: adminOfflineMonthOptions(
+                  bill: bill,
+                  selected: monthsPaid,
+                ),
+                preview: '$estimate · $_monthsPreview',
+                caption: caption,
+                enabled: !busy,
+                onToggle: () =>
+                    setState(() => monthsMenuOpen = !monthsMenuOpen),
+                onSelected: (months) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    _commitMonths(months);
+                  });
+                },
+                onTap: _onMonthsFieldTap,
+                onChanged: _onMonthsTyped,
+                onSubmitted: (value) {
+                  final parsed = parseOfflineMonthsInput(value);
+                  _setMonths(parsed ?? monthsPaid);
+                },
+              ),
+              const SizedBox(height: 22),
+              AdminOfflineDateField(
+                label: adminOfflinePaymentDateLabel(paidAt),
+                enabled: !busy,
+                onChange: _pickPaidAt,
+              ),
+              const SizedBox(height: 16),
+              AdminOfflineLabeledField(
+                label: 'TRANSACTION / RECEIPT REFERENCE',
+                child: TextFormField(
+                  controller: reference,
+                  enabled: !busy,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.next,
+                  decoration: adminOfflineInputDecoration(
+                    hintText: method == 'CHEQUE'
+                        ? 'Cheque number'
+                        : method == 'NEFT'
+                            ? 'Bank UTR'
+                            : method == 'UPI'
+                                ? 'UPI transaction ID'
+                                : 'e.g. UTR / Cheque / Cash Slip No.',
+                    prefixIcon: const Icon(
+                      Icons.receipt_long_outlined,
+                      color: Color(0xFF94A3B8),
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              AdminOfflineLabeledField(
+                label: 'INTERNAL REMARKS / NOTES',
+                child: TextFormField(
+                  controller: notes,
+                  enabled: !busy,
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => busy ? null : submit(),
+                  decoration: adminOfflineInputDecoration(
+                    hintText:
+                        'Add internal notes (e.g. handed over by resident at society clubhouse office)...',
+                  ),
+                ),
+              ),
+              InlineError(error),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: notes,
-          enabled: !busy,
-          maxLines: 2,
-          textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          onFieldSubmitted: (_) => busy ? null : submit(),
-          decoration: const InputDecoration(
-            labelText: 'Notes',
-            alignLabelWithHint: true,
+      ),
+      bottomNavigationBar: BottomActionBar(
+        children: [
+          PrimaryButton(
+            label: 'Review & record',
+            icon: Icons.check_rounded,
+            color: kOfflineNavy,
+            busy: busy,
+            onPressed: submit,
           ),
-        ),
-        InlineError(error),
-      ],
+        ],
+      ),
     );
   }
 }

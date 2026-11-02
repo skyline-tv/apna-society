@@ -34,6 +34,36 @@ import { buildReceiptPdf } from './pdf.service';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
 
+export type OfflinePaymentResult = {
+  paymentId: string;
+  alreadySettled: boolean;
+  receiptId?: string;
+  status?: string;
+  billStatus?: string;
+  outstandingPrincipalPaise?: number;
+  ownerUserId?: string;
+  monthsPaid?: number;
+  paidMonths?: number;
+  pendingMonths?: number;
+  advanceBills?: Array<{
+    billId: string;
+    paymentId: string;
+    receiptId?: string;
+    numberOfMonths: number;
+  }>;
+};
+
+type OfflinePaymentInput = {
+  billId: string;
+  amountPaise?: number;
+  monthsPaid?: number;
+  paidAt: Date;
+  paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
+  referenceNumber?: string;
+  notes?: string;
+  idempotencyKey?: string;
+};
+
 function maybeForceTransactionFailure(step: string): void {
   if (process.env.NODE_ENV !== 'test') return;
   if (process.env.TEST_FORCED_TRANSACTION_FAILURE === step) {
@@ -685,18 +715,9 @@ export async function handleGatewayWebhook(
 
 export async function recordOfflinePayment(
   societyId: string,
-  input: {
-    billId: string;
-    amountPaise?: number;
-    monthsPaid?: number;
-    paidAt: Date;
-    paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
-    referenceNumber?: string;
-    notes?: string;
-    idempotencyKey?: string;
-  },
+  input: OfflinePaymentInput,
   actor: Actor,
-) {
+): Promise<OfflinePaymentResult> {
   if (input.monthsPaid != null) {
     return recordOfflineMonthsPayment(societyId, input, actor);
   }
@@ -756,7 +777,7 @@ export async function recordOfflinePayment(
     return doc;
   });
 
-  return settleAndNotify({
+  const settled = await settleAndNotify({
     societyId,
     payment,
     gatewayPaymentId: payment.gatewayPaymentId ?? `offline_${payment.paymentNumber}`,
@@ -765,6 +786,10 @@ export async function recordOfflinePayment(
     actor,
     source: 'offline',
   });
+  if (!settled) {
+    throw conflict('Payment cannot be settled', 'PAYMENT_NOT_SETTLEABLE');
+  }
+  return settled;
 }
 
 async function currentBillDuePaise(
@@ -784,17 +809,9 @@ async function currentBillDuePaise(
 
 async function recordOfflineMonthsPayment(
   societyId: string,
-  input: {
-    billId: string;
-    monthsPaid?: number;
-    paidAt: Date;
-    paymentMethod?: 'CASH' | 'CHEQUE' | 'NEFT' | 'UPI' | 'OFFLINE';
-    referenceNumber?: string;
-    notes?: string;
-    idempotencyKey?: string;
-  },
+  input: OfflinePaymentInput,
   actor: Actor,
-) {
+): Promise<OfflinePaymentResult> {
   const monthsPaid = input.monthsPaid ?? 0;
   if (!Number.isInteger(monthsPaid) || monthsPaid < 1 || monthsPaid > 12) {
     throw badRequest('monthsPaid must be between 1 and 12', 'INVALID_BILLING_MONTHS');
@@ -864,7 +881,7 @@ async function recordOfflineMonthsPayment(
 
   const targets = [String(bill._id), ...advanceBills.map((row) => row.id)];
   let remaining = monthsPaid;
-  let firstResult: Awaited<ReturnType<typeof recordOfflinePayment>> | undefined;
+  let firstResult: OfflinePaymentResult | undefined;
   const extras: Array<{
     billId: string;
     paymentId: string;

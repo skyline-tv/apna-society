@@ -142,6 +142,38 @@ void main() {
     expect(find.text('Wing A (3)'), findsOneWidget);
     expect(find.text('Successful'), findsWidgets);
     expect(find.text('A-102'), findsOneWidget);
-    expect(find.text('Cash collected'), findsOneWidget);
+    expect(find.text('Cash collected'), findsNothing);
+    expect(find.text('Bank transfer'), findsNothing);
+  });
+
+  test('payment cards do not invent method remarks', () {
+    expect(adminPaymentCaption(cash), '');
+    expect(
+      adminPaymentCaption(PaymentSummary(
+        id: 'p4',
+        paymentNumber: 'PAY-2026-000005',
+        billId: 'b1',
+        amountPaise: 200000,
+        allocatedToPrincipalPaise: 200000,
+        allocatedToInterestPaise: 0,
+        paymentMethod: 'NEFT',
+        status: 'REFUNDED',
+      )),
+      '',
+    );
+    expect(
+      adminPaymentCaption(PaymentSummary(
+        id: 'p5',
+        paymentNumber: 'PAY-2026-000006',
+        billId: 'b1',
+        amountPaise: 200000,
+        allocatedToPrincipalPaise: 200000,
+        allocatedToInterestPaise: 0,
+        paymentMethod: 'CHEQUE',
+        status: 'SUCCESS',
+        referenceNumber: '1044',
+      )),
+      'Cheque #1044',
+    );
   });
 }

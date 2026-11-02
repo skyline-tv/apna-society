@@ -93,19 +93,10 @@ String adminPaymentStatusLabel(String status) {
 }
 
 String adminPaymentCaption(PaymentSummary payment) {
-  final method = payment.paymentMethod.toUpperCase();
   final ref = (payment.referenceNumber ?? '').trim();
-  if (method == 'CHEQUE') {
-    return ref.isEmpty ? 'Cheque' : 'Cheque #$ref';
-  }
-  if (ref.isNotEmpty) return ref;
-  if (method == 'CASH') return 'Cash collected';
-  if (method == 'OFFLINE') return 'Offline collection';
-  if (method == 'ONLINE' || method == 'RAZORPAY' || method == 'DEMO') {
-    return 'Settled online';
-  }
-  if (method == 'NEFT' || method == 'BANK_TRANSFER') return 'Bank transfer';
-  return '';
+  if (ref.isEmpty) return '';
+  if (payment.paymentMethod.toUpperCase() == 'CHEQUE') return 'Cheque #$ref';
+  return ref;
 }
 
 List<String> adminPaymentWings(Iterable<PaymentSummary> payments) {
