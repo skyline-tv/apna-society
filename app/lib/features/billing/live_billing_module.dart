@@ -1744,7 +1744,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
             ? 'This bill: $afterPaid paid · $afterPending pending'
             : 'This bill: paid in full',
       if (extra > 0)
-        '$extra extra month${extra == 1 ? '' : 's'} will be billed and marked paid',
+        '$extra extra month${extra == 1 ? '' : 's'} will be added to this bill and marked paid',
     ];
     return parts.join('. ');
   }
@@ -1822,7 +1822,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
     final bill = widget.bill;
     final estimate = moneyPaise(billEstimateForMonthsPaise(bill, monthsPaid));
     const caption =
-        'Choose how many months were received. Extra months beyond this bill are created and marked paid. Additional services on advance bills are included on the server.';
+        'Choose how many months were received. Extra months are added to this bill and marked paid. Additional services for the extra months are included on the server.';
     return Scaffold(
       backgroundColor: kOfflineCream,
       appBar: AppBar(

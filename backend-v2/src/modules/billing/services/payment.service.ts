@@ -24,10 +24,10 @@ import {
 import { ReceiptModel } from '../models/receipt.model';
 import { nextSequence } from '../models/sequence.model';
 import { getPaymentProvider } from '../providers/payment-provider.factory';
-import { nextPeriodStart, startOfCivilDay } from '../utils/billing-calendar';
+import { startOfCivilDay } from '../utils/billing-calendar';
 import { billedMonthsProgress } from '../utils/bill-months';
 import { unpaidInterestPaise } from '../utils/bill-totals';
-import { generateBillForFlat } from './bill-generation.service';
+import { extendBillForAdvanceMonths } from './bill-generation.service';
 import { computeInterestForBillWithEvents, getBillInterest } from './interest.service';
 import { assertBillFinancialInvariants } from './financial-invariants.service';
 import { buildReceiptPdf } from './pdf.service';
@@ -849,37 +849,11 @@ async function recordOfflineMonthsPayment(
       ? monthsPaid
       : Math.max(0, monthsPaid - currentProgress.pendingMonths);
 
-  const advanceBills: Array<{ id: string; numberOfMonths: number }> = [];
   if (extraMonths > 0) {
-    let start = nextPeriodStart(bill.billingPeriodEnd);
-    let pendingNeeded = extraMonths;
-    let guard = 0;
-    while (pendingNeeded > 0 && guard < 12) {
-      guard += 1;
-      const issued = await generateBillForFlat(
-        societyId,
-        {
-          flatId: String(bill.flatId),
-          billingPeriodStart: start,
-          numberOfMonths: Math.min(pendingNeeded, 12),
-          notes: 'Advance months from office payment',
-        },
-        actor,
-      );
-      advanceBills.push({ id: issued.bill.id, numberOfMonths: issued.bill.numberOfMonths });
-      const issuedDoc = await BillModel.findById(issued.bill.id);
-      if (!issuedDoc) throw notFound('Advance bill not found');
-      const progress = billedMonthsProgress(issuedDoc);
-      if (progress.pendingMonths <= 0 && issuedDoc.outstandingPrincipalPaise <= 0) {
-        start = nextPeriodStart(issuedDoc.billingPeriodEnd);
-        continue;
-      }
-      pendingNeeded -= Math.max(progress.pendingMonths, 0);
-      start = nextPeriodStart(issuedDoc.billingPeriodEnd);
-    }
+    await extendBillForAdvanceMonths(societyId, bill, extraMonths, actor);
   }
 
-  const targets = [String(bill._id), ...advanceBills.map((row) => row.id)];
+  const targets = [String(bill._id)];
   let remaining = monthsPaid;
   let firstResult: OfflinePaymentResult | undefined;
   const extras: Array<{

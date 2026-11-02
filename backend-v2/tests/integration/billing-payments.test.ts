@@ -664,20 +664,24 @@ describe('Billing payments', () => {
         idempotencyKey: 'months-six',
       });
     expect(sixMonths.status).toBe(201);
-    expect(sixMonths.body.data.paidMonths).toBe(3);
+    expect(sixMonths.body.data.paidMonths).toBe(6);
     expect(sixMonths.body.data.pendingMonths).toBe(0);
-    expect(sixMonths.body.data.advanceBills).toHaveLength(1);
+    expect(sixMonths.body.data.advanceBills).toEqual([]);
 
     const current = await BillModel.findById(secondBill.id).lean();
     expect(current?.status).toBe('PAID');
+    expect(current?.numberOfMonths).toBe(6);
     expect(current?.outstandingPrincipalPaise).toBe(0);
-
-    const advance = await BillModel.findById(sixMonths.body.data.advanceBills[0].billId).lean();
-    expect(advance?.numberOfMonths).toBe(3);
-    expect(advance?.status).toBe('PAID');
-    expect(advance?.billingPeriodStart.toISOString()).toBe(
-      new Date('2027-04-01T00:00:00.000+05:30').toISOString(),
+    expect(current?.billingPeriodEnd.toISOString()).toBe(
+      new Date('2027-06-30T23:59:59.999+05:30').toISOString(),
     );
+
+    const extraBills = await BillModel.countDocuments({
+      societyId: ctx.societyId,
+      flatId: flats[1]._id,
+      status: { $ne: 'CANCELLED' },
+    });
+    expect(extraBills).toBe(1);
 
     process.env.OFFLINE_PAYMENTS_ENABLED = 'false';
     resetEnvCache();

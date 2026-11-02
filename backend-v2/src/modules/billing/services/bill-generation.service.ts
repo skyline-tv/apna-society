@@ -705,6 +705,178 @@ export async function generateBillForFlat(
 }
 
 /**
+ * Fold extra prepaid months into the current bill instead of issuing another
+ * bill for the same flat. One office payment stays one bill.
+ */
+export async function extendBillForAdvanceMonths(
+  societyId: string,
+  bill: InstanceType<typeof BillModel>,
+  extraMonths: number,
+  actor: Actor,
+) {
+  if (!Number.isInteger(extraMonths) || extraMonths < 1) {
+    throw badRequest('Advance months must be at least 1', 'INVALID_BILLING_MONTHS');
+  }
+  const newMonths = bill.numberOfMonths + extraMonths;
+  if (newMonths > 12) {
+    throw badRequest(
+      'A bill can cover at most 12 months. Choose fewer advance months.',
+      'INVALID_BILLING_MONTHS',
+    );
+  }
+
+  const society = await SocietyModel.findById(parseObjectId(societyId, 'societyId'));
+  if (!society) throw notFound('Society not found');
+  const timeZone = society.config?.timezone ?? 'Asia/Kolkata';
+
+  let periodEnd: Date;
+  try {
+    periodEnd = billingPeriodBounds(bill.billingPeriodStart, newMonths, timeZone).periodEnd;
+  } catch {
+    throw badRequest('Cannot extend this billing period', 'INVALID_BILLING_PERIOD_START');
+  }
+
+  const existing = await BillModel.find({
+    societyId,
+    flatId: bill.flatId,
+    status: { $ne: 'CANCELLED' },
+    _id: { $ne: bill._id },
+  }).lean();
+  const overlap = existing.find((other) =>
+    periodsOverlap(
+      bill.billingPeriodStart,
+      periodEnd,
+      other.billingPeriodStart,
+      other.billingPeriodEnd,
+    ),
+  );
+  if (overlap) {
+    throw badRequest(
+      'Advance months overlap an existing bill for this flat',
+      'OVERLAPPING_BILLING_PERIOD',
+    );
+  }
+
+  const services = await FlatAdditionalServiceModel.find({
+    societyId,
+    flatId: bill.flatId,
+  }).lean();
+  let additionalServicesTotalPaise = 0;
+  const serviceItems: BillLineItem[] = [];
+  for (const service of services) {
+    const snapshot = chargeAdditionalServiceForPeriod(
+      {
+        id: String(service._id),
+        name: service.name,
+        description: service.description,
+        monthlyChargePaise: service.monthlyChargePaise,
+        quantity: service.quantity,
+        effectiveFrom: service.effectiveFrom,
+        effectiveTo: service.effectiveTo,
+        isActive: service.isActive,
+      },
+      bill.billingPeriodStart,
+      periodEnd,
+      timeZone,
+    );
+    if (!snapshot) continue;
+    additionalServicesTotalPaise += snapshot.amountPaise;
+    serviceItems.push({
+      type: 'ADDITIONAL_SERVICE',
+      serviceId: service._id,
+      name: snapshot.name,
+      description: snapshot.description,
+      quantity: snapshot.quantity,
+      unitAmountPaise: snapshot.unitAmountPaise,
+      amountPaise: snapshot.amountPaise,
+      applicableDays: snapshot.applicableDays,
+      billedDays: snapshot.billedDays,
+      prorationPolicy: snapshot.prorationPolicy,
+    });
+  }
+
+  const baseAmountPaise = multiplyPaise(bill.monthlyRatePaise, newMonths);
+  const adjustmentsPaise = bill.adjustmentsPaise ?? 0;
+  const newTotal = billComputedTotalPaise({
+    baseAmountPaise,
+    additionalServicesTotalPaise,
+    adjustmentsPaise,
+  });
+  const delta = newTotal - bill.totalAmountPaise;
+  const adjustmentItems = (bill.lineItems ?? []).filter((item) => item.type === 'ADJUSTMENT');
+  const lineItems: BillLineItem[] = [
+    {
+      type: 'MAINTENANCE',
+      name: 'Monthly maintenance',
+      quantity: newMonths,
+      unitAmountPaise: bill.monthlyRatePaise,
+      amountPaise: baseAmountPaise,
+    },
+    ...serviceItems,
+    ...adjustmentItems,
+  ];
+
+  await withTransaction(async (session) => {
+    bill.numberOfMonths = newMonths;
+    bill.billingPeriodEnd = periodEnd;
+    bill.baseAmountPaise = baseAmountPaise;
+    bill.additionalServicesTotalPaise = additionalServicesTotalPaise;
+    bill.lineItems = lineItems;
+    bill.totalAmountPaise = newTotal;
+    bill.outstandingPrincipalPaise = newTotal - bill.amountPaidPaise;
+    bill.notes = [bill.notes, 'Advance months from office payment'].filter(Boolean).join('\n');
+    bill.updatedBy = parseObjectId(actor.userId, 'userId');
+    if (bill.outstandingPrincipalPaise <= 0) {
+      bill.status = 'PAID';
+    } else if (bill.amountPaidPaise > 0) {
+      bill.status = Date.now() > bill.dueDate.getTime() ? 'OVERDUE' : 'PARTIALLY_PAID';
+    } else if (bill.status === 'PAID' || bill.status === 'CANCELLED') {
+      bill.status = Date.now() > bill.dueDate.getTime() ? 'OVERDUE' : 'ISSUED';
+    }
+    await bill.save({ session });
+
+    if (delta !== 0) {
+      await appendPrincipalEvent(
+        {
+          societyId,
+          billId: bill._id,
+          eventType: 'ADJUSTMENT',
+          deltaPrincipalPaise: delta,
+          principalAfterPaise: bill.outstandingPrincipalPaise,
+          effectiveAt: startOfCivilDay(new Date(), timeZone),
+          sourceType: 'adjustment',
+          sourceId: `${String(bill._id)}:advance:${newMonths}:${Date.now()}`,
+          notes: `Extended bill by ${extraMonths} advance month${extraMonths === 1 ? '' : 's'}`,
+        },
+        session,
+      );
+    }
+
+    await writeAuditLog(
+      {
+        action: 'BILL_ADJUSTED',
+        actorUserId: actor.userId,
+        societyId,
+        targetType: 'Bill',
+        targetId: String(bill._id),
+        metadata: {
+          extraMonths,
+          numberOfMonths: newMonths,
+          baseAmountPaise,
+          additionalServicesTotalPaise,
+          totalAmountPaise: newTotal,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      session,
+    );
+  });
+
+  return bill;
+}
+
+/**
  * When an owner is assigned to a previously unassigned/vacant flat, attach
  * existing bills (and related payments/receipts) without recreating amounts.
  */
