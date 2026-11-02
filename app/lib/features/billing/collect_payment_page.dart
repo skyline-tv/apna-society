@@ -224,11 +224,8 @@ class _CollectPaymentPageState extends State<CollectPaymentPage> {
   Widget build(BuildContext context) {
     final stmt = statement;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.ownerMode ? 'Pay outstanding bills' : 'Collect outstanding',
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
+      appBar: AppPageBar(
+        widget.ownerMode ? 'Pay outstanding bills' : 'Collect outstanding',
       ),
       body: loading
           ? const LoadingView(label: 'Loading outstanding bills…')

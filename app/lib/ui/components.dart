@@ -7,27 +7,27 @@ import 'package:flutter/services.dart';
 
 /// ApnaSociety colour tokens.
 ///
-/// Warm stone canvas, ink text, and a deep blue for actions. Semantic green,
-/// amber and red stay limited to status (paid, warning, error).
+/// Cool ground, white cards, and navy `#153B69` for actions and heroes.
+/// Semantic green, amber and red stay limited to status (paid, warning, error).
 class C {
   C._();
 
   // Brand
-  static const blue = Color(0xFF1B4F8A);
-  static const blueDark = Color(0xFF123A68);
-  static const softBlue = Color(0xFF3D73B8);
-  static const navy = Color(0xFF1C1917);
-  static const charcoal = Color(0xFF44403C);
+  static const blue = Color(0xFF153B69);
+  static const blueDark = Color(0xFF0E2644);
+  static const softBlue = Color(0xFF3178C6);
+  static const navy = Color(0xFF0F172A);
+  static const charcoal = Color(0xFF334155);
 
   // Neutrals
-  static const bg = Color(0xFFF4F0EA);
-  static const surface = Color(0xFFFFFCF8);
-  static const surfaceAlt = Color(0xFFF7F4EE);
-  static const line = Color(0xFFE6E1D6);
-  static const lineStrong = Color(0xFFD4CFC3);
-  static const muted = Color(0xFF78716C);
-  static const faint = Color(0xFFA8A29E);
-  static const chip = Color(0xFFE6EFF8);
+  static const bg = Color(0xFFF8F9FC);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceAlt = Color(0xFFF1F4F9);
+  static const line = Color(0xFFE6EBF2);
+  static const lineStrong = Color(0xFFD0D7E2);
+  static const muted = Color(0xFF64748B);
+  static const faint = Color(0xFF94A3B8);
+  static const chip = Color(0xFFE1ECF5);
 
   // Semantic
   static const green = Color(0xFF1F7A4D);
@@ -36,7 +36,7 @@ class C {
   static const greenSoft = Color(0xFFE5F4EC);
   static const amberSoft = Color(0xFFF8F0DE);
   static const errorSoft = Color(0xFFFBECEA);
-  static const neutralSoft = Color(0xFFEFECE6);
+  static const neutralSoft = Color(0xFFEEF2F7);
 }
 
 /// Spacing scale (4pt grid).
@@ -180,7 +180,7 @@ class T {
 
 OutlineInputBorder _inputBorder(Color color, [double width = 1]) =>
     OutlineInputBorder(
-      borderRadius: BorderRadius.circular(Rd.lg),
+      borderRadius: BorderRadius.circular(Rd.xl),
       borderSide: BorderSide(color: color, width: width),
     );
 
@@ -219,6 +219,8 @@ ThemeData buildAppTheme() {
   );
   const shape12 = RoundedRectangleBorder(
       borderRadius: BorderRadius.all(Radius.circular(Rd.lg)));
+  const shape16 = RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(Rd.xl)));
 
   const textTheme = TextTheme(
     displaySmall: T.display,
@@ -251,8 +253,13 @@ ThemeData buildAppTheme() {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleSpacing: 16,
-      titleTextStyle: T.h3,
+      titleSpacing: 8,
+      titleTextStyle: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        color: C.navy,
+        height: 1.2,
+      ),
       iconTheme: IconThemeData(color: C.navy, size: Sz.iconLg),
       actionsIconTheme: IconThemeData(color: C.navy, size: Sz.iconLg),
       systemOverlayStyle: SystemUiOverlayStyle(
@@ -328,7 +335,7 @@ ThemeData buildAppTheme() {
         elevation: 0,
         minimumSize: const Size(Sz.control, Sz.control),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        shape: shape12,
+        shape: shape16,
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
     ),
@@ -338,7 +345,7 @@ ThemeData buildAppTheme() {
         backgroundColor: C.blue,
         foregroundColor: Colors.white,
         minimumSize: const Size(Sz.control, Sz.control),
-        shape: shape12,
+        shape: shape16,
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
     ),
@@ -349,7 +356,7 @@ ThemeData buildAppTheme() {
         side: const BorderSide(color: C.blue),
         minimumSize: const Size(Sz.control, Sz.control),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        shape: shape12,
+        shape: shape16,
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
     ),
@@ -358,7 +365,7 @@ ThemeData buildAppTheme() {
         foregroundColor: C.blue,
         minimumSize: const Size(Sz.control, 44),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape: shape12,
+        shape: shape16,
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
     ),
@@ -490,6 +497,15 @@ ThemeData buildAppTheme() {
     ),
     dividerTheme: const DividerThemeData(color: C.line, thickness: 1, space: 1),
     dividerColor: C.line,
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: C.blue,
+      foregroundColor: Colors.white,
+      elevation: 2,
+      highlightElevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(Rd.xl)),
+      ),
+    ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: CupertinoPageTransitionsBuilder(),
       TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -744,19 +760,28 @@ class AppCard extends StatelessWidget {
         color: color ?? C.surface,
         borderRadius: shape,
         border: Border.all(color: borderColor ?? C.line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D153B69),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: onTap == null && onLongPress == null
-          ? content
-          : Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: shape,
-                onTap: onTap,
-                onLongPress: onLongPress,
-                child: content,
+      child: ClipRRect(
+        borderRadius: shape,
+        child: onTap == null && onLongPress == null
+            ? content
+            : Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: shape,
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  child: content,
+                ),
               ),
-            ),
+      ),
     );
   }
 }
@@ -1417,7 +1442,7 @@ class HeroMoneyCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         decoration: BoxDecoration(
-          color: C.navy,
+          color: C.blue,
           borderRadius: BorderRadius.circular(Rd.xl),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1425,7 +1450,7 @@ class HeroMoneyCard extends StatelessWidget {
             Expanded(
               child: Text(label.toUpperCase(),
                   style: const TextStyle(
-                      color: Color(0xFFD6D1C7),
+                      color: Color(0xFFC9D6F0),
                       fontSize: 11,
                       letterSpacing: 0.8,
                       fontWeight: FontWeight.w700)),
@@ -1448,7 +1473,7 @@ class HeroMoneyCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(subtitle!,
                 style: const TextStyle(
-                    color: Color(0xFFD6D1C7),
+                    color: Color(0xFFC9D6F0),
                     fontSize: 12.5,
                     height: 1.35,
                     fontWeight: FontWeight.w500)),
@@ -1902,7 +1927,7 @@ class InfoNote extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 11, 14, 11),
       decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Rd.lg)),
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Rd.xl)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(icon ?? ic, color: fg, size: 18),
         const SizedBox(width: 10),
@@ -2240,6 +2265,83 @@ class ReviewSummary extends StatelessWidget {
       );
 }
 
+/// Circular back control used on pushed screens.
+class AppCircleBackButton extends StatelessWidget {
+  const AppCircleBackButton({
+    super.key,
+    this.onPressed,
+    this.tooltip = 'Go back',
+  });
+
+  final VoidCallback? onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: C.surface,
+        shape: const CircleBorder(
+          side: BorderSide(color: C.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed ?? () => Navigator.maybePop(context),
+          child: const SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(Icons.arrow_back_rounded, size: 20, color: C.navy),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Standard page app bar: cool ground, bold title, optional circle back.
+class AppPageBar extends StatelessWidget implements PreferredSizeWidget {
+  const AppPageBar(
+    this.title, {
+    super.key,
+    this.actions,
+    this.bottom,
+    this.showBack = true,
+    this.onBack,
+  });
+
+  final String title;
+  final List<Widget>? actions;
+  final PreferredSizeWidget? bottom;
+  final bool showBack;
+  final VoidCallback? onBack;
+
+  @override
+  Size get preferredSize => Size.fromHeight(
+        kToolbarHeight + (bottom?.preferredSize.height ?? 0),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final canPop =
+        showBack && (onBack != null || Navigator.of(context).canPop());
+    return AppBar(
+      title: Text(title),
+      actions: actions,
+      bottom: bottom,
+      leading: canPop
+          ? Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Center(child: AppCircleBackButton(onPressed: onBack)),
+            )
+          : null,
+      leadingWidth: canPop ? 56 : null,
+      automaticallyImplyLeading: false,
+    );
+  }
+}
+
 /// Scaffold for forms: keyboard dismiss, scroll body, sticky primary action.
 ///
 /// Uses the default [Scaffold.resizeToAvoidBottomInset] so the sticky bar
@@ -2286,7 +2388,8 @@ class FormScaffold extends StatelessWidget {
             child: body,
           );
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: actions),
+      backgroundColor: C.bg,
+      appBar: AppPageBar(title, actions: actions),
       resizeToAvoidBottomInset: true,
       body: KeyboardDismissOnTap(
         child: ConstrainedContent(child: formBody),
@@ -2580,6 +2683,8 @@ class SearchField extends StatelessWidget {
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: const Icon(Icons.search_rounded),
+            filled: true,
+            fillColor: C.surface,
             isDense: true,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 13),

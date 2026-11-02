@@ -102,8 +102,8 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
         );
         if (widget.embedded) return body;
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Additional services'),
+          appBar: AppPageBar(
+            'Additional services',
             actions: [
               IconButton(
                 tooltip: atCap

@@ -409,8 +409,8 @@ class _LiveAdminGuardDetailPageState extends State<LiveAdminGuardDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Security guard'),
+      appBar: AppPageBar(
+        'Security guard',
         actions: [
           FutureBuilder<AdminGuard>(
             future: _future,

@@ -588,10 +588,10 @@ class _VoiceVisitorRegistrationPageState
         '${now.toIso8601String().substring(0, 10)} · ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(phase == _VoicePhase.review
+      appBar: AppPageBar(
+        phase == _VoicePhase.review
             ? 'Review visitor details'
-            : 'Register by voice'),
+            : 'Register by voice',
         actions: [
           TextButton(
             onPressed: busy ? null : openManual,

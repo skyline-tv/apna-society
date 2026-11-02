@@ -159,7 +159,7 @@ class _IncomingVisitorPageState extends State<IncomingVisitorPage> {
           }
           if (snapshot.hasError) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Incoming visitor')),
+              appBar: const AppPageBar('Incoming visitor'),
               body: LoadFailure(error: snapshot.error!, onRetry: _reload),
             );
           }

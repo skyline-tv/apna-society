@@ -31,6 +31,7 @@ import 'data/local_database.dart' show LocalDatabase;
 import 'api/auth/admin_api_messages.dart';
 import 'api/models/admin_user_models.dart';
 import 'features/admin/admin_dashboard.dart';
+import 'features/owner/owner_dashboard.dart';
 import 'features/admin/admin_flat_detail_page.dart';
 import 'features/admin/admin_flats_page.dart';
 import 'features/admin/admin_more_page.dart';
@@ -1805,14 +1806,20 @@ class _OwnerHomeState extends State<OwnerHome> {
           if (!didPop) _popInternally();
         },
         child: Scaffold(
+          backgroundColor: OwnerDash.surface,
           appBar: homeChrome
               ? null
               : AppBar(
+                  automaticallyImplyLeading: false,
+                  leadingWidth: inSubPage ? 56 : null,
                   leading: inSubPage
-                      ? IconButton(
-                          tooltip: 'Back',
-                          onPressed: _popInternally,
-                          icon: const Icon(Icons.arrow_back_rounded),
+                      ? Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Center(
+                            child: AppCircleBackButton(
+                              onPressed: _popInternally,
+                            ),
+                          ),
                         )
                       : null,
                   title: inSubPage
@@ -1839,18 +1846,18 @@ class _OwnerHomeState extends State<OwnerHome> {
             index: safeTab,
             children: [for (final key in layout.primary) _pageFor(key)],
           ),
-          bottomNavigationBar: AppBottomNav(
+          bottomNavigationBar: OwnerDashBottomNav(
             selectedIndex: safeTab,
             onDestinationSelected: (v) => setState(() {
               if (v == tab && layout.primary[v] == 'more') _morePage = null;
               tab = v;
               if (layout.primary[v] != 'more') _morePage = null;
             }),
-            destinations: [
+            items: [
               for (final key in layout.primary)
-                NavigationDestination(
-                  icon: Icon(_kResidentDests[key]!.icon),
-                  selectedIcon: Icon(_kResidentDests[key]!.selectedIcon),
+                OwnerDashNavItem(
+                  icon: _kResidentDests[key]!.icon,
+                  selectedIcon: _kResidentDests[key]!.selectedIcon,
                   label: _kResidentDests[key]!.label,
                 ),
             ],
@@ -1878,204 +1885,87 @@ class _OwnerHomeState extends State<OwnerHome> {
         final name = ctx.access.displayName;
         final flat = ctx.flat;
         final roleLabel = ctx.access.isTenantSession ? 'Tenant' : 'Owner';
-        final layout = _layout;
-        final services = <String>[
-          for (final k in [...layout.primary, ...layout.more])
-            if (k != 'home' && k != 'more' && k != 'profile') k,
+        final first = name.split(' ').first;
+        final below = <Widget>[
+          if (ctx.hasMultipleFlats) ...[
+            PickerField(
+              label: 'Active flat',
+              icon: Icons.apartment_outlined,
+              value: _flatOptionLabel(ctx.selectedFlat),
+              onTap: () => _showFlatPicker(ctx),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (ctx.access.canFinance && !ctx.access.canResidential) ...[
+            const OwnerDashAdvisory(
+              'This flat is tenant occupied. Your account has financial access only — visitor and residential features are with the active tenant.',
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (!ctx.access.canFinance && ctx.access.canResidential) ...[
+            const OwnerDashAdvisory(
+              'You manage day-to-day residential features for this flat. Maintenance bills and payments stay with the owner.',
+            ),
+            const SizedBox(height: 16),
+          ],
         ];
-
-        final quick = <QuickAccessItem>[
+        final quick = <OwnerDashQuickItem>[
           if (ctx.access.canFinance)
-            QuickAccessItem(
+            OwnerDashQuickItem(
               icon: Icons.receipt_long_outlined,
-              label: kResidentOnlinePaymentsEnabled ? 'Pay bill' : 'Bills',
+              label: 'Bills',
+              iconColor: OwnerDash.navy,
+              wellColor: OwnerDash.skyWell,
               onTap: () => _open('bills'),
             ),
           if (ctx.access.canFinance)
-            QuickAccessItem(
+            OwnerDashQuickItem(
               icon: Icons.celebration_outlined,
               label: 'Collections',
-              color: C.amber,
+              iconColor: OwnerDash.amberIcon,
+              wellColor: OwnerDash.amberWell,
               onTap: () => _open('collections'),
             ),
           if (ctx.access.canResidential)
-            QuickAccessItem(
+            OwnerDashQuickItem(
               icon: Icons.groups_outlined,
               label: 'Visitors',
-              color: C.softBlue,
+              iconColor: OwnerDash.indigoIcon,
+              wellColor: OwnerDash.indigoWell,
               onTap: () => _open('visitors'),
             ),
           if (ctx.access.canResidential)
-            QuickAccessItem(
+            OwnerDashQuickItem(
               icon: Icons.directions_car_outlined,
               label: 'Vehicles',
-              color: C.blueDark,
+              iconColor: OwnerDash.tealIcon,
+              wellColor: OwnerDash.tealWell,
               onTap: () => _open('vehicles'),
-            ),
-          if (ctx.access.canResidential)
-            QuickAccessItem(
-              icon: Icons.campaign_outlined,
-              label: 'Notices',
-              color: C.amber,
-              onTap: () => _open('news'),
             ),
         ];
 
-        return RefreshIndicator(
-          color: C.blue,
+        return OwnerDashboardOverview(
+          greeting: dayGreeting(),
+          roleLabel: roleLabel,
+          firstName: first.isEmpty ? name : first,
+          societyName: kSocietyName,
+          flatTitle: 'Flat ${ctx.flatNumber} · ${ctx.wingLabel}',
+          flatSubtitle: 'Floor ${flat.floor} · ${ctx.occupancyLabel}',
+          showBell: access.canResidential,
+          quickItems: quick,
+          maintenanceCard: ctx.access.canFinance ? _duesHero(flat) : null,
+          collectionsCard: ctx.access.canFinance ? _collectionsHero() : null,
+          fallbackCard: ctx.access.canFinance ? null : _flatCard(ctx),
+          showOfflineNotice:
+              ctx.access.canFinance && !kResidentOnlinePaymentsEnabled,
+          below: below,
           onRefresh: () async {
             refresh();
             await _profileFuture;
           },
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              OverlapHero(
-                overlap: 16,
-                header: ColoredBox(
-                  color: C.blue,
-                  child: SafeArea(
-                    bottom: false,
-                    child: PineHeader(
-                      eyebrow: '${dayGreeting()} · $roleLabel',
-                      title: name.split(' ').first,
-                      subtitle: kSocietyName,
-                      trailing: access.canResidential
-                          ? const LiveNotificationBellButton(onPine: true)
-                          : null,
-                      bottomPadding: 28,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(Rd.xl),
-                        ),
-                        child: Row(children: [
-                          const Icon(Icons.apartment_rounded,
-                              color: Colors.white, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Flat ${ctx.flatNumber} · ${ctx.wingLabel}',
-                                    style: T.bodyStrong
-                                        .copyWith(color: Colors.white),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    'Floor ${flat.floor} · ${ctx.occupancyLabel}',
-                                    style: T.caption.copyWith(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.7)),
-                                  ),
-                                ]),
-                          ),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ),
-                hero: ctx.access.canFinance
-                    ? Column(
-                        children: [
-                          _duesHero(flat),
-                          const SizedBox(height: 10),
-                          _collectionsHero(),
-                          if (!kResidentOnlinePaymentsEnabled) ...[
-                            const SizedBox(height: 10),
-                            const InfoNote(kOfficePaymentMessage),
-                          ],
-                        ],
-                      )
-                    : _flatCard(ctx),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (ctx.hasMultipleFlats) ...[
-                        PickerField(
-                          label: 'Active flat',
-                          icon: Icons.apartment_outlined,
-                          value: _flatOptionLabel(ctx.selectedFlat),
-                          onTap: () => _showFlatPicker(ctx),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                      if (ctx.access.canFinance && !ctx.access.canResidential)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 14),
-                          child: InfoNote(
-                              'This flat is tenant occupied. Your account has financial access only — visitor and residential features are with the active tenant.'),
-                        ),
-                      if (!ctx.access.canFinance && ctx.access.canResidential)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 14),
-                          child: InfoNote(
-                            'You manage day-to-day residential features for this flat. Maintenance bills and payments stay with the owner.',
-                          ),
-                        ),
-                      if (quick.isNotEmpty) ...[
-                        const SectionTitle('Quick access'),
-                        QuickAccessGrid(items: quick),
-                        const SizedBox(height: 22),
-                      ],
-                      ToolDirectory(
-                        title: 'Also for this flat',
-                        links: [
-                          for (final key in services)
-                            if (_showOnHome(key))
-                              ToolLink(
-                                icon: _kResidentDests[key]!.icon,
-                                label: _kResidentDests[key]!.label,
-                                subtitle: _residentToolHint(key),
-                                onTap: () => _open(key),
-                              ),
-                        ],
-                      ),
-                      const SizedBox(height: 22),
-                      const SectionTitle('Your flat'),
-                      DetailCard(children: [
-                        DetailRow('Flat', ctx.flatNumber),
-                        DetailRow('Wing', ctx.wingLabel),
-                        DetailRow('Floor', '${flat.floor}'),
-                        DetailRow('Type', flatTypeLabel(flat.flatType)),
-                        DetailRow('Occupancy', ctx.occupancyLabel),
-                        DetailRow('Status', '',
-                            valueWidget: Align(
-                              alignment: Alignment.centerLeft,
-                              child: StatusBadge(
-                                  flat.isActive ? 'Active' : 'Inactive'),
-                            )),
-                        if (ctx.access.canFinance)
-                          DetailRow('Monthly maintenance',
-                              money(flat.maintenanceRate),
-                              emphasize: true),
-                      ]),
-                    ]),
-              ),
-            ],
-          ),
         );
       },
     );
-  }
-
-  /// Home already leads with dues (owner) or visitor actions (tenant).
-  bool _showOnHome(String key) {
-    if (access.canFinance &&
-        (key == 'bills' || key == 'payments' || key == 'collections')) {
-      return false;
-    }
-    if (!access.canFinance && key == 'visitors') {
-      return false;
-    }
-    return true;
   }
 
   String _residentToolHint(String key) {
@@ -2136,7 +2026,7 @@ class _OwnerHomeState extends State<OwnerHome> {
           final due = DateTime.tryParse(b.dueDate);
           return due != null && due.isBefore(DateTime.now());
         }).length;
-        return HeroMoneyCard(
+        return OwnerDashAmountCard(
           label: 'Maintenance due',
           amount: loading ? '—' : moneyPaise(duePaise),
           subtitle: loading
@@ -2146,36 +2036,20 @@ class _OwnerHomeState extends State<OwnerHome> {
                   : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
                       '${overdue > 0 ? ' · $overdue overdue' : ''}'
                       ' · ${money(flat.maintenanceRate)}/mo',
-          trailing: loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : StatusBadge(
-                  bills.isEmpty
-                      ? 'Settled'
-                      : (overdue > 0 ? 'Overdue' : 'Pending'),
-                  tone: bills.isEmpty
-                      ? BadgeTone.success
-                      : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
-                ),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: C.navy,
-              ),
-              onPressed: () => _open('bills'),
-              icon: const Icon(Icons.payments_outlined, size: 18),
-              label: Text(
-                bills.isEmpty || !kResidentOnlinePaymentsEnabled
-                    ? 'View bills'
-                    : 'Pay now',
-              ),
-            ),
-          ),
+          badge: loading
+              ? null
+              : bills.isEmpty
+                  ? 'Settled'
+                  : (overdue > 0 ? 'Overdue' : 'Pending'),
+          badgeTone: bills.isEmpty
+              ? BadgeTone.success
+              : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
+          loading: loading,
+          actionLabel: bills.isEmpty || !kResidentOnlinePaymentsEnabled
+              ? 'View bills'
+              : 'Pay now',
+          actionIcon: Icons.receipt_long_outlined,
+          onAction: () => _open('bills'),
         );
       },
     );
@@ -2212,7 +2086,7 @@ class _OwnerHomeState extends State<OwnerHome> {
         final duePaise =
             charges.fold<int>(0, (sum, row) => sum + row.outstandingPaise);
         final overdue = charges.where((row) => row.overdue).length;
-        return HeroMoneyCard(
+        return OwnerDashAmountCard(
           label: 'One-time collections',
           amount: loading ? '—' : moneyPaise(duePaise),
           subtitle: loading
@@ -2223,36 +2097,20 @@ class _OwnerHomeState extends State<OwnerHome> {
                       ? '${charges.first.collectionTitle ?? 'Collection'} · due ${fmtIsoDate(charges.first.dueDate)}'
                       : '${charges.length} open charges'
                           '${overdue > 0 ? ' · $overdue overdue' : ''}',
-          trailing: loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : StatusBadge(
-                  charges.isEmpty
-                      ? 'Settled'
-                      : (overdue > 0 ? 'Overdue' : 'Pending'),
-                  tone: charges.isEmpty
-                      ? BadgeTone.success
-                      : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
-                ),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: C.navy,
-              ),
-              onPressed: () => _openCollectionPay(charges),
-              icon: const Icon(Icons.celebration_outlined, size: 18),
-              label: Text(
-                charges.isEmpty || !kResidentOnlinePaymentsEnabled
-                    ? 'View collections'
-                    : 'Pay now',
-              ),
-            ),
-          ),
+          badge: loading
+              ? null
+              : charges.isEmpty
+                  ? 'Settled'
+                  : (overdue > 0 ? 'Overdue' : 'Pending'),
+          badgeTone: charges.isEmpty
+              ? BadgeTone.success
+              : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
+          loading: loading,
+          actionLabel: charges.isEmpty || !kResidentOnlinePaymentsEnabled
+              ? 'View collections'
+              : 'Pay now',
+          actionIcon: Icons.celebration_outlined,
+          onAction: () => _openCollectionPay(charges),
         );
       },
     );
@@ -3618,9 +3476,8 @@ class _FlatEditorPageState extends State<FlatEditorPage> {
         ? ((widget.flat.data['is_active'] as int? ?? 1) == 1)
         : true;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isEdit ? 'Edit flat' : 'Add flat',
-            style: const TextStyle(fontWeight: FontWeight.w900)),
+      appBar: AppPageBar(
+        widget.isEdit ? 'Edit flat' : 'Add flat',
         actions: [
           if (widget.isEdit)
             TextButton(
@@ -4281,15 +4138,12 @@ class _CreateBillPageState extends State<CreateBillPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(confirming ? 'Confirm generation' : 'Create bill',
-            style: const TextStyle(fontWeight: FontWeight.w900)),
-        leading: confirming
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: generating
-                    ? null
-                    : () => setState(() => confirming = false))
+      appBar: AppPageBar(
+        confirming ? 'Confirm generation' : 'Create bill',
+        onBack: confirming
+            ? () {
+                if (!generating) setState(() => confirming = false);
+              }
             : null,
       ),
       body: ListView(
@@ -4584,9 +4438,8 @@ class _EditBillPageState extends State<EditBillPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Edit bill',
-              style: TextStyle(fontWeight: FontWeight.w900)),
+        appBar: AppPageBar(
+          'Edit bill',
           actions: [
             TextButton(
                 onPressed: saving ? null : cancelBill,

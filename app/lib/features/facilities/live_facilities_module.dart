@@ -702,7 +702,7 @@ class _LiveResidentFacilityDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Facility')),
+      appBar: const AppPageBar('Facility'),
       body: FutureBuilder<Facility>(
         future: _future,
         builder: (context, snapshot) {
@@ -1093,7 +1093,7 @@ class _LiveResidentBookingDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Booking')),
+      appBar: const AppPageBar('Booking'),
       body: FutureBuilder<FacilityBooking>(
         future: _future,
         builder: (context, snapshot) {
@@ -1337,8 +1337,8 @@ class _LiveAdminFacilityDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Facility'),
+      appBar: AppPageBar(
+        'Facility',
         actions: [
           FutureBuilder<Facility>(
             future: _future,
@@ -2109,7 +2109,7 @@ class _LiveAdminBookingDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Booking')),
+      appBar: const AppPageBar('Booking'),
       body: FutureBuilder<_AdminBookingView>(
         future: _future,
         builder: (context, snapshot) {

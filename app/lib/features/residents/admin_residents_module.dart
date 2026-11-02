@@ -997,7 +997,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Resident details')),
+      appBar: const AppPageBar('Resident details'),
       body: FutureBuilder<_ResidentDetailBundle>(
         future: _future,
         builder: (context, snap) {
@@ -1318,8 +1318,8 @@ class _AdminPickResidentPageState extends State<AdminPickResidentPage> {
   Widget build(BuildContext context) {
     final roleLabel = widget.role == 'OWNER' ? 'owner' : 'tenant';
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Select $roleLabel'),
+      appBar: AppPageBar(
+        'Select $roleLabel',
         actions: [
           TextButton.icon(
             onPressed: _provisionNew,

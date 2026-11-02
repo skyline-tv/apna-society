@@ -55,7 +55,7 @@ class _LiveGuardParcelsPageState extends State<LiveGuardParcelsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parcels')),
+      appBar: const AppPageBar('Parcels'),
       body: FutureBuilder<Paged<ParcelHandover>>(
         future: _future,
         builder: (context, snapshot) {
@@ -150,7 +150,7 @@ class _LiveResidentParcelsPageState extends State<LiveResidentParcelsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parcels')),
+      appBar: const AppPageBar('Parcels'),
       body: FutureBuilder<Paged<ParcelHandover>>(
         future: _future,
         builder: (context, snapshot) {
@@ -245,7 +245,7 @@ class _LiveGuardParcelDetailPageState extends State<LiveGuardParcelDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parcel')),
+      appBar: const AppPageBar('Parcel'),
       body: FutureBuilder<ParcelHandover>(
         future: _future,
         builder: (context, snapshot) {
@@ -308,7 +308,7 @@ class _LiveResidentParcelDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parcel')),
+      appBar: const AppPageBar('Parcel'),
       body: FutureBuilder<ParcelHandover>(
         future: _future,
         builder: (context, snapshot) {

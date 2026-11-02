@@ -1014,7 +1014,7 @@ class _LiveEligibleFlatsPageState extends State<LiveEligibleFlatsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Billable flats')),
+      appBar: const AppPageBar('Billable flats'),
       body: FutureBuilder<List<EligibleFlat>>(
         future: _future,
         builder: (context, snap) {
@@ -2531,7 +2531,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bill details')),
+      appBar: const AppPageBar('Bill details'),
       body: FutureBuilder<_BillDetailBundle>(
         future: _future,
         builder: (context, snap) {

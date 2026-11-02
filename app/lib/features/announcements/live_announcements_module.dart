@@ -428,7 +428,7 @@ class _LiveResidentAnnouncementDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Announcement')),
+      appBar: const AppPageBar('Announcement'),
       body: FutureBuilder<Announcement>(
         future: _future,
         builder: (context, snapshot) {
@@ -931,7 +931,7 @@ class _LiveAdminAnnouncementDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Announcement')),
+      appBar: const AppPageBar('Announcement'),
       body: FutureBuilder<Announcement>(
         future: _future,
         builder: (context, snapshot) {

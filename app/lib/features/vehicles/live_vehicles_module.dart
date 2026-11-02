@@ -155,7 +155,7 @@ class _LiveResidentVehicleDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Vehicle detail')),
+      appBar: const AppPageBar('Vehicle detail'),
       body: FutureBuilder<Vehicle>(
         future: _future,
         builder: (context, snapshot) {
@@ -306,7 +306,7 @@ class _LiveGuardVehiclesPageState extends State<LiveGuardVehiclesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Vehicle gate')),
+      appBar: const AppPageBar('Vehicle gate'),
       body: FutureBuilder<Paged<VehicleLog>>(
         future: _logs,
         builder: (context, snapshot) {

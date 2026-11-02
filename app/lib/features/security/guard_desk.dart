@@ -82,8 +82,9 @@ class _GuardDeskHomeState extends State<GuardDeskHome> {
     final name = widget.guard.read<String>('name').split(' ').first;
     return Scaffold(
       backgroundColor: C.bg,
-      appBar: AppBar(
-        title: Text('Hello, $name'),
+      appBar: AppPageBar(
+        'Hello, $name',
+        showBack: false,
         actions: [
           IconButton(
             tooltip: 'Log out',
@@ -381,7 +382,7 @@ class _GuardNewVisitorPageState extends State<GuardNewVisitorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New visitor')),
+      appBar: const AppPageBar('New visitor'),
       body: _loadingFlats
           ? const LoadingView(label: 'Loading flats…')
           : Form(
@@ -662,7 +663,7 @@ class _GuardVisitorStatusPageState extends State<GuardVisitorStatusPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Visitor status')),
+      appBar: const AppPageBar('Visitor status'),
       body: FutureBuilder<Visitor>(
         future: _future,
         builder: (context, snapshot) {
@@ -855,7 +856,7 @@ class _GuardPendingPageState extends State<GuardPendingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Waiting for approval')),
+      appBar: const AppPageBar('Waiting for approval'),
       body: FutureBuilder<List<Visitor>>(
         future: _future,
         builder: (context, snapshot) {
@@ -997,7 +998,7 @@ class _GuardVerifyOtpPageState extends State<GuardVerifyOtpPage> {
     final verified = _verified;
     final entered = verified?.entryStatus == 'ENTERED';
     return Scaffold(
-      appBar: AppBar(title: const Text('Verify OTP')),
+      appBar: const AppPageBar('Verify OTP'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
@@ -1194,7 +1195,7 @@ class _GuardVehicleCheckPageState extends State<GuardVehicleCheckPage> {
   Widget build(BuildContext context) {
     final result = _result;
     return Scaffold(
-      appBar: AppBar(title: const Text('Check vehicle')),
+      appBar: const AppPageBar('Check vehicle'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [

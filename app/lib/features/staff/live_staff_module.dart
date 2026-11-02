@@ -444,8 +444,8 @@ class _LiveStaffDetailPageState extends State<LiveStaffDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Staff member'),
+      appBar: AppPageBar(
+        'Staff member',
         actions: [
           FutureBuilder<StaffMember>(
             future: _future,
@@ -841,7 +841,7 @@ class _LiveStaffFormPageState extends State<LiveStaffFormPage> {
     final editing = widget.existing != null;
     final linkedId = _linkedUserId.text.trim();
     return Scaffold(
-      appBar: AppBar(title: Text(editing ? 'Edit staff' : 'Add staff')),
+      appBar: AppPageBar(editing ? 'Edit staff' : 'Add staff'),
       body: KeyboardDismissOnTap(
         child: Form(
           key: _formKey,
@@ -1410,7 +1410,7 @@ class _LiveMarkAttendancePageState extends State<LiveMarkAttendancePage> {
       if (s.id == _staffId.text) selected = s;
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Record attendance')),
+      appBar: const AppPageBar('Record attendance'),
       body: KeyboardDismissOnTap(
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1636,7 +1636,7 @@ class _LiveAttendanceDetailPageState extends State<LiveAttendanceDetailPage> {
     final canCheckout = a.checkOutAt == null &&
         (a.status == 'PRESENT' || a.status == 'HALF_DAY');
     return Scaffold(
-      appBar: AppBar(title: const Text('Attendance')),
+      appBar: const AppPageBar('Attendance'),
       body: ListView(
         padding: Sp.pagePadding,
         children: [
@@ -2091,7 +2091,7 @@ class _LiveCreateShiftPageState extends State<LiveCreateShiftPage> {
       if (s.id == _staffId.text) selected = s;
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Assign shift')),
+      appBar: const AppPageBar('Assign shift'),
       body: KeyboardDismissOnTap(
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,

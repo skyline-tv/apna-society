@@ -10,7 +10,7 @@ import '../notifications/live_notifications_module.dart';
 class AdminDash {
   AdminDash._();
 
-  static const surface = Color(0xFFFAF8FF);
+  static const surface = Color(0xFFF8F9FC);
   static const onSurface = Color(0xFF131B2E);
   static const onVariant = Color(0xFF43474F);
   static const primary = Color(0xFF00254C);

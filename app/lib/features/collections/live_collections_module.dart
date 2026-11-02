@@ -1781,7 +1781,7 @@ class _LiveAdminCollectionDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Collection')),
+      appBar: const AppPageBar('Collection'),
       body: FutureBuilder<_AdminCollectionBundle>(
         future: _future,
         builder: (context, snap) {
@@ -2355,7 +2355,7 @@ class _LiveAdminCollectionChargePageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(charge.flatLabel)),
+      appBar: AppPageBar(charge.flatLabel),
       body: ListView(
         padding: Sp.pagePadding,
         children: [
@@ -2709,7 +2709,7 @@ class _LiveOwnerCollectionChargePageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Collection')),
+      appBar: const AppPageBar('Collection'),
       body: FutureBuilder<_ResidentChargeBundle>(
         future: _future,
         builder: (context, snap) {
@@ -2919,7 +2919,7 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Receipt')),
+      appBar: const AppPageBar('Receipt'),
       body: FutureBuilder<CollectionReceiptDetail>(
         future: _future,
         builder: (context, snap) {

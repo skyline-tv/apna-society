@@ -1209,7 +1209,7 @@ class _InviteVisitorPageState extends State<InviteVisitorPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Invite Visitor')),
+        appBar: const AppPageBar('Invite Visitor'),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -1590,7 +1590,7 @@ class _AddGateVisitorPageState extends State<AddGateVisitorPage> {
     final requestTime =
         '${now.toIso8601String().substring(0, 10)} · ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Visitor')),
+      appBar: const AppPageBar('Add Visitor'),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -2006,8 +2006,8 @@ class InAppNotificationsPage extends StatefulWidget {
 class _InAppNotificationsPageState extends State<InAppNotificationsPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Notifications'),
+        appBar: AppPageBar(
+          'Notifications',
           actions: [
             TextButton(
               onPressed: () async {
@@ -2218,9 +2218,8 @@ class _SecurityGuardEditorPageState extends State<SecurityGuardEditorPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-            title:
-                Text(editing ? 'Edit security guard' : 'Add security guard')),
+        appBar: AppPageBar(
+            editing ? 'Edit security guard' : 'Add security guard'),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [

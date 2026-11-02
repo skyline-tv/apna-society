@@ -255,8 +255,8 @@ class _AdminVehicleEditorPageState extends State<AdminVehicleEditorPage> {
         .toList();
     final owner = selectedFlat?.read<String>('owner_name') as String?;
     return Scaffold(
-      appBar: AppBar(
-          title: Text(editing ? 'Edit vehicle mapping' : 'Register vehicle')),
+      appBar: AppPageBar(
+          editing ? 'Edit vehicle mapping' : 'Register vehicle'),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -398,9 +398,7 @@ class _VehicleVerificationPageState extends State<VehicleVerificationPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-            title: brandAppBarTitle(
-                title: 'Vehicle verification', subtitle: kSocietyName)),
+        appBar: const AppPageBar('Vehicle verification'),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [

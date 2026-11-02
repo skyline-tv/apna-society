@@ -1002,7 +1002,7 @@ class _LiveResidentComplaintDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Complaint')),
+      appBar: const AppPageBar('Complaint'),
       body: FutureBuilder<Complaint>(
         future: _future,
         builder: (context, snapshot) {
@@ -1818,7 +1818,7 @@ class _LiveAdminComplaintDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Complaint')),
+      appBar: const AppPageBar('Complaint'),
       body: FutureBuilder<Complaint>(
         future: _future,
         builder: (context, snapshot) {

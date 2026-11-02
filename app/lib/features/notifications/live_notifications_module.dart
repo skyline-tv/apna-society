@@ -176,38 +176,92 @@ class _LiveNotificationBellButtonState
       future: _unread,
       builder: (context, snap) {
         final count = snap.data ?? 0;
-        final icon = Icon(
-          count > 0
-              ? Icons.notifications_active_outlined
-              : Icons.notifications_outlined,
-          color: widget.onPine ? Colors.white : C.navy,
-        );
-        final button = IconButton(
-          tooltip: count > 0 ? '$count unread notifications' : 'Notifications',
-          onPressed: () async {
-            await Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LiveNotificationsInboxPage(),
+        final tooltip =
+            count > 0 ? '$count unread notifications' : 'Notifications';
+        Future<void> openInbox() async {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const LiveNotificationsInboxPage(),
+            ),
+          );
+          if (mounted) setState(() => _unread = _load());
+        }
+
+        if (!widget.onPine) {
+          return IconButton(
+            tooltip: tooltip,
+            onPressed: openInbox,
+            icon: Badge(
+              isLabelVisible: count > 0,
+              label: Text(count > 99 ? '99+' : '$count'),
+              child: Icon(
+                count > 0
+                    ? Icons.notifications_active_outlined
+                    : Icons.notifications_outlined,
+                color: C.navy,
               ),
-            );
-            if (mounted) setState(() => _unread = _load());
-          },
-          icon: Badge(
-            isLabelVisible: count > 0,
-            label: Text(count > 99 ? '99+' : '$count'),
-            child: icon,
+            ),
+          );
+        }
+
+        return Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: openInbox,
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.notifications_outlined,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                if (count > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 18),
+                      height: 18,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF43F5E),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: const Color(0xFF153B69),
+                          width: 2,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        count > 99 ? '99+' : '$count',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        );
-        if (!widget.onPine) return button;
-        return Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(Rd.lg),
-          ),
-          child: button,
         );
       },
     );
@@ -306,8 +360,8 @@ class _LiveNotificationsInboxPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
+      appBar: AppPageBar(
+        'Notifications',
         actions: [
           TextButton.icon(
             onPressed: _busy ? null : _markAll,
@@ -447,7 +501,7 @@ class _LiveNotificationDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Notification')),
+      appBar: const AppPageBar('Notification'),
       body: FutureBuilder<AppNotification>(
         future: _future,
         builder: (context, snapshot) {

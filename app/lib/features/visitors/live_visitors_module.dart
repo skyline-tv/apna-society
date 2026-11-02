@@ -610,13 +610,13 @@ class _LiveAddGateVisitorPageState extends State<LiveAddGateVisitorPage> {
     final title = widget.walkIn ? 'Visitor without OTP' : 'Register visitor';
     if (_loadingFlats) {
       return Scaffold(
-        appBar: AppBar(title: Text(title)),
+        appBar: AppPageBar(title),
         body: const LoadingView(label: 'Loading flats…'),
       );
     }
     if (_flatError != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(title)),
+        appBar: AppPageBar(title),
         body: LoadFailure(
           error: _flatError!,
           title: 'Could not load flats',
@@ -1446,7 +1446,7 @@ class _LiveGuardVisitorDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Visitor details')),
+      appBar: const AppPageBar('Visitor details'),
       body: FutureBuilder<Visitor>(
         future: _future,
         builder: (context, snapshot) {
@@ -2058,13 +2058,13 @@ class _LiveResidentVisitorDetailPageState
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Visitor details')),
+            appBar: const AppPageBar('Visitor details'),
             body: const LoadingView(label: 'Loading visitor…'),
           );
         }
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Visitor details')),
+            appBar: const AppPageBar('Visitor details'),
             body: LoadFailure(
               error: snapshot.error!,
               onRetry: _reload,
@@ -2078,7 +2078,7 @@ class _LiveResidentVisitorDetailPageState
         final canAct =
             v.approvalStatus == 'PENDING' && v.entryStatus == 'NOT_ENTERED';
         return Scaffold(
-          appBar: AppBar(title: const Text('Visitor details')),
+          appBar: const AppPageBar('Visitor details'),
           body: _VisitorDetailBody(
             visitor: v,
             onRefresh: () async {
@@ -2296,7 +2296,7 @@ class _LiveAdminVisitorDetailPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Visitor details')),
+      appBar: const AppPageBar('Visitor details'),
       body: FutureBuilder<Visitor>(
         future: _future,
         builder: (context, snapshot) {
