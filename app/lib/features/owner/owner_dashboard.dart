@@ -38,6 +38,46 @@ class OwnerDash {
   static const tealIcon = Color(0xFF0F766E);
   static const navActiveWell = Color(0xFFE0F2FE);
   static const navIdle = Color(0xFF94A3B8);
+  static const contentMax = 840.0;
+
+  static Size sizeOf(BuildContext context) => MediaQuery.sizeOf(context);
+
+  static double textScaleOf(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(1);
+
+  static bool isCompact(BuildContext context) {
+    final size = sizeOf(context);
+    return size.width < 360 || size.shortestSide < 360 || textScaleOf(context) > 1.2;
+  }
+
+  static bool isWide(BuildContext context) => sizeOf(context).width >= 720;
+
+  static EdgeInsets pageInsets(BuildContext context) {
+    final width = sizeOf(context).width;
+    if (width < 360) return const EdgeInsets.fromLTRB(12, 12, 12, 28);
+    if (width < 600) return const EdgeInsets.fromLTRB(16, 16, 16, 32);
+    return const EdgeInsets.fromLTRB(24, 20, 24, 40);
+  }
+
+  static EdgeInsets headerInsets(BuildContext context) {
+    final size = sizeOf(context);
+    final bottom = size.shortestSide < 500 ? 16.0 : 24.0;
+    if (size.width < 360) return EdgeInsets.fromLTRB(16, 6, 16, bottom);
+    if (size.width < 600) return EdgeInsets.fromLTRB(20, 8, 20, bottom);
+    return EdgeInsets.fromLTRB(24, 10, 24, bottom);
+  }
+
+  static double headerRadius(BuildContext context) =>
+      sizeOf(context).width < 360 ? 24 : 32;
+
+  static int quickColumns(BuildContext context, int count) {
+    if (count <= 1) return 1;
+    final width = sizeOf(context).width;
+    final scale = textScaleOf(context);
+    if (width >= 720 && scale <= 1.2) return 4;
+    if (width < 360 || scale > 1.2) return 2;
+    return 4;
+  }
 }
 
 class OwnerDashQuickItem {
@@ -104,6 +144,7 @@ class OwnerDashboardOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final insets = OwnerDash.pageInsets(context);
     return ColoredBox(
       color: OwnerDash.surface,
       child: RefreshIndicator(
@@ -122,35 +163,68 @@ class OwnerDashboardOverview extends StatelessWidget {
               flatSubtitle: flatSubtitle,
               showBell: showBell,
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (maintenanceCard != null) ...[
-                    maintenanceCard!,
-                    const SizedBox(height: 16),
+            ConstrainedContent(
+              maxWidth: OwnerDash.contentMax,
+              child: Padding(
+                padding: insets,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _heroCards(context),
+                    if (showOfflineNotice) ...[
+                      const OwnerDashAdvisory(kOfficePaymentMessage),
+                      const SizedBox(height: 16),
+                    ],
+                    ...below,
+                    if (quickItems.isNotEmpty)
+                      OwnerDashQuickAccess(items: quickItems),
                   ],
-                  if (collectionsCard != null) ...[
-                    collectionsCard!,
-                    const SizedBox(height: 16),
-                  ],
-                  if (fallbackCard != null) ...[
-                    fallbackCard!,
-                    const SizedBox(height: 16),
-                  ],
-                  if (showOfflineNotice) ...[
-                    const OwnerDashAdvisory(kOfficePaymentMessage),
-                    const SizedBox(height: 16),
-                  ],
-                  ...below,
-                  if (quickItems.isNotEmpty) OwnerDashQuickAccess(items: quickItems),
-                ],
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _heroCards(BuildContext context) {
+    final maintenance = maintenanceCard;
+    final collections = collectionsCard;
+    final fallback = fallbackCard;
+    if (OwnerDash.isWide(context) &&
+        maintenance != null &&
+        collections != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: maintenance),
+              const SizedBox(width: 16),
+              Expanded(child: collections),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (maintenance != null) ...[
+          maintenance,
+          const SizedBox(height: 16),
+        ],
+        if (collections != null) ...[
+          collections,
+          const SizedBox(height: 16),
+        ],
+        if (fallback != null) ...[
+          fallback,
+          const SizedBox(height: 16),
+        ],
+      ],
     );
   }
 }
@@ -185,135 +259,142 @@ class OwnerDashHeader extends StatelessWidget {
         color: OwnerDash.navy,
         elevation: 8,
         shadowColor: const Color(0x40153B69),
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(OwnerDash.headerRadius(context)),
+        ),
         child: SafeArea(
           bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${greeting.toUpperCase()} · ${roleLabel.toUpperCase()}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.6,
-                              color: OwnerDash.greeting,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            firstName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.4,
-                              height: 1.15,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            societyName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: OwnerDash.societyOnNavy,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: DemoEnvironment.active,
-                      builder: (context, demo, _) {
-                        return Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (demo) ...[
-                              const OwnerDashSampleChip(),
-                              const SizedBox(width: 10),
-                            ],
-                            if (showBell)
-                              const LiveNotificationBellButton(onPine: true),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                    ),
-                  ),
-                  child: Row(
+          child: ConstrainedContent(
+            maxWidth: OwnerDash.contentMax,
+            child: Padding(
+              padding: OwnerDash.headerInsets(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.apartment_outlined,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              flatTitle,
+                              '${greeting.toUpperCase()} · ${roleLabel.toUpperCase()}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.2,
+                              style: TextStyle(
+                                fontSize: OwnerDash.isCompact(context) ? 10 : 11,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.4,
+                                color: OwnerDash.greeting,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              firstName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: OwnerDash.isCompact(context) ? 22 : 24,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
+                                height: 1.15,
                                 color: Colors.white,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              flatSubtitle,
+                              societyName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
-                                color: Colors.white.withValues(alpha: 0.72),
+                                color: OwnerDash.societyOnNavy,
                               ),
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: DemoEnvironment.active,
+                        builder: (context, demo, _) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (demo) ...[
+                                const OwnerDashSampleChip(),
+                                const SizedBox(width: 8),
+                              ],
+                              if (showBell)
+                                const LiveNotificationBellButton(onPine: true),
+                            ],
+                          );
+                        },
+                      ),
                     ],
                   ),
-                ),
-              ],
+                  SizedBox(height: OwnerDash.isCompact(context) ? 14 : 20),
+                  Container(
+                    padding: EdgeInsets.all(OwnerDash.isCompact(context) ? 12 : 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: OwnerDash.isCompact(context) ? 36 : 40,
+                          height: OwnerDash.isCompact(context) ? 36 : 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.apartment_outlined,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                flatTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                flatSubtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -327,8 +408,9 @@ class OwnerDashSampleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = OwnerDash.isCompact(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: 4),
       decoration: BoxDecoration(
         color: OwnerDash.sampleFill,
         borderRadius: BorderRadius.circular(999),
@@ -340,10 +422,10 @@ class OwnerDashSampleChip extends StatelessWidget {
           ),
         ],
       ),
-      child: const Text(
+      child: Text(
         DemoEnvironment.label,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: compact ? 11 : 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.3,
           color: OwnerDash.sampleInk,
@@ -379,9 +461,10 @@ class OwnerDashAmountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = OwnerDash.isCompact(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 16 : 20),
       decoration: BoxDecoration(
         color: OwnerDash.navy,
         borderRadius: BorderRadius.circular(16),
@@ -397,17 +480,18 @@ class OwnerDashAmountCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  label.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                    color: OwnerDash.labelOnNavy,
-                  ),
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: OwnerDash.labelOnNavy,
                 ),
               ),
               if (loading)
@@ -429,19 +513,21 @@ class OwnerDashAmountCard extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               amount,
-              style: const TextStyle(
-                fontSize: 30,
+              style: TextStyle(
+                fontSize: compact ? 26 : 30,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.6,
                 height: 1.05,
                 color: Colors.white,
-                fontFeatures: [FontFeature.tabularFigures()],
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w400,
@@ -451,15 +537,15 @@ class OwnerDashAmountCard extends StatelessWidget {
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: FilledButton(
               onPressed: onAction,
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: OwnerDash.navy,
                 disabledBackgroundColor: Colors.white,
                 elevation: 0,
-                minimumSize: const Size.fromHeight(48),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                minimumSize: Size.fromHeight(compact ? 44 : 48),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -468,8 +554,20 @@ class OwnerDashAmountCard extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-              icon: Icon(actionIcon, size: 16),
-              label: Text(actionLabel),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(actionIcon, size: 16),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      actionLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -513,7 +611,7 @@ class OwnerDashStatusChip extends StatelessWidget {
         ),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -521,6 +619,8 @@ class OwnerDashStatusChip extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
@@ -538,8 +638,9 @@ class OwnerDashAdvisory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = OwnerDash.isCompact(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(
         color: OwnerDash.advisoryFill,
         borderRadius: BorderRadius.circular(16),
@@ -595,9 +696,10 @@ class OwnerDashQuickAccess extends StatelessWidget {
             ),
           ),
         ),
-        LayoutBuilder(
-          builder: (context, c) {
-            final columns = c.maxWidth >= 300 ? 4 : 2;
+        Builder(
+          builder: (context) {
+            final columns = OwnerDash.quickColumns(context, items.length);
+            final gap = OwnerDash.isCompact(context) ? 8.0 : 10.0;
             final rows = <Widget>[];
             for (var i = 0; i < items.length; i += columns) {
               final end =
@@ -608,7 +710,7 @@ class OwnerDashQuickAccess extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (var j = 0; j < columns; j++) ...[
-                      if (j > 0) const SizedBox(width: 10),
+                      if (j > 0) SizedBox(width: gap),
                       Expanded(
                         child: j < slice.length
                             ? _QuickTile(item: slice[j])
@@ -618,7 +720,7 @@ class OwnerDashQuickAccess extends StatelessWidget {
                   ],
                 ),
               );
-              if (end < items.length) rows.add(const SizedBox(height: 10));
+              if (end < items.length) rows.add(SizedBox(height: gap));
             }
             return Column(children: rows);
           },
@@ -635,6 +737,8 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = OwnerDash.isCompact(context);
+    final well = compact ? 40.0 : 44.0;
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
@@ -642,7 +746,7 @@ class _QuickTile extends StatelessWidget {
         onTap: item.onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 14, 8, 14),
+          padding: EdgeInsets.fromLTRB(6, compact ? 10 : 14, 6, compact ? 10 : 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: OwnerDash.tileBorder),
@@ -650,8 +754,8 @@ class _QuickTile extends StatelessWidget {
           child: Column(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: well,
+                height: well,
                 decoration: BoxDecoration(
                   color: item.wellColor,
                   borderRadius: BorderRadius.circular(12),
@@ -664,10 +768,10 @@ class _QuickTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
+                style: TextStyle(
+                  fontSize: compact ? 11 : 12,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E293B),
+                  color: const Color(0xFF1E293B),
                   height: 1.2,
                 ),
               ),
@@ -693,6 +797,7 @@ class OwnerDashBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = OwnerDash.isCompact(context) || items.length >= 5;
     return Material(
       color: Colors.white.withValues(alpha: 0.95),
       child: Column(
@@ -702,7 +807,7 @@ class OwnerDashBottomNav extends StatelessWidget {
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              padding: EdgeInsets.fromLTRB(compact ? 4 : 8, 6, compact ? 4 : 8, 6),
               child: Row(
                 children: [
                   for (var i = 0; i < items.length; i++)
@@ -710,6 +815,7 @@ class OwnerDashBottomNav extends StatelessWidget {
                       child: _NavHit(
                         item: items[i],
                         selected: selectedIndex == i,
+                        compact: compact,
                         onTap: () => onDestinationSelected(i),
                       ),
                     ),
@@ -728,11 +834,13 @@ class _NavHit extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.onTap,
+    required this.compact,
   });
 
   final OwnerDashNavItem item;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -741,14 +849,14 @@ class _NavHit extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               padding: EdgeInsets.symmetric(
-                horizontal: selected ? 16 : 8,
+                horizontal: selected ? (compact ? 8 : 16) : 4,
                 vertical: 4,
               ),
               decoration: BoxDecoration(
@@ -767,7 +875,7 @@ class _NavHit extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: compact ? 10 : 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? OwnerDash.navy : const Color(0xFF64748B),
               ),

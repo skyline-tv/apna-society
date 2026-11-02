@@ -1726,22 +1726,24 @@ class _OwnerHomeState extends State<OwnerHome> {
     if (_morePage != null && layout.more.contains(_morePage)) {
       return _pageFor(_morePage!);
     }
-    return ListView(
-      padding: Sp.pagePadding,
-      children: [
-        const PageHeader('More', subtitle: 'Everything else for this flat'),
-        ToolDirectory(
-          links: [
-            for (final key in layout.more)
-              ToolLink(
-                icon: _kResidentDests[key]!.icon,
-                label: _kResidentDests[key]!.label,
-                subtitle: _residentToolHint(key),
-                onTap: () => setState(() => _morePage = key),
-              ),
-          ],
-        ),
-      ],
+    return ConstrainedContent(
+      child: ListView(
+        padding: Sp.pageInsets(context),
+        children: [
+          const PageHeader('More', subtitle: 'Everything else for this flat'),
+          ToolDirectory(
+            links: [
+              for (final key in layout.more)
+                ToolLink(
+                  icon: _kResidentDests[key]!.icon,
+                  label: _kResidentDests[key]!.label,
+                  subtitle: _residentToolHint(key),
+                  onTap: () => setState(() => _morePage = key),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1797,6 +1799,9 @@ class _OwnerHomeState extends State<OwnerHome> {
     }
     final inSubPage = layout.primary[safeTab] == 'more' && _morePage != null;
     final homeChrome = safeTab == 0 && !inSubPage;
+    final compactBar = MediaQuery.sizeOf(context).width < 400;
+    final iconDensity =
+        compactBar ? VisualDensity.compact : VisualDensity.standard;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value:
           homeChrome ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
@@ -1829,14 +1834,16 @@ class _OwnerHomeState extends State<OwnerHome> {
                   actions: [
                     if (access.canResidential)
                       const LiveNotificationBellButton(),
-                    if (layout.more.contains('profile'))
+                    if (!compactBar && layout.more.contains('profile'))
                       IconButton(
                         tooltip: 'Profile',
+                        visualDensity: iconDensity,
                         onPressed: () => _open('profile'),
                         icon: const Icon(Icons.account_circle_outlined),
                       ),
                     IconButton(
                       tooltip: 'Logout',
+                      visualDensity: iconDensity,
                       onPressed: _confirmLogout,
                       icon: const Icon(Icons.logout_rounded),
                     ),
