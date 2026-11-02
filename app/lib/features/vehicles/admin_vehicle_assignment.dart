@@ -10,6 +10,17 @@ import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import 'vehicle_drafts.dart';
 
+IconData _vehicleIcon(String type) {
+  switch (type) {
+    case 'TWO_WHEELER':
+      return Icons.two_wheeler_outlined;
+    case 'FOUR_WHEELER':
+      return Icons.directions_car_outlined;
+    default:
+      return Icons.airport_shuttle_outlined;
+  }
+}
+
 /// Admin vehicle-to-flat assignment. No payment fields.
 class AdminVehicleAssignmentPage extends StatefulWidget {
   const AdminVehicleAssignmentPage({super.key});
@@ -73,10 +84,11 @@ class _AdminVehicleAssignmentPageState extends State<AdminVehicleAssignmentPage>
           color: C.blue,
           onRefresh: () async => reload(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            padding: Sp.pagePadding,
             children: [
               const PageHeader(
                 'Vehicles',
+                showTitle: false,
                 subtitle: 'Link a vehicle and parking number to a flat',
               ),
               PrimaryButton(
@@ -85,54 +97,39 @@ class _AdminVehicleAssignmentPageState extends State<AdminVehicleAssignmentPage>
                 onPressed: () => _openForm(),
               ),
               const SizedBox(height: 12),
-              TextField(
+              SearchField(
                 controller: _search,
-                decoration: InputDecoration(
-                  labelText: 'Search registration',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: reload,
-                  ),
-                ),
+                hint: 'Search registration',
                 onSubmitted: (_) => reload(),
+                onClear: reload,
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilterChip(
-                    label: const Text('Active'),
-                    selected: _activeFilter == true,
-                    onSelected: (_) {
-                      setState(() {
-                        _activeFilter = true;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('Inactive'),
-                    selected: _activeFilter == false,
-                    onSelected: (_) {
-                      setState(() {
-                        _activeFilter = false;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: _activeFilter == null,
-                    onSelected: (_) {
-                      setState(() {
-                        _activeFilter = null;
-                        _future = _load(force: true);
-                      });
-                    },
-                  ),
-                ],
-              ),
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'Active',
+                  selected: _activeFilter == true,
+                  onSelected: () {
+                    _activeFilter = true;
+                    reload();
+                  },
+                ),
+                AppFilterChip(
+                  label: 'Inactive',
+                  selected: _activeFilter == false,
+                  onSelected: () {
+                    _activeFilter = false;
+                    reload();
+                  },
+                ),
+                AppFilterChip(
+                  label: 'All',
+                  selected: _activeFilter == null,
+                  onSelected: () {
+                    _activeFilter = null;
+                    reload();
+                  },
+                ),
+              ]),
               const SizedBox(height: 12),
               const InfoNote(
                 'Select a flat, confirm the resident, then save the vehicle type, '
@@ -143,47 +140,31 @@ class _AdminVehicleAssignmentPageState extends State<AdminVehicleAssignmentPage>
               if (items.isEmpty)
                 EmptyState(
                   'No vehicles found',
+                  icon: Icons.directions_car_outlined,
                   actionLabel: 'Add vehicle',
                   onAction: () => _openForm(),
                 )
               else
                 ...items.map(
-                  (v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(
-                      onTap: v.isActive ? () => _openForm(existing: v) : null,
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.registrationNumber,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              color: C.navy,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${vehicleTypeLabel(v.vehicleType)} · Parking ${v.parkingLabel}',
-                            style: const TextStyle(
-                              color: C.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${v.residentName ?? 'Resident'} · Flat ${v.flatLabel}',
-                            style: const TextStyle(
-                              color: C.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          StatusBadge(v.isActive ? 'Active' : 'Inactive'),
-                        ],
-                      ),
+                  (v) => ListRow(
+                    onTap: v.isActive ? () => _openForm(existing: v) : null,
+                    leading: AppAvatar(
+                      icon: _vehicleIcon(v.vehicleType),
+                      color: v.isActive ? C.blue : C.muted,
+                      size: 42,
                     ),
+                    title: v.registrationNumber,
+                    subtitle:
+                        '${vehicleTypeLabel(v.vehicleType)} · Parking ${v.parkingLabel}\n'
+                        '${v.residentName ?? 'Resident'} · Flat ${v.flatLabel}',
+                    badges: [
+                      StatusBadge(
+                        v.isActive ? 'Active' : 'Inactive',
+                        tone: v.isActive
+                            ? BadgeTone.success
+                            : BadgeTone.neutral,
+                      ),
+                    ],
                   ),
                 ),
             ],

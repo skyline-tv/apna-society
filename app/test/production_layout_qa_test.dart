@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:apna_society/features/auth/society_selection_screen.dart';
 import 'package:apna_society/main.dart';
 import 'package:apna_society/ui/components.dart';
 
@@ -48,7 +49,15 @@ void main() {
         (tester) async {
       await pumpAt(tester, size, const LoginScreen());
       expect(tester.takeException(), isNull);
-      expect(find.text('Login'), findsOneWidget);
+      expect(find.textContaining('Sign In'), findsOneWidget);
+    });
+
+    testWidgets('SocietySelectionScreen lays out at $label without overflow',
+        (tester) async {
+      await pumpAt(tester, size, const SocietySelectionScreen());
+      expect(tester.takeException(), isNull);
+      expect(find.text('Select Society'), findsOneWidget);
+      expect(find.textContaining('Proceed to Sign In'), findsOneWidget);
     });
 
     testWidgets('FormScaffold + sticky CTA at $label with large text',
@@ -230,6 +239,90 @@ void main() {
       expect(find.text('Residents'), findsOneWidget);
     });
   }
+
+  testWidgets('One-time collection list rows fit a 320-wide screen',
+      (tester) async {
+    const size = Size(320, 568);
+    await pumpAt(
+      tester,
+      size,
+      Scaffold(
+        body: ListView(
+          padding: Sp.pagePadding,
+          children: [
+            const PageHeader(
+              'One-time collections',
+              subtitle: 'Festival, repair and special charges — not maintenance',
+            ),
+            ListRow(
+              onTap: () {},
+              leading: const AppAvatar(
+                icon: Icons.celebration_outlined,
+                size: 42,
+              ),
+              title: 'External plaster, terrace waterproofing and compound drainage',
+              subtitle:
+                  'COL-2026-00012 · 140 flats · due 15 Nov 2026\n₹2,40,000 of ₹8,40,000 collected',
+              badges: const [StatusBadge('Active')],
+              trailing: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('₹6,00,000', style: T.money.copyWith(fontSize: 15)),
+                  const Text('29% in', style: T.caption),
+                ],
+              ),
+            ),
+            ListRow(
+              onTap: () {},
+              leading: const AppAvatar(
+                icon: Icons.apartment_outlined,
+                size: 42,
+              ),
+              title: 'E-303',
+              subtitle:
+                  'Priya Sharma · Owner occupied\nAssigned ₹6,000 · paid ₹0',
+              badges: const [StatusBadge('Pending')],
+              trailing: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('₹6,000', style: T.money.copyWith(fontSize: 15)),
+                  const Text('due', style: T.caption),
+                ],
+              ),
+            ),
+            const FormSectionLabel('Payment received'),
+            FilterBar(children: [
+              AppFilterChip(label: 'Cash', selected: true, onSelected: () {}),
+              AppFilterChip(label: 'Cheque', selected: false, onSelected: () {}),
+              AppFilterChip(label: 'NEFT', selected: false, onSelected: () {}),
+              AppFilterChip(label: 'UPI', selected: false, onSelected: () {}),
+            ]),
+            ActionRail(
+              primary: ToolLink(
+                icon: Icons.payments_outlined,
+                label: 'Record offline payment',
+                subtitle: 'Cash, cheque, NEFT or UPI received',
+                onTap: () {},
+              ),
+              secondary: [
+                ToolLink(
+                  icon: Icons.tune_rounded,
+                  label: 'Adjust assigned amount',
+                  subtitle: 'Charge or discount against this flat',
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Record offline payment'), findsOneWidget);
+    expect(find.text('One-time collections'), findsOneWidget);
+  });
 
   testWidgets('AppBottomNav fits five destinations on a narrow width',
       (tester) async {

@@ -523,14 +523,26 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
                         _monthLabel(r.monthly[i].year, r.monthly[i].month),
                         style: T.bodyStrong),
                   ),
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text(moneyPaise(r.monthly[i].collectedPaise),
-                        style: T.money),
-                    Text(
-                      'of ${moneyPaise(r.monthly[i].billedPaise)} · due ${moneyPaise(r.monthly[i].outstandingPrincipalPaise)}',
-                      style: T.caption,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(moneyPaise(r.monthly[i].collectedPaise),
+                            style: T.money,
+                            textAlign: TextAlign.end,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          'of ${moneyPaise(r.monthly[i].billedPaise)} · due ${moneyPaise(r.monthly[i].outstandingPrincipalPaise)}',
+                          style: T.caption,
+                          textAlign: TextAlign.end,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                  ]),
+                  ),
                 ]),
               ),
             ],

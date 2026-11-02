@@ -953,17 +953,14 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
               ),
               const SizedBox(height: 16),
               const FormSectionLabel('Months covered'),
-              ScaleToWidth(
-                child: SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 1, label: Text('1 month')),
-                    ButtonSegment(value: 3, label: Text('3 months')),
-                  ],
-                  selected: {months},
-                  onSelectionChanged: busy
-                      ? null
-                      : (s) => setState(() {
-                            months = s.first;
+              FilterBar(children: [
+                AppFilterChip(
+                  label: '1 month',
+                  selected: months == 1,
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            months = 1;
                             final last = DateTime(
                               periodStart.year,
                               periodStart.month + months,
@@ -972,7 +969,22 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                             if (dueDate.isAfter(last)) dueDate = last;
                           }),
                 ),
-              ),
+                AppFilterChip(
+                  label: '3 months',
+                  selected: months == 3,
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            months = 3;
+                            final last = DateTime(
+                              periodStart.year,
+                              periodStart.month + months,
+                              0,
+                            );
+                            if (dueDate.isAfter(last)) dueDate = last;
+                          }),
+                ),
+              ]),
               const SizedBox(height: 12),
               Text('Selected: $_periodLabel', style: T.secondary),
               InlineError(error),
@@ -1411,7 +1423,7 @@ class LiveOfflinePaymentPage extends StatefulWidget {
   State<LiveOfflinePaymentPage> createState() => _LiveOfflinePaymentPageState();
 }
 
-const _officePaymentMethods = [
+const _offlinePaymentMethods = [
   ('CASH', 'Cash'),
   ('CHEQUE', 'Cheque'),
   ('NEFT', 'NEFT'),
@@ -1530,7 +1542,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final option in _officePaymentMethods)
+            for (final option in _offlinePaymentMethods)
               AppFilterChip(
                 label: option.$2,
                 selected: method == option.$1,
@@ -1663,7 +1675,8 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const PageHeader('Payments',
-                          subtitle: 'Latest 50 payments across the society'),
+                          subtitle: 'Latest 50 payments across the society',
+                          showTitle: false),
                       MiniStatStrip(children: [
                         MiniStat('Shown', '${rows.length}'),
                         MiniStat('Successful total', moneyPaise(successTotal),
@@ -1713,7 +1726,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
           if (_isSuccessfulPayment(p)) ...[
             const SizedBox(height: 14),
             PrimaryButton(
-              label: 'Download Receipt',
+              label: 'Download receipt',
               icon: Icons.download_outlined,
               onPressed: () {
                 Navigator.pop(ctx);
@@ -2137,7 +2150,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                             Padding(
                               padding: const EdgeInsets.only(top: 6, bottom: 8),
                               child: SecondaryButton(
-                                label: 'Download Receipt',
+                                label: 'Download receipt',
                                 icon: Icons.download_outlined,
                                 onPressed: () => _openPaymentReceipt(
                                   context,
@@ -2181,7 +2194,7 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                   ),
                 if (successful.isNotEmpty)
                   PrimaryButton(
-                    label: 'Download Receipt',
+                    label: 'Download receipt',
                     icon: Icons.download_outlined,
                     onPressed: () => _openPaymentReceipt(
                       context,
@@ -2298,7 +2311,7 @@ class _LiveOwnerPaymentsPageState extends State<LiveOwnerPaymentsPage> {
                       if (_isSuccessfulPayment(p)) ...[
                         const SizedBox(height: 14),
                         PrimaryButton(
-                          label: 'Download Receipt',
+                          label: 'Download receipt',
                           icon: Icons.download_outlined,
                           onPressed: () {
                             Navigator.pop(ctx);
@@ -2444,7 +2457,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
             ),
             BottomActionBar(children: [
               PrimaryButton(
-                label: 'Download Receipt',
+                label: 'Download receipt',
                 icon: Icons.download_outlined,
                 busy: _downloading,
                 onPressed: () => _download(detail),

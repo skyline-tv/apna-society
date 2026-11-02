@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('reviewer accounts are fictional and distinct by role', () {
-    expect(DemoEnvironment.label, 'DEMO MODE — SAMPLE DATA');
+    expect(DemoEnvironment.label, 'Sample');
     expect(DemoEnvironment.visitorOtp, '246810');
     expect(DemoEnvironment.loginOtp, '123456');
     expect(DemoEnvironment.accounts, hasLength(4));
@@ -22,7 +22,10 @@ void main() {
     for (final account in DemoEnvironment.accounts) {
       expect(account.password, 'demo@12345');
       expect(account.username.contains('.'), isFalse);
+      expect(DemoEnvironment.isDemoUsername(account.username), isTrue);
     }
+    expect(DemoEnvironment.isDemoUsername('society_admin'), isFalse);
+    expect(DemoEnvironment.isDemoUsername(null), isFalse);
   });
 
   test('public environment refuses to treat a production API as demo', () async {

@@ -800,7 +800,7 @@ export function buildOpenApiSpec() {
         [`${API_PREFIX}/admin/payments/offline`]: {
           post: {
             tags: ['Admin Payments'],
-            summary: 'Record office payment (cash, cheque, NEFT, or UPI)',
+            summary: 'Record offline payment (cash, cheque, NEFT, or UPI)',
             security: adminSecurity,
             responses: { 201: { description: 'Settled payment' }, ...errorResponses },
           },

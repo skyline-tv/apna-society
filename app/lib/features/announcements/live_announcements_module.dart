@@ -304,6 +304,7 @@ class _LiveResidentAnnouncementsPageState
             children: [
               PageHeader(
                 'Announcements',
+                showTitle: false,
                 subtitle: unread > 0
                     ? '$unread unread'
                     : 'Notices from the society office',
@@ -483,35 +484,51 @@ class _LiveResidentAnnouncementDetailPageState
                         '${a.attachments.length} file${a.attachments.length == 1 ? '' : 's'} · tap to open'),
                 AppCard(
                   margin: EdgeInsets.zero,
-                  padding: EdgeInsets.zero,
                   child: Column(children: [
                     for (var i = 0; i < a.attachments.length; i++) ...[
                       if (i > 0)
                         const Divider(height: 1, indent: 56, endIndent: 12),
-                      ListRow(
-                        dense: true,
-                        leading: AppAvatar(
-                            icon: _mimeIcon(a.attachments[i].mimeType),
-                            square: true,
-                            size: 36,
-                            color:
-                                a.attachments[i].mimeType == 'application/pdf'
-                                    ? C.error
-                                    : C.blue),
-                        title: a.attachments[i].originalFilename,
-                        subtitle: _fileSize(a.attachments[i].sizeBytes),
-                        showChevron: false,
-                        trailing: _busyAttachment == a.attachments[i].id
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2.2))
-                            : const Icon(Icons.open_in_full_rounded,
-                                size: 18, color: C.muted),
+                      InkWell(
                         onTap: _busyAttachment != null
                             ? null
                             : () => _download(a, a.attachments[i]),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          child: Row(children: [
+                            AppAvatar(
+                                icon: _mimeIcon(a.attachments[i].mimeType),
+                                square: true,
+                                size: 36,
+                                color: a.attachments[i].mimeType ==
+                                        'application/pdf'
+                                    ? C.error
+                                    : C.blue),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(a.attachments[i].originalFilename,
+                                      style: T.bodyStrong,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 2),
+                                  Text(_fileSize(a.attachments[i].sizeBytes),
+                                      style: T.caption),
+                                ],
+                              ),
+                            ),
+                            _busyAttachment == a.attachments[i].id
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2.2))
+                                : const Icon(Icons.open_in_full_rounded,
+                                    size: 18, color: C.muted),
+                          ]),
+                        ),
                       ),
                     ],
                   ]),
@@ -599,7 +616,8 @@ class _LiveAdminAnnouncementsPageState
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
               children: [
                 const PageHeader('Announcements',
-                    subtitle: 'Draft, schedule and publish notices'),
+                    subtitle: 'Draft, schedule and publish notices',
+                    showTitle: false),
                 FilterBar(
                   padding: EdgeInsets.zero,
                   children: [
@@ -1029,35 +1047,49 @@ class _LiveAdminAnnouncementDetailPageState
                           '${a.attachments.length} of $kAnnouncementAttachmentMaxCount'),
                   AppCard(
                     margin: EdgeInsets.zero,
-                    padding: EdgeInsets.zero,
                     child: Column(children: [
                       for (var i = 0; i < a.attachments.length; i++) ...[
                         if (i > 0)
                           const Divider(height: 1, indent: 56, endIndent: 12),
-                        ListRow(
-                          dense: true,
-                          leading: AppAvatar(
-                              icon: _mimeIcon(a.attachments[i].mimeType),
-                              square: true,
-                              size: 36,
-                              color:
-                                  a.attachments[i].mimeType == 'application/pdf'
-                                      ? C.error
-                                      : C.blue),
-                          title: a.attachments[i].originalFilename,
-                          subtitle: _fileSize(a.attachments[i].sizeBytes),
-                          showChevron: false,
-                          trailing: editable
-                              ? IconButton(
-                                  tooltip: 'Remove',
-                                  icon: const Icon(Icons.delete_outline_rounded,
-                                      color: C.error),
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _removeAttachment(
-                                          a, a.attachments[i]),
-                                )
-                              : null,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          child: Row(children: [
+                            AppAvatar(
+                                icon: _mimeIcon(a.attachments[i].mimeType),
+                                square: true,
+                                size: 36,
+                                color: a.attachments[i].mimeType ==
+                                        'application/pdf'
+                                    ? C.error
+                                    : C.blue),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(a.attachments[i].originalFilename,
+                                      style: T.bodyStrong,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 2),
+                                  Text(_fileSize(a.attachments[i].sizeBytes),
+                                      style: T.caption),
+                                ],
+                              ),
+                            ),
+                            if (editable)
+                              IconButton(
+                                tooltip: 'Remove',
+                                icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: C.error),
+                                onPressed: _busy
+                                    ? null
+                                    : () => _removeAttachment(
+                                        a, a.attachments[i]),
+                              ),
+                          ]),
                         ),
                       ],
                     ]),
@@ -1477,43 +1509,36 @@ class _LiveAnnouncementFormPageState extends State<LiveAnnouncementFormPage> {
                     : (v) => setState(() => _category = v ?? _category),
               ),
               const SizedBox(height: 12),
-              ScaleToWidth(
-                child: SegmentedButton<String>(
-                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
-                  segments: [
-                    for (final p in kAnnouncementPriorities)
-                      ButtonSegment(value: p, label: Text(_priorityLabel(p))),
-                  ],
-                  selected: {_priority},
-                  onSelectionChanged: _submitting
-                      ? null
-                      : (s) => setState(() => _priority = s.first),
-                ),
-              ),
+              const FormSectionLabel('Priority'),
+              FilterBar(children: [
+                for (final p in kAnnouncementPriorities)
+                  AppFilterChip(
+                    label: _priorityLabel(p),
+                    selected: _priority == p,
+                    onSelected: _submitting
+                        ? () {}
+                        : () => setState(() => _priority = p),
+                  ),
+              ]),
               const SizedBox(height: 20),
               const FormSectionLabel('Audience'),
-              ScaleToWidth(
-                child: SegmentedButton<String>(
-                  showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
-                  segments: [
-                    for (final a in kAudienceTypes)
-                      ButtonSegment(
-                          value: a, label: Text(audienceTypeLabel(a))),
-                  ],
-                  selected: {_audience},
-                  onSelectionChanged: _submitting
-                      ? null
-                      : (s) {
-                          final next = s.first;
-                          setState(() => _audience = next);
-                          if (next == 'SELECTED_FLATS' &&
-                              _flatPicker.allFlats.isEmpty &&
-                              !_loadingFlats) {
-                            _loadAllFlats();
-                          }
-                        },
-                ),
-              ),
+              FilterBar(children: [
+                for (final a in kAudienceTypes)
+                  AppFilterChip(
+                    label: audienceTypeLabel(a),
+                    selected: _audience == a,
+                    onSelected: _submitting
+                        ? () {}
+                        : () {
+                            setState(() => _audience = a);
+                            if (a == 'SELECTED_FLATS' &&
+                                _flatPicker.allFlats.isEmpty &&
+                                !_loadingFlats) {
+                              _loadAllFlats();
+                            }
+                          },
+                  ),
+              ]),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,

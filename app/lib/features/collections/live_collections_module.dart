@@ -165,6 +165,49 @@ String _assignmentLabel(String type) {
   }
 }
 
+Color _collectionStatusColor(String status) {
+  switch (status.toUpperCase()) {
+    case 'PAID':
+    case 'CLOSED':
+      return C.green;
+    case 'CANCELLED':
+      return C.muted;
+    case 'OVERDUE':
+      return C.error;
+    case 'PARTIALLY_PAID':
+      return C.amber;
+    default:
+      return C.blue;
+  }
+}
+
+String _paymentMethodLabel(String method) {
+  switch (method.toUpperCase()) {
+    case 'ONLINE':
+    case 'RAZORPAY':
+      return 'Online';
+    case 'OFFLINE':
+      return 'Offline';
+    case 'CASH':
+      return 'Cash';
+    case 'CHEQUE':
+      return 'Cheque';
+    case 'UPI':
+      return 'UPI';
+    case 'NEFT':
+      return 'NEFT';
+    default:
+      return humanizeStatus(method);
+  }
+}
+
+const _offlinePaymentMethods = [
+  ('CASH', 'Cash'),
+  ('CHEQUE', 'Cheque'),
+  ('NEFT', 'NEFT'),
+  ('UPI', 'UPI'),
+];
+
 bool _isSuccessfulPayment(CollectionPayment payment) =>
     payment.status.toUpperCase() == 'SUCCESS';
 
@@ -192,7 +235,7 @@ class _CollectionPaymentCard extends StatelessWidget {
       title: flat.isNotEmpty ? flat : p.paymentNumber,
       subtitle: [
         if (flat.isNotEmpty) p.paymentNumber,
-        humanizeStatus(p.paymentMethod),
+        _paymentMethodLabel(p.paymentMethod),
         humanizeStatus(p.status),
         if (p.paidAt != null) fmtIsoDateTime(p.paidAt),
       ].join(' · '),
@@ -357,6 +400,7 @@ class _LiveAdminCollectionsPageState extends State<LiveAdminCollectionsPage> {
               const PageHeader(
                 'One-time collections',
                 subtitle: 'Festival, repair and special charges — not maintenance',
+                showTitle: false,
               ),
               PrimaryButton(
                 label: 'Create collection',
@@ -378,13 +422,15 @@ class _LiveAdminCollectionsPageState extends State<LiveAdminCollectionsPage> {
               const SizedBox(height: 8),
               ResultCount(page.pagination.total, 'collection'),
               if (page.items.isEmpty)
-                const EmptyState(
+                EmptyState(
                   'No one-time collections yet',
                   icon: Icons.celebration_outlined,
+                  actionLabel: 'Create collection',
+                  onAction: _create,
                 )
               else
                 ...page.items.map(
-                  (row) => AppCard(
+                  (row) => ListRow(
                     onTap: () async {
                       await Navigator.push<void>(
                         context,
@@ -395,24 +441,29 @@ class _LiveAdminCollectionsPageState extends State<LiveAdminCollectionsPage> {
                       );
                       if (mounted) reload();
                     },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    leading: AppAvatar(
+                      icon: Icons.celebration_outlined,
+                      color: _collectionStatusColor(row.status),
+                      size: 42,
+                    ),
+                    title: row.title,
+                    subtitle:
+                        '${row.collectionNumber} · ${row.assignedFlatCount} flats · due ${fmtIsoDate(row.dueDate)}\n'
+                        '${moneyPaise(row.collectedPaise)} of ${moneyPaise(row.expectedTotalPaise)} collected',
+                    badges: [
+                      StatusBadge(_collectionStatusLabel(row.status)),
+                    ],
+                    trailing: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(children: [
-                          Expanded(
-                            child: Text(row.title, style: T.bodyStrong),
-                          ),
-                          StatusBadge(row.status),
-                        ]),
-                        const SizedBox(height: 4),
                         Text(
-                          '${row.collectionNumber} · ${row.assignedFlatCount} flats · due ${fmtIsoDate(row.dueDate)}',
-                          style: T.caption,
+                          moneyPaise(row.outstandingPaise),
+                          style: T.money.copyWith(fontSize: 15),
                         ),
-                        const SizedBox(height: 8),
                         Text(
-                          '${moneyPaise(row.collectedPaise)} of ${moneyPaise(row.expectedTotalPaise)}  ·  ${row.collectionPercentage.toStringAsFixed(0)}%',
-                          style: T.secondary,
+                          '${row.collectionPercentage.toStringAsFixed(0)}% in',
+                          style: T.caption,
                         ),
                       ],
                     ),
@@ -647,22 +698,38 @@ class _LiveCreateCollectionPageState extends State<LiveCreateCollectionPage> {
               ),
               const SizedBox(height: 16),
               const FormSectionLabel('Assignment'),
-              ScaleToWidth(
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'ALL_FLATS', label: Text('All flats')),
-                    ButtonSegment(value: 'WINGS', label: Text('Wings')),
-                    ButtonSegment(value: 'SELECTED_FLATS', label: Text('Flats')),
-                  ],
-                  selected: {assignmentType},
-                  onSelectionChanged: busy
-                      ? null
-                      : (v) => setState(() {
-                            assignmentType = v.first;
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'All flats',
+                  selected: assignmentType == 'ALL_FLATS',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            assignmentType = 'ALL_FLATS';
                             preview = null;
                           }),
                 ),
-              ),
+                AppFilterChip(
+                  label: 'Wings',
+                  selected: assignmentType == 'WINGS',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            assignmentType = 'WINGS';
+                            preview = null;
+                          }),
+                ),
+                AppFilterChip(
+                  label: 'Selected flats',
+                  selected: assignmentType == 'SELECTED_FLATS',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            assignmentType = 'SELECTED_FLATS';
+                            preview = null;
+                          }),
+                ),
+              ]),
               if (assignmentType == 'WINGS') ...[
                 const SizedBox(height: 12),
                 Wrap(
@@ -765,22 +832,38 @@ class _LiveCreateCollectionPageState extends State<LiveCreateCollectionPage> {
               ],
               const SizedBox(height: 16),
               const FormSectionLabel('Amount'),
-              ScaleToWidth(
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'PER_FLAT', label: Text('Per flat')),
-                    ButtonSegment(value: 'TOTAL_SPLIT', label: Text('Total split')),
-                    ButtonSegment(value: 'CUSTOM', label: Text('Custom')),
-                  ],
-                  selected: {amountMode},
-                  onSelectionChanged: busy
-                      ? null
-                      : (v) => setState(() {
-                            amountMode = v.first;
+              FilterBar(children: [
+                AppFilterChip(
+                  label: 'Per flat',
+                  selected: amountMode == 'PER_FLAT',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            amountMode = 'PER_FLAT';
                             preview = null;
                           }),
                 ),
-              ),
+                AppFilterChip(
+                  label: 'Total split',
+                  selected: amountMode == 'TOTAL_SPLIT',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            amountMode = 'TOTAL_SPLIT';
+                            preview = null;
+                          }),
+                ),
+                AppFilterChip(
+                  label: 'Custom',
+                  selected: amountMode == 'CUSTOM',
+                  onSelected: busy
+                      ? () {}
+                      : () => setState(() {
+                            amountMode = 'CUSTOM';
+                            preview = null;
+                          }),
+                ),
+              ]),
               if (amountMode != 'CUSTOM') ...[
                 const SizedBox(height: 12),
                 TextFormField(
@@ -1726,8 +1809,16 @@ class _LiveAdminCollectionDetailPageState
               padding: Sp.pagePadding,
               children: [
                 Row(children: [
-                  Expanded(child: Text(c.title, style: T.h2)),
-                  StatusBadge(c.status),
+                  Expanded(
+                    child: Text(
+                      c.title,
+                      style: T.h2,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  StatusBadge(_collectionStatusLabel(c.status)),
                 ]),
                 const SizedBox(height: 4),
                 Text(
@@ -1788,29 +1879,27 @@ class _LiveAdminCollectionDetailPageState
                     DetailRow('Description', c.description),
                 ]),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    SecondaryButton(
-                      label: 'CSV / Excel',
+                ActionRail(
+                  busy: exporting,
+                  secondary: [
+                    ToolLink(
                       icon: Icons.table_view_outlined,
-                      busy: exporting,
-                      expand: false,
-                      onPressed: _exportCsv,
+                      label: 'CSV / Excel',
+                      subtitle: 'Flat-wise amounts for a spreadsheet',
+                      onTap: _exportCsv,
                     ),
-                    SecondaryButton(
-                      label: 'PDF report',
+                    ToolLink(
                       icon: Icons.picture_as_pdf_outlined,
-                      busy: exporting,
-                      expand: false,
-                      onPressed: () => _exportPdf(bundle),
+                      label: 'PDF report',
+                      subtitle: 'Printable collection report',
+                      onTap: () => _exportPdf(bundle),
                     ),
                     if (c.status == 'ACTIVE') ...[
-                      SecondaryButton(
-                        label: 'Edit',
-                        expand: false,
-                        onPressed: () async {
+                      ToolLink(
+                        icon: Icons.edit_outlined,
+                        label: 'Edit collection',
+                        subtitle: 'Title, due date, add or remove unpaid flats',
+                        onTap: () async {
                           final ok = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(
@@ -1821,15 +1910,17 @@ class _LiveAdminCollectionDetailPageState
                           if (ok == true && mounted) reload();
                         },
                       ),
-                      SecondaryButton(
-                        label: 'Close',
-                        expand: false,
-                        onPressed: _close,
+                      ToolLink(
+                        icon: Icons.lock_outline_rounded,
+                        label: 'Close collection',
+                        subtitle: 'Stop new payments. Receipts are kept.',
+                        onTap: _close,
                       ),
-                      SecondaryButton(
-                        label: 'Cancel',
-                        expand: false,
-                        onPressed: _cancel,
+                      ToolLink(
+                        icon: Icons.cancel_outlined,
+                        label: 'Cancel collection',
+                        subtitle: 'Cancel unpaid charges. Paid amounts stay.',
+                        onTap: _cancel,
                       ),
                     ],
                   ],
@@ -1887,7 +1978,7 @@ class _LiveAdminCollectionDetailPageState
                       icon: Icons.apartment_outlined, compact: true)
                 else
                   ...bundle.charges.items.map(
-                    (row) => AppCard(
+                    (row) => ListRow(
                       onTap: () async {
                         await Navigator.push<void>(
                           context,
@@ -1902,45 +1993,52 @@ class _LiveAdminCollectionDetailPageState
                         );
                         if (mounted) reload();
                       },
-                      child: Row(children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(row.flatLabel, style: T.bodyStrong),
-                              Text(
-                                '${row.ownerNameSnapshot} · ${humanizeStatus(row.occupancyStatusSnapshot)}',
-                                style: T.caption,
+                      leading: AppAvatar(
+                        icon: Icons.apartment_outlined,
+                        color: _collectionStatusColor(row.status),
+                        size: 42,
+                      ),
+                      title: row.flatLabel,
+                      subtitle:
+                          '${row.ownerNameSnapshot} · ${humanizeStatus(row.occupancyStatusSnapshot)}\n'
+                          'Assigned ${moneyPaise(row.assignedAmountPaise)} · paid ${moneyPaise(row.amountPaidPaise)}',
+                      badges: [
+                        StatusBadge(_collectionStatusLabel(row.status)),
+                      ],
+                      trailing: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            moneyPaise(row.outstandingPaise),
+                            style: T.money.copyWith(fontSize: 15),
+                          ),
+                          const Text('due', style: T.caption),
+                        ],
+                      ),
+                      footer: c.status == 'ACTIVE' &&
+                              _canRemoveCollectionCharge(row)
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final removed =
+                                      await _removeUnpaidCollectionFlats(
+                                    context: context,
+                                    collectionId: widget.collectionId,
+                                    chargeIds: [row.id],
+                                    confirmTitle: 'Remove ${row.flatLabel}?',
+                                    successMessage:
+                                        '${row.flatLabel} removed from the collection.',
+                                  );
+                                  if (removed && mounted) reload();
+                                },
+                                icon: const Icon(
+                                    Icons.delete_outline_rounded, size: 18),
+                                label: const Text('Remove unpaid flat'),
                               ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(moneyPaise(row.outstandingPaise),
-                                style: T.bodyStrong),
-                            StatusBadge(row.status),
-                          ],
-                        ),
-                        if (c.status == 'ACTIVE' &&
-                            _canRemoveCollectionCharge(row))
-                          IconButton(
-                            tooltip: 'Remove unpaid flat',
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            onPressed: () async {
-                              final removed = await _removeUnpaidCollectionFlats(
-                                context: context,
-                                collectionId: widget.collectionId,
-                                chargeIds: [row.id],
-                                confirmTitle: 'Remove ${row.flatLabel}?',
-                                successMessage:
-                                    '${row.flatLabel} removed from the collection.',
-                              );
-                              if (removed && mounted) reload();
-                            },
-                          ),
-                      ]),
+                            )
+                          : null,
                     ),
                   ),
                 PaginationBar(
@@ -1999,6 +2097,183 @@ class _AdminCollectionBundle {
   final Paged<CollectionCharge> charges;
   final Paged<CollectionPayment> payments;
   final List<WingSummary> wings;
+}
+
+class LiveCollectionOfflinePaymentPage extends StatefulWidget {
+  const LiveCollectionOfflinePaymentPage({super.key, required this.charge});
+  final CollectionCharge charge;
+
+  @override
+  State<LiveCollectionOfflinePaymentPage> createState() =>
+      _LiveCollectionOfflinePaymentPageState();
+}
+
+class _LiveCollectionOfflinePaymentPageState
+    extends State<LiveCollectionOfflinePaymentPage> {
+  final _form = GlobalKey<FormState>();
+  final reference = TextEditingController();
+  final notes = TextEditingController();
+  late final amount = TextEditingController(
+      text: paiseToRupeeInput(widget.charge.outstandingPaise));
+  String method = 'CASH';
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    reference.dispose();
+    notes.dispose();
+    amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!(_form.currentState?.validate() ?? false)) return;
+    final amountPaise = parseRupeesToPaise(amount.text)!;
+    final ok = await confirmDialog(
+      context,
+      title: 'Record ${moneyPaise(amountPaise)}?',
+      message: [
+        '${_paymentMethodLabel(method)} payment for ${widget.charge.flatLabel}',
+        if (reference.text.trim().isNotEmpty)
+          'with reference “${reference.text.trim()}”',
+        'will be recorded.',
+      ].join(' '),
+      confirmLabel: 'Record payment',
+      icon: Icons.payments_outlined,
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      await ensureLiveRepositories(session.api).collections.recordOffline(
+            chargeId: widget.charge.id,
+            amountPaise: amountPaise,
+            paidAt: DateTime.now().toUtc().toIso8601String(),
+            paymentMethod: method,
+            referenceNumber: reference.text.trim(),
+            notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+          );
+      ensureLiveRepositories(session.api).invalidateAfterFinancialMutation();
+      if (!mounted) return;
+      showSuccessSnack(context, 'Offline payment recorded.');
+      Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => error = collectionErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final charge = widget.charge;
+    return FormScaffold(
+      title: 'Record offline payment',
+      formKey: _form,
+      bottom: PrimaryButton(
+        label: 'Review & record',
+        icon: Icons.check_rounded,
+        busy: busy,
+        onPressed: submit,
+      ),
+      children: [
+        ReviewSummary(
+          title: 'Applying to',
+          rows: [
+            ('Collection', charge.collectionTitle ?? 'Collection'),
+            ('Flat', charge.flatLabel),
+            ('Owner', charge.ownerNameSnapshot),
+            ('Assigned', moneyPaise(charge.assignedAmountPaise)),
+            ('Already paid', moneyPaise(charge.amountPaidPaise)),
+            ('Outstanding', moneyPaise(charge.outstandingPaise)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const FormSectionLabel('Payment received'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in _offlinePaymentMethods)
+              AppFilterChip(
+                label: option.$2,
+                selected: method == option.$1,
+                onSelected: busy
+                    ? () {}
+                    : () => setState(() => method = option.$1),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: amount,
+          enabled: !busy,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+          ],
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: 'Amount received (₹) *',
+            prefixText: '₹ ',
+            helperText: 'Defaults to the outstanding amount on this flat.',
+          ),
+          validator: (v) {
+            final paise = parseRupeesToPaise(v ?? '');
+            if (paise == null) return 'Enter a valid rupee amount.';
+            if (paise <= 0) return 'Amount must be greater than zero.';
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: reference,
+          enabled: !busy,
+          textCapitalization: TextCapitalization.characters,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: method == 'CHEQUE'
+                ? 'Cheque number *'
+                : method == 'NEFT'
+                    ? 'NEFT / UTR *'
+                    : method == 'UPI'
+                        ? 'UPI reference *'
+                        : 'Reference number *',
+            hintText: method == 'CHEQUE'
+                ? 'Cheque number'
+                : method == 'NEFT'
+                    ? 'Bank UTR'
+                    : method == 'UPI'
+                        ? 'UPI transaction ID'
+                        : 'Receipt book or slip number',
+            prefixIcon: const Icon(Icons.tag_rounded),
+          ),
+          validator: (v) =>
+              (v ?? '').trim().isEmpty ? 'Enter a reference number.' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: notes,
+          enabled: !busy,
+          maxLines: 2,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => busy ? null : submit(),
+          decoration: const InputDecoration(
+            labelText: 'Notes',
+            alignLabelWithHint: true,
+          ),
+        ),
+        InlineError(error),
+      ],
+    );
+  }
 }
 
 class LiveAdminCollectionChargePage extends StatefulWidget {
@@ -2068,106 +2343,13 @@ class _LiveAdminCollectionChargePageState
   }
 
   Future<void> _offline() async {
-    final amountCtrl = TextEditingController(
-      text: paiseToRupeeInput(charge.outstandingPaise),
-    );
-    final refCtrl = TextEditingController();
-    final notesCtrl = TextEditingController();
-    var method = 'CASH';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Record office payment'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final option in [
-                      ('CASH', 'Cash'),
-                      ('CHEQUE', 'Cheque'),
-                      ('NEFT', 'NEFT'),
-                      ('UPI', 'UPI'),
-                    ])
-                      AppFilterChip(
-                        label: option.$2,
-                        selected: method == option.$1,
-                        onSelected: () => setDialog(() => method = option.$1),
-                      ),
-                  ],
-                ),
-                TextFormField(
-                  controller: amountCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Amount (₹)',
-                    prefixText: '₹ ',
-                  ),
-                ),
-                TextFormField(
-                  controller: refCtrl,
-                  decoration: InputDecoration(
-                    labelText: method == 'CHEQUE'
-                        ? 'Cheque number'
-                        : method == 'NEFT'
-                            ? 'NEFT / UTR'
-                            : method == 'UPI'
-                                ? 'UPI reference'
-                                : 'Reference number',
-                  ),
-                ),
-                TextFormField(
-                  controller: notesCtrl,
-                  decoration: const InputDecoration(labelText: 'Notes'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Record')),
-          ],
-        ),
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveCollectionOfflinePaymentPage(charge: charge),
       ),
     );
-    if (ok != true || !mounted) return;
-    final paise = parseRupeesToPaise(amountCtrl.text);
-    if (paise == null || paise <= 0) {
-      showErrorSnack(context, 'Enter a valid amount.');
-      return;
-    }
-    if (refCtrl.text.trim().isEmpty) {
-      showErrorSnack(context, 'Enter a reference number.');
-      return;
-    }
-    setState(() => busy = true);
-    try {
-      await ensureLiveRepositories(authSession!.api).collections.recordOffline(
-            chargeId: charge.id,
-            amountPaise: paise,
-            paidAt: DateTime.now().toUtc().toIso8601String(),
-            paymentMethod: method,
-            referenceNumber: refCtrl.text.trim(),
-            notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-          );
-      if (!mounted) return;
-      showSuccessSnack(context, 'Offline payment recorded.');
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) showErrorSnack(context, collectionErrorMessage(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
+    if (ok == true && mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -2192,44 +2374,49 @@ class _LiveAdminCollectionChargePageState
             DetailRow('Status', '',
                 valueWidget: Align(
                   alignment: Alignment.centerLeft,
-                  child: StatusBadge(charge.status),
+                  child: StatusBadge(_collectionStatusLabel(charge.status)),
                 )),
           ]),
           if (widget.collectionActive) ...[
             const SizedBox(height: 16),
-            PrimaryButton(
-              label: 'Record office payment',
-              icon: Icons.payments_outlined,
+            const SectionTitle('Collect & manage'),
+            ActionRail(
               busy: busy,
-              onPressed: charge.outstandingPaise <= 0 ? null : _offline,
+              primary: charge.outstandingPaise <= 0
+                  ? null
+                  : ToolLink(
+                      icon: Icons.payments_outlined,
+                      label: 'Record offline payment',
+                      subtitle: 'Cash, cheque, NEFT or UPI received',
+                      onTap: _offline,
+                    ),
+              secondary: [
+                ToolLink(
+                  icon: Icons.tune_rounded,
+                  label: 'Adjust assigned amount',
+                  subtitle: 'Charge or discount against this flat',
+                  onTap: _adjust,
+                ),
+                if (_canRemoveCollectionCharge(charge))
+                  ToolLink(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove this unpaid flat',
+                    subtitle: 'Take this flat off the collection',
+                    onTap: () async {
+                      final removed = await _removeUnpaidCollectionFlats(
+                        context: context,
+                        collectionId: widget.collectionId,
+                        chargeIds: [charge.id],
+                        confirmTitle: 'Remove ${charge.flatLabel}?',
+                        successMessage:
+                            '${charge.flatLabel} removed from the collection.',
+                      );
+                      if (!removed || !mounted) return;
+                      Navigator.pop(context, true);
+                    },
+                  ),
+              ],
             ),
-            const SizedBox(height: 8),
-            SecondaryButton(
-              label: 'Adjust assigned amount',
-              icon: Icons.tune_rounded,
-              onPressed: busy ? null : _adjust,
-            ),
-            if (_canRemoveCollectionCharge(charge)) ...[
-              const SizedBox(height: 8),
-              SecondaryButton(
-                label: 'Remove this unpaid flat',
-                icon: Icons.delete_outline_rounded,
-                onPressed: busy
-                    ? null
-                    : () async {
-                        final removed = await _removeUnpaidCollectionFlats(
-                          context: context,
-                          collectionId: widget.collectionId,
-                          chargeIds: [charge.id],
-                          confirmTitle: 'Remove ${charge.flatLabel}?',
-                          successMessage:
-                              '${charge.flatLabel} removed from the collection.',
-                        );
-                        if (!removed || !mounted) return;
-                        Navigator.pop(context, true);
-                      },
-              ),
-            ],
           ],
         ],
       ),
@@ -2301,6 +2488,7 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
               const PageHeader(
                 'One-time collections',
                 subtitle: 'Special charges for your flat, separate from maintenance',
+                showTitle: false,
               ),
               HeroMoneyCard(
                 label: 'Outstanding collections',
@@ -2340,7 +2528,7 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
                 )
               else
                 ...rows.map(
-                  (row) => AppCard(
+                  (row) => ListRow(
                     onTap: () async {
                       await Navigator.push<void>(
                         context,
@@ -2353,28 +2541,27 @@ class _LiveOwnerCollectionsPageState extends State<LiveOwnerCollectionsPage> {
                         setState(() => _future = _load(force: true));
                       }
                     },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    leading: AppAvatar(
+                      icon: Icons.celebration_outlined,
+                      color: _collectionStatusColor(row.status),
+                      size: 42,
+                    ),
+                    title: row.collectionTitle ?? 'Collection',
+                    subtitle:
+                        '${row.flatLabel} · due ${fmtIsoDate(row.dueDate)}\n'
+                        'Paid ${moneyPaise(row.amountPaidPaise)} of ${moneyPaise(row.assignedAmountPaise)}',
+                    badges: [
+                      StatusBadge(_collectionStatusLabel(row.status)),
+                    ],
+                    trailing: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(children: [
-                          Expanded(
-                            child: Text(
-                              row.collectionTitle ?? 'Collection',
-                              style: T.bodyStrong,
-                            ),
-                          ),
-                          StatusBadge(row.status),
-                        ]),
-                        const SizedBox(height: 4),
                         Text(
-                          '${row.flatLabel} · due ${fmtIsoDate(row.dueDate)}',
-                          style: T.caption,
+                          moneyPaise(row.outstandingPaise),
+                          style: T.money.copyWith(fontSize: 15),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Due ${moneyPaise(row.outstandingPaise)} of ${moneyPaise(row.assignedAmountPaise)}  ·  paid ${moneyPaise(row.amountPaidPaise)}',
-                          style: T.secondary,
-                        ),
+                        const Text('due', style: T.caption),
                       ],
                     ),
                   ),
@@ -2570,7 +2757,7 @@ class _LiveOwnerCollectionChargePageState
                     DetailRow('Status', '',
                         valueWidget: Align(
                           alignment: Alignment.centerLeft,
-                          child: StatusBadge(charge.status),
+                          child: StatusBadge(_collectionStatusLabel(charge.status)),
                         )),
                     if ((charge.collectionDescription ??
                             collection?.description) !=
@@ -2770,7 +2957,7 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
                     DetailRow('Collection', detail.collectionTitle),
                     DetailRow('Collection no.', detail.collectionNumber),
                     DetailRow('Paid at', fmtIsoDateTime(detail.paidAt)),
-                    DetailRow('Method', humanizeStatus(detail.paymentMethod)),
+                    DetailRow('Method', _paymentMethodLabel(detail.paymentMethod)),
                     DetailRow('Flat', detail.flatLabel),
                     DetailRow('Owner', detail.ownerName),
                     if (detail.transactionReference != null)
@@ -2781,7 +2968,7 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
             ),
             BottomActionBar(children: [
               PrimaryButton(
-                label: 'Download Receipt',
+                label: 'Download receipt',
                 icon: Icons.download_outlined,
                 busy: downloading,
                 onPressed: () => _download(detail),

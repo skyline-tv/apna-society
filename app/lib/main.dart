@@ -32,6 +32,7 @@ import 'app_core.dart';
 import 'data/local_database.dart' show LocalDatabase;
 import 'api/auth/admin_api_messages.dart';
 import 'api/models/admin_user_models.dart';
+import 'features/auth/society_selection_screen.dart';
 import 'features/billing/collect_payment_page.dart';
 import 'features/billing/live_additional_services_module.dart';
 import 'features/billing/live_billing_module.dart';
@@ -49,6 +50,7 @@ import 'services/occupancy_access.dart';
 import 'services/receipt_pdf.dart';
 import 'services/session_store.dart';
 import 'ui/components.dart';
+import 'ui/demo_chrome.dart';
 import 'ui/load_failure.dart';
 
 Future<void> main() async {
@@ -136,45 +138,37 @@ class ApnaSocietyApp extends StatelessWidget {
                 maxScaleFactor: 1.3,
               ),
             ),
-            child: ValueListenableBuilder<bool>(
-              valueListenable: DemoEnvironment.active,
-              builder: (context, demo, _) {
-                final page = child ?? const SizedBox.shrink();
-                if (!demo) return page;
-                return Column(
-                  children: [
-                    const Material(
-                      color: Color(0xFF9A6700),
-                      child: SafeArea(
-                        bottom: false,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            DemoEnvironment.label,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(child: page),
-                  ],
+            child: DemoModeOverlay(
+              onOpen: () {
+                final nav = appNavigatorKey.currentContext;
+                if (nav == null) return;
+                showDemoInfoSheet(
+                  nav,
+                  onLeave: () async {
+                    await DemoEnvironment.persist(false);
+                    final session = replaceAuthSession(
+                      config: ApiConfig.fromEnvironment(),
+                    );
+                    await session.clearLocal();
+                    appNavigatorKey.currentState?.pushAndRemoveUntil(
+                      unsignedInRoute(),
+                      (_) => false,
+                    );
+                  },
                 );
               },
+              child: child ?? const SizedBox.shrink(),
             ),
           );
         },
         home: const AppBootstrap(),
         routes: {
-          '/login': (_) => const LoginScreen(),
+          kSelectSocietyRoute: (_) => const SocietySelectionScreen(),
+          kLoginRoute: (context) => LoginScreen(
+                society: societyKindFromRouteArgs(
+                  ModalRoute.of(context)?.settings.arguments,
+                ),
+              ),
         },
       );
 }
@@ -187,31 +181,15 @@ class AppBootstrap extends StatefulWidget {
 }
 
 class _AppBootstrapState extends State<AppBootstrap> {
-  late Future<void> _init;
-
   @override
   void initState() {
     super.initState();
-    _init = _initializeLocalDatabase();
+    // Local SQLite is leftover cache — don't block login / demo on it.
+    unawaited(_initializeLocalDatabase());
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<void>(
-        future: _init,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const _SplashScreen(label: 'Starting…');
-          }
-          if (snapshot.hasError) {
-            return _SplashScreen(
-              label: 'Could not start the app',
-              error: '${snapshot.error}',
-              onRetry: () => setState(() => _init = _initializeLocalDatabase()),
-            );
-          }
-          return const AuthGate();
-        },
-      );
+  Widget build(BuildContext context) => const AuthGate();
 }
 
 /// Branded splash used while the app boots or restores a session.
@@ -322,14 +300,18 @@ class _AuthGateState extends State<AuthGate> {
   Future<Widget> _resolveHome() async {
     // Legacy local-demo session keys must not restore an authenticated shell.
     await SessionStore.clear();
-    final demo = await DemoEnvironment.restorePersisted();
-    final session = demo
-        ? ensureAuthSession(config: DemoEnvironment.config())
-        : ensureAuthSession();
+    await DemoEnvironment.restorePersisted();
+    final session = ensureAuthSession();
+    final remembered = await session.readRememberedUsername();
+    if (DemoEnvironment.isDemoUsername(remembered)) {
+      await session.clearLocal();
+      await session.clearRememberedUsername();
+      return const SocietySelectionScreen();
+    }
     try {
       final profile = await session.restore();
       if (profile == null) {
-        return const LoginScreen();
+        return const SocietySelectionScreen();
       }
       if (profile.mustChangePassword) {
         return const ChangePasswordScreen(forced: true);
@@ -343,7 +325,7 @@ class _AuthGateState extends State<AuthGate> {
       if (isTerminalSessionError(error)) {
         await session.clearLocal();
         await SessionStore.clear();
-        return const LoginScreen();
+        return const SocietySelectionScreen();
       }
       rethrow;
     }
@@ -352,7 +334,7 @@ class _AuthGateState extends State<AuthGate> {
   Widget _widgetForDestination(HomeDestination destination) {
     switch (destination.kind) {
       case HomeDestinationKind.login:
-        return const LoginScreen();
+        return const SocietySelectionScreen();
       case HomeDestinationKind.admin:
         return const AdminHome();
       case HomeDestinationKind.guard:
@@ -382,8 +364,36 @@ class _AuthGateState extends State<AuthGate> {
       );
 }
 
+/// Visual tokens for the Monarch live sign-in screen only.
+class _LoginLook {
+  static const brand800 = Color(0xFF153B69);
+  static const brand900 = Color(0xFF0F2C52);
+  static const brand600 = Color(0xFF1E4C82);
+  static const brand50 = Color(0xFFF0F5FC);
+  static const slate900 = Color(0xFF0F172A);
+  static const slate800 = Color(0xFF1E293B);
+  static const slate700 = Color(0xFF334155);
+  static const slate600 = Color(0xFF475569);
+  static const slate500 = Color(0xFF64748B);
+  static const slate400 = Color(0xFF94A3B8);
+  static const slate200 = Color(0xFFE2E8F0);
+  static const live = Color(0xFF10B981);
+  static const amber50 = Color(0xFFFFFBEB);
+  static const amber200 = Color(0xFFFDE68A);
+  static const amber500 = Color(0xFFF59E0B);
+  static const amber600 = Color(0xFFD97706);
+  static const amber700 = Color(0xFFB45309);
+  static const amber900 = Color(0xFF78350F);
+}
+
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    this.society = SocietyKind.live,
+  });
+
+  final SocietyKind society;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -399,20 +409,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const _roleOptions = <(String, String, IconData)>[
     ('owner', 'Flat Owner', Icons.home_outlined),
-    ('tenant', 'Flat Tenant', Icons.person_pin_circle_outlined),
-    ('admin', 'Admin', Icons.admin_panel_settings_outlined),
-    ('guard', 'Security Guard', Icons.shield_outlined),
+    ('tenant', 'Flat Tenant', Icons.location_on_outlined),
+    ('admin', 'Admin', Icons.key_outlined),
+    ('guard', 'Security Guard', Icons.verified_user_outlined),
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadRemembered();
+    if (widget.society.isDemo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_enterDemoMode());
+      });
+    } else {
+      _loadRemembered();
+    }
   }
 
   Future<void> _loadRemembered() async {
     final remembered = await ensureAuthSession().readRememberedUsername();
-    if (!mounted || remembered == null || remembered.isEmpty) return;
+    if (!mounted ||
+        remembered == null ||
+        remembered.isEmpty ||
+        widget.society.isDemo ||
+        DemoEnvironment.isDemoUsername(remembered)) {
+      return;
+    }
     setState(() {
       username.text = remembered;
       rememberMe = true;
@@ -441,6 +463,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (password.text.isEmpty) {
         setState(() => error = 'Enter your password.');
         return;
+      }
+      if (widget.society.isDemo || DemoEnvironment.isDemoUsername(user)) {
+        await DemoEnvironment.persist(true);
+        replaceAuthSession(config: DemoEnvironment.config());
       }
       final session = ensureAuthSession();
       final profile = await session.login(
@@ -496,8 +522,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  DemoAccount? _demoAccountForRole(String value) {
+    final want = switch (value) {
+      'admin' => 'Admin',
+      'owner' => 'Owner',
+      'tenant' => 'Tenant',
+      _ => 'Security Guard',
+    };
+    for (final account in DemoEnvironment.accounts) {
+      if (account.role == want) return account;
+    }
+    return null;
+  }
+
   void _onRoleChanged(String? value) {
     if (value == null || busy) return;
+    if (widget.society.isDemo) {
+      final account = _demoAccountForRole(value);
+      if (account != null) {
+        _fillDemoAccount(account);
+        return;
+      }
+    }
     setState(() {
       role = value;
       error = null;
@@ -506,30 +552,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _enterDemoMode() async {
     if (busy) return;
-    setState(() {
-      busy = true;
-      error = null;
-    });
+    setState(() => error = null);
     try {
       await DemoEnvironment.persist(true);
-      final session = replaceAuthSession(config: DemoEnvironment.config());
-      final env = await session.api.auth.publicEnvironment();
-      if (!env.demoMode) {
-        await DemoEnvironment.persist(false);
-        replaceAuthSession(config: ApiConfig.fromEnvironment());
-        if (!mounted) return;
-        setState(() {
-          error =
-              'The demo server is not in DEMO MODE. Reviewer sample data was not opened.';
-        });
-        return;
-      }
+      replaceAuthSession(config: DemoEnvironment.config());
       if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => const _DemoAccountsSheet(),
-      );
+      _fillDemoAccount(DemoEnvironment.accounts.first);
+      unawaited(_confirmDemoServer());
     } catch (e) {
       await DemoEnvironment.persist(false);
       replaceAuthSession(config: ApiConfig.fromEnvironment());
@@ -538,16 +567,23 @@ class _LoginScreenState extends State<LoginScreen> {
           ? e.message
           : 'Could not reach the demo server. Sample data is isolated and is not available on the production API.';
       setState(() => error = message);
-    } finally {
-      if (mounted) setState(() => busy = false);
     }
   }
 
-  Future<void> _leaveDemoMode() async {
-    await DemoEnvironment.persist(false);
-    replaceAuthSession(config: ApiConfig.fromEnvironment());
-    if (!mounted) return;
-    setState(() => error = null);
+  Future<void> _confirmDemoServer() async {
+    try {
+      final env = await ensureAuthSession().api.auth.publicEnvironment();
+      if (env.demoMode || !mounted) return;
+      await DemoEnvironment.persist(false);
+      replaceAuthSession(config: ApiConfig.fromEnvironment());
+      if (!mounted) return;
+      setState(() {
+        error =
+            'The demo server is not in DEMO MODE. Reviewer sample data was not opened.';
+      });
+    } catch (_) {
+      // Sign-in will surface a connection error if the demo API is down.
+    }
   }
 
   void _fillDemoAccount(DemoAccount account) {
@@ -555,7 +591,21 @@ class _LoginScreenState extends State<LoginScreen> {
       username.text = account.username;
       password.text = account.password;
       error = null;
+      role = switch (account.role) {
+        'Admin' => 'admin',
+        'Owner' => 'owner',
+        'Tenant' => 'tenant',
+        _ => 'guard',
+      };
     });
+  }
+
+  void _goToSocieties() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).pushAndRemoveUntil(unsignedInRoute(), (_) => false);
   }
 
   void _showForgotPassword() {
@@ -579,272 +629,528 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: C.bg,
-        body: KeyboardDismissOnTap(
-          child: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
+  Widget build(BuildContext context) {
+    final demo = widget.society.isDemo;
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _LoginLook.slate200),
+    );
+    final fieldFocusBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _LoginLook.brand800, width: 1.4),
+    );
+
+    return Scaffold(
+      backgroundColor: kAuthCanvas,
+      body: KeyboardDismissOnTap(
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: EdgeInsets.symmetric(
-                  horizontal: MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
-                  vertical: 24,
-                ),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: C.blue,
-                            borderRadius: BorderRadius.circular(Rd.xl),
-                          ),
-                          child: const Icon(Icons.apartment_rounded,
-                              color: Colors.white, size: 26),
-                        ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                        8,
+                        MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                        12,
                       ),
-                      const SizedBox(height: 18),
-                      const Text('Welcome back', style: T.h1),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Monarch Solitaire A to E',
-                        style: T.bodyStrong,
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(kAppTagline, style: T.secondary),
-                      const SizedBox(height: 22),
-                      const Text('Login As', style: T.title),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Your account role is confirmed by the server. This only sets the sign-in context.',
-                        style: T.caption,
-                      ),
-                      const SizedBox(height: 12),
-                      _roleChooser(),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: username,
-                        enabled: !busy,
-                        autofocus: true,
-                        textInputAction: TextInputAction.next,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        autofillHints: const [AutofillHints.username],
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'[a-zA-Z0-9_-]'),
-                          ),
-                          LengthLimitingTextInputFormatter(32),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Username',
-                          prefixIcon: Icon(Icons.person_outline_rounded),
-                        ),
-                        onChanged: (_) {
-                          if (error != null) setState(() => error = null);
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: password,
-                        enabled: !busy,
-                        obscureText: obscurePassword,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => busy ? null : submitLogin(),
-                        autofillHints: const [AutofillHints.password],
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            tooltip: obscurePassword
-                                ? 'Show password'
-                                : 'Hide password',
-                            onPressed: busy
-                                ? null
-                                : () => setState(
-                                      () => obscurePassword = !obscurePassword,
-                                    ),
-                            icon: Icon(
-                              obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _loginHeader(demo: demo),
+                          const SizedBox(height: 8),
+                          _loginHero(demo: demo),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Sign in as',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _LoginLook.slate800,
                             ),
                           ),
-                        ),
-                        onChanged: (_) {
-                          if (error != null) setState(() => error = null);
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          InkWell(
-                            onTap: busy
-                                ? null
-                                : () =>
-                                    setState(() => rememberMe = !rememberMe),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              Checkbox(
-                                value: rememberMe,
-                                visualDensity: VisualDensity.compact,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                onChanged: busy
-                                    ? null
-                                    : (value) => setState(
-                                          () => rememberMe = value ?? false,
-                                        ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Text('Remember me', style: T.body),
-                            ]),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Your account role is confirmed by the server. This only sets the sign-in context.',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                              color: _LoginLook.slate500,
+                            ),
                           ),
-                          TextButton(
-                            onPressed: busy ? null : _showForgotPassword,
-                            child: const Text('Forgot password?'),
+                          const SizedBox(height: 10),
+                          _roleChooser(),
+                          if (demo) ...[
+                            const SizedBox(height: 12),
+                            const _DemoModeNotice(),
+                          ],
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: username,
+                            enabled: !busy,
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            autofillHints: const [AutofillHints.username],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[a-zA-Z0-9_-]'),
+                              ),
+                              LengthLimitingTextInputFormatter(32),
+                            ],
+                            decoration: InputDecoration(
+                              hintText: 'Username',
+                              prefixIcon: const Icon(
+                                Icons.person_outline_rounded,
+                                color: _LoginLook.slate400,
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                              border: fieldBorder,
+                              enabledBorder: fieldBorder,
+                              disabledBorder: fieldBorder,
+                              focusedBorder: fieldFocusBorder,
+                            ),
+                            onChanged: (_) {
+                              if (error != null) setState(() => error = null);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: password,
+                            enabled: !busy,
+                            obscureText: obscurePassword,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => busy ? null : submitLogin(),
+                            autofillHints: const [AutofillHints.password],
+                            decoration: InputDecoration(
+                              hintText: 'Password',
+                              prefixIcon: const Icon(
+                                Icons.lock_outline_rounded,
+                                color: _LoginLook.slate400,
+                              ),
+                              suffixIcon: IconButton(
+                                tooltip: obscurePassword
+                                    ? 'Show password'
+                                    : 'Hide password',
+                                onPressed: busy
+                                    ? null
+                                    : () => setState(
+                                          () => obscurePassword =
+                                              !obscurePassword,
+                                        ),
+                                icon: Icon(
+                                  obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  color: _LoginLook.slate400,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                              border: fieldBorder,
+                              enabledBorder: fieldBorder,
+                              disabledBorder: fieldBorder,
+                              focusedBorder: fieldFocusBorder,
+                            ),
+                            onChanged: (_) {
+                              if (error != null) setState(() => error = null);
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: busy
+                                      ? null
+                                      : () => setState(
+                                            () => rememberMe = !rememberMe,
+                                          ),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: Checkbox(
+                                          value: rememberMe,
+                                          visualDensity: VisualDensity.compact,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          side: const BorderSide(
+                                              color: _LoginLook.slate200),
+                                          fillColor:
+                                              WidgetStateProperty.resolveWith(
+                                            (states) => states.contains(
+                                                    WidgetState.selected)
+                                                ? _LoginLook.brand800
+                                                : Colors.white,
+                                          ),
+                                          onChanged: busy
+                                              ? null
+                                              : (value) => setState(
+                                                    () => rememberMe =
+                                                        value ?? false,
+                                                  ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Flexible(
+                                        child: Text(
+                                          'Remember me',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: _LoginLook.slate700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: busy ? null : _showForgotPassword,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: _LoginLook.brand800,
+                                  minimumSize: Size.zero,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  textStyle: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                child: const Text('Forgot password?'),
+                              ),
+                            ],
+                          ),
+                          InlineError(error),
+                          const Spacer(),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            height: 56,
+                            child: FilledButton(
+                              onPressed: busy ? null : submitLogin,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _LoginLook.brand800,
+                                disabledBackgroundColor: _LoginLook.brand800
+                                    .withValues(alpha: 0.55),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: busy
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            demo
+                                                ? 'Sign in to Demo'
+                                                : 'Sign In',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14.5,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        if (!demo) ...[
+                                          const Text(
+                                            '  (Step 2)',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(
+                                              Icons.arrow_forward_rounded,
+                                              size: 20),
+                                        ] else ...[
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.login_rounded,
+                                              size: 18),
+                                        ],
+                                      ],
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          if (demo)
+                            const Divider(
+                              height: 1,
+                              color: Color(0x99E2E8F0),
+                            ),
+                          if (demo) const SizedBox(height: 16),
+                          const Text(
+                            'Powered by SkyLine Tech Ventures',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _LoginLook.slate500,
+                            ),
                           ),
                         ],
                       ),
-                      InlineError(error),
-                      const SizedBox(height: 16),
-                      PrimaryButton(
-                        label: 'Login',
-                        icon: Icons.login_rounded,
-                        busy: busy,
-                        onPressed: submitLogin,
-                      ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: busy ? null : _enterDemoMode,
-                        icon: const Icon(Icons.science_outlined),
-                        label: const Text('Explore sample data'),
-                      ),
-                      if (DemoEnvironment.active.value) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '${DemoEnvironment.label}\nVisitor OTP: ${DemoEnvironment.visitorOtp}  ·  Login OTP: ${DemoEnvironment.loginOtp}',
-                          textAlign: TextAlign.center,
-                          style: T.caption,
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            for (final account in DemoEnvironment.accounts)
-                              ActionChip(
-                                label: Text(account.role),
-                                onPressed: busy
-                                    ? null
-                                    : () => _fillDemoAccount(account),
-                              ),
-                          ],
-                        ),
-                        TextButton(
-                          onPressed: busy ? null : _leaveDemoMode,
-                          child: const Text('Leave demo'),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Text(
-                        'Having trouble? Contact your society admin.',
-                        textAlign: TextAlign.center,
-                        style: T.caption.copyWith(color: C.faint),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Username & password · SkyLine Tech Ventures',
-                        textAlign: TextAlign.center,
-                        style: T.caption.copyWith(color: C.faint),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _loginHeader({required bool demo}) {
+    return Row(
+      children: [
+        InkWell(
+          key: const Key('login-back-societies'),
+          onTap: busy ? null : _goToSocieties,
+          borderRadius: BorderRadius.circular(Rd.pill),
+          child: const Padding(
+            padding: EdgeInsets.fromLTRB(2, 8, 10, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.chevron_left_rounded,
+                    size: 22, color: _LoginLook.slate600),
+                Text(
+                  'Societies',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _LoginLook.slate500,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      );
-
-  Widget _roleChooser() => LayoutBuilder(builder: (context, c) {
-        final wide = c.maxWidth >= 360;
-        final tiles = [
-          for (final (value, label, icon) in _roleOptions)
-            _RoleChoice(
-              key: ValueKey('login-role-$value'),
-              label: label,
-              icon: icon,
-              selected: role == value,
-              onTap: busy ? null : () => _onRoleChanged(value),
-            ),
-        ];
-        if (!wide) {
-          return Column(children: [
-            for (var i = 0; i < tiles.length; i++) ...[
-              if (i > 0) const SizedBox(height: 8),
-              tiles[i],
+        const SizedBox(width: 8),
+        Expanded(
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _LoginLook.brand50.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(Rd.pill),
+                  border: Border.all(
+                    color: _LoginLook.slate200.withValues(alpha: 0.9),
+                  ),
+                ),
+                child: const Text(
+                  'Step 2 of 2',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                    color: _LoginLook.brand800,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(Rd.pill),
+                  border: Border.all(
+                    color: _LoginLook.slate200.withValues(alpha: 0.7),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: demo ? _LoginLook.amber500 : _LoginLook.live,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      demo ? 'DEMO MODE' : 'LIVE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: demo
+                            ? _LoginLook.amber700
+                            : _LoginLook.slate600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
-          ]);
-        }
-        return Column(children: [
-          Row(children: [
-            Expanded(child: tiles[0]),
-            const SizedBox(width: 8),
-            Expanded(child: tiles[1]),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: tiles[2]),
-            const SizedBox(width: 8),
-            Expanded(child: tiles[3]),
-          ]),
-        ]);
-      });
-}
-
-class _DemoAccountsSheet extends StatelessWidget {
-  const _DemoAccountsSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(DemoEnvironment.label, style: T.title),
-          const SizedBox(height: 8),
-          const Text(
-            'These accounts use fictional Maple Grove Residences data. Payments are simulated. Visitor OTP is 246810 and does not expire.',
-            style: T.secondary,
           ),
-          const SizedBox(height: 16),
-          for (final account in DemoEnvironment.accounts)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(account.role, style: T.bodyStrong),
-              subtitle: Text('${account.username}  ·  ${account.password}'),
-            ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Use a sample account'),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  Widget _loginHero({required bool demo}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              begin: Alignment.bottomLeft,
+              end: Alignment.topRight,
+              colors: [
+                _LoginLook.brand900,
+                _LoginLook.brand800,
+                _LoginLook.brand600,
+              ],
+            ),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: _LoginLook.brand800.withValues(alpha: 0.28),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.apartment_outlined,
+            color: Colors.white,
+            size: 28,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Welcome back',
+          style: TextStyle(
+            fontSize: 28,
+            height: 1.15,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.6,
+            color: _LoginLook.slate900,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            Text(
+              demo ? widget.society.title : kSocietyName,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+                color: _LoginLook.brand800,
+              ),
+            ),
+            InkWell(
+              onTap: busy ? null : _goToSocieties,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Change Society',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _LoginLook.slate500,
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.swap_horiz_rounded,
+                        size: 14, color: _LoginLook.slate400),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          demo
+              ? 'Sample walkthrough & simulated database'
+              : kAppTagline,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: _LoginLook.slate500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _roleChooser() {
+    final tiles = [
+      for (final (value, label, icon) in _roleOptions)
+        _RoleChoice(
+          key: ValueKey('login-role-$value'),
+          label: label,
+          icon: icon,
+          selected: role == value,
+          onTap: busy ? null : () => _onRoleChanged(value),
+        ),
+    ];
+    return Column(children: [
+      Row(children: [
+        Expanded(child: tiles[0]),
+        const SizedBox(width: 10),
+        Expanded(child: tiles[1]),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: tiles[2]),
+        const SizedBox(width: 10),
+        Expanded(child: tiles[3]),
+      ]),
+    ]);
   }
 }
 
@@ -908,7 +1214,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       showInfoSnack(context, 'Password updated. Please sign in again.');
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        unsignedInRoute(),
         (_) => false,
       );
     } catch (e) {
@@ -1038,9 +1344,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                   if (!context.mounted) return;
                                   Navigator.pushAndRemoveUntil(
                                     context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const LoginScreen(),
-                                    ),
+                                    unsignedInRoute(),
                                     (_) => false,
                                   );
                                 },
@@ -1055,6 +1359,56 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           ),
         ),
       );
+}
+
+class _DemoModeNotice extends StatelessWidget {
+  const _DemoModeNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _LoginLook.amber50.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _LoginLook.amber200.withValues(alpha: 0.8),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(Icons.info_outline_rounded,
+                size: 16, color: _LoginLook.amber600),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: _LoginLook.amber900,
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Demo Mode: ',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(
+                    text:
+                        'Pre-filled credentials loaded for instant testing. Feel free to explore any role.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RoleChoice extends StatelessWidget {
@@ -1074,37 +1428,53 @@ class _RoleChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.chip : C.surface,
+      color: selected
+          ? _LoginLook.brand50.withValues(alpha: 0.7)
+          : Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Rd.xl),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-            color: selected ? C.blue : C.line, width: selected ? 1.4 : 1),
+          color: selected ? _LoginLook.brand800 : _LoginLook.slate200,
+          width: selected ? 2 : 1,
+        ),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Rd.xl),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(children: [
-              IconWell(
-                icon: icon,
-                color: selected ? C.blue : C.muted,
-                size: 28,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(children: [
+            Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? _LoginLook.brand800
+                    : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  style:
-                      T.bodyStrong.copyWith(color: selected ? C.blue : C.navy),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              child: Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : _LoginLook.slate600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.15,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+                  color: selected ? _LoginLook.brand900 : _LoginLook.slate700,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            ]),
-          ),
+            ),
+          ]),
         ),
       ),
     );
@@ -1743,25 +2113,23 @@ class _OwnerHomeState extends State<OwnerHome> {
           final due = DateTime.tryParse(b.dueDate);
           return due != null && due.isBefore(DateTime.now());
         }).length;
-        final due = duePaise > 0;
-        return AppCard(
-          margin: EdgeInsets.zero,
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text('MAINTENANCE DUE',
-                    style:
-                        T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
-              ),
-              if (loading)
-                const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                StatusBadge(
+        return HeroMoneyCard(
+          label: 'Maintenance due',
+          amount: loading ? '—' : moneyPaise(duePaise),
+          subtitle: loading
+              ? 'Checking your bills…'
+              : bills.isEmpty
+                  ? 'No pending bills. Monthly ${money(flat.maintenanceRate)}.'
+                  : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
+                      '${overdue > 0 ? ' · $overdue overdue' : ''}'
+                      ' · ${money(flat.maintenanceRate)}/mo',
+          trailing: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : StatusBadge(
                   bills.isEmpty
                       ? 'Settled'
                       : (overdue > 0 ? 'Overdue' : 'Pending'),
@@ -1769,35 +2137,22 @@ class _OwnerHomeState extends State<OwnerHome> {
                       ? BadgeTone.success
                       : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
                 ),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-              loading ? '—' : moneyPaise(duePaise),
-              style: T.display.copyWith(
-                color: due ? C.error : C.navy,
-                fontFeatures: const [FontFeature.tabularFigures()],
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: C.navy,
+              ),
+              onPressed: () => _open('bills'),
+              icon: const Icon(Icons.payments_outlined, size: 18),
+              label: Text(
+                bills.isEmpty || !kResidentOnlinePaymentsEnabled
+                    ? 'View bills'
+                    : 'Pay now',
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              loading
-                  ? 'Checking your bills…'
-                  : bills.isEmpty
-                      ? 'No pending bills. Monthly ${money(flat.maintenanceRate)}.'
-                      : '${bills.length} open ${bills.length == 1 ? 'bill' : 'bills'}'
-                          '${overdue > 0 ? ' · $overdue overdue' : ''}'
-                          ' · ${money(flat.maintenanceRate)}/mo',
-              style: T.caption,
-            ),
-            const SizedBox(height: 14),
-            PrimaryButton(
-              label: bills.isEmpty || !kResidentOnlinePaymentsEnabled
-                  ? 'View bills'
-                  : 'Pay now',
-              icon: Icons.payments_outlined,
-              onPressed: () => _open('bills'),
-            ),
-          ]),
+          ),
         );
       },
     );
@@ -1815,7 +2170,7 @@ class _OwnerHomeState extends State<OwnerHome> {
             padding: const EdgeInsets.all(16),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('ONE-TIME COLLECTION',
+              Text('ONE-TIME COLLECTIONS',
                   style: T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
               const SizedBox(height: 6),
               const Text('Special collection dues could not be loaded.',
@@ -1834,25 +2189,24 @@ class _OwnerHomeState extends State<OwnerHome> {
         final duePaise =
             charges.fold<int>(0, (sum, row) => sum + row.outstandingPaise);
         final overdue = charges.where((row) => row.overdue).length;
-        final due = duePaise > 0;
-        return AppCard(
-          margin: EdgeInsets.zero,
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text('ONE-TIME COLLECTION',
-                    style:
-                        T.label.copyWith(color: C.faint, letterSpacing: 0.8)),
-              ),
-              if (loading)
-                const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                StatusBadge(
+        return HeroMoneyCard(
+          label: 'One-time collections',
+          amount: loading ? '—' : moneyPaise(duePaise),
+          subtitle: loading
+              ? 'Checking special collections…'
+              : charges.isEmpty
+                  ? 'No special collection is due on this flat.'
+                  : charges.length == 1
+                      ? '${charges.first.collectionTitle ?? 'Collection'} · due ${fmtIsoDate(charges.first.dueDate)}'
+                      : '${charges.length} open charges'
+                          '${overdue > 0 ? ' · $overdue overdue' : ''}',
+          trailing: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : StatusBadge(
                   charges.isEmpty
                       ? 'Settled'
                       : (overdue > 0 ? 'Overdue' : 'Pending'),
@@ -1860,36 +2214,22 @@ class _OwnerHomeState extends State<OwnerHome> {
                       ? BadgeTone.success
                       : (overdue > 0 ? BadgeTone.danger : BadgeTone.warning),
                 ),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-              loading ? '—' : moneyPaise(duePaise),
-              style: T.display.copyWith(
-                color: due ? C.error : C.navy,
-                fontFeatures: const [FontFeature.tabularFigures()],
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: C.navy,
+              ),
+              onPressed: () => _openCollectionPay(charges),
+              icon: const Icon(Icons.celebration_outlined, size: 18),
+              label: Text(
+                charges.isEmpty || !kResidentOnlinePaymentsEnabled
+                    ? 'View collections'
+                    : 'Pay now',
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              loading
-                  ? 'Checking special collections…'
-                  : charges.isEmpty
-                      ? 'No special collection is due on this flat.'
-                      : charges.length == 1
-                          ? '${charges.first.collectionTitle ?? 'Collection'} · due ${fmtIsoDate(charges.first.dueDate)}'
-                          : '${charges.length} open charges'
-                              '${overdue > 0 ? ' · $overdue overdue' : ''}',
-              style: T.caption,
-            ),
-            const SizedBox(height: 14),
-            PrimaryButton(
-              label: charges.isEmpty || !kResidentOnlinePaymentsEnabled
-                  ? 'View collections'
-                  : 'Pay now',
-              icon: Icons.celebration_outlined,
-              onPressed: () => _openCollectionPay(charges),
-            ),
-          ]),
+          ),
         );
       },
     );
@@ -1990,8 +2330,7 @@ class _OwnerHomeState extends State<OwnerHome> {
       await SessionStore.clear();
     }
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+    Navigator.pushAndRemoveUntil(context, unsignedInRoute(), (_) => false);
   }
 }
 
@@ -2339,8 +2678,7 @@ class _AdminHomeState extends State<AdminHome> {
       await SessionStore.clear();
     }
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+    Navigator.pushAndRemoveUntil(context, unsignedInRoute(), (_) => false);
   }
 
   void _openMore(String key) => setState(() {

@@ -9,6 +9,17 @@ import '../../ui/load_failure.dart';
 import 'admin_vehicle_assignment.dart';
 import 'vehicle_drafts.dart';
 
+IconData _vehicleIcon(String type) {
+  switch (type) {
+    case 'TWO_WHEELER':
+      return Icons.two_wheeler_outlined;
+    case 'FOUR_WHEELER':
+      return Icons.directions_car_outlined;
+    default:
+      return Icons.airport_shuttle_outlined;
+  }
+}
+
 String _shortIso(String? iso) {
   if (iso == null || iso.isEmpty) return '—';
   final d = DateTime.tryParse(iso)?.toLocal();
@@ -66,24 +77,19 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage> {
           color: C.blue,
           onRefresh: () async => reload(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            padding: Sp.pagePadding,
             children: [
-              const Text(
+              const PageHeader(
                 'Registered vehicles',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
+                showTitle: false,
+                subtitle:
+                    'Vehicles registered to this flat. The society office adds or updates them.',
               ),
-              const SizedBox(height: 8),
-              const InfoNote(
-                'These are the vehicles registered to your account. '
-                'The society admin adds, updates, or deactivates vehicles.',
-              ),
-              const SizedBox(height: 12),
               if (items.isEmpty)
-                const EmptyState('No vehicles registered yet')
+                const EmptyState(
+                  'No vehicles registered yet. Ask the society office to add one.',
+                  icon: Icons.directions_car_outlined,
+                )
               else
                 ...items.map((v) => _vehicleCard(v)),
             ],
@@ -94,45 +100,31 @@ class _LiveResidentVehiclesPageState extends State<LiveResidentVehiclesPage> {
   }
 
   Widget _vehicleCard(Vehicle v) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: AppCard(
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LiveResidentVehicleDetailPage(vehicleId: v.id),
-            ),
-          );
-          reload();
-        },
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              v.registrationNumber,
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                color: C.navy,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${vehicleTypeLabel(v.vehicleType)} · ${v.makeModelLabel}',
-              style: const TextStyle(color: C.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Flat ${v.flatLabel} · Parking ${v.parkingLabel}',
-              style: const TextStyle(color: C.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            StatusBadge(v.isActive ? 'Active' : 'Inactive'),
-          ],
-        ),
+    return ListRow(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LiveResidentVehicleDetailPage(vehicleId: v.id),
+          ),
+        );
+        reload();
+      },
+      leading: AppAvatar(
+        icon: _vehicleIcon(v.vehicleType),
+        color: v.isActive ? C.blue : C.muted,
+        size: 42,
       ),
+      title: v.registrationNumber,
+      subtitle:
+          '${vehicleTypeLabel(v.vehicleType)} · ${v.makeModelLabel}\n'
+          'Flat ${v.flatLabel} · Parking ${v.parkingLabel}',
+      badges: [
+        StatusBadge(
+          v.isActive ? 'Active' : 'Inactive',
+          tone: v.isActive ? BadgeTone.success : BadgeTone.neutral,
+        ),
+      ],
     );
   }
 
@@ -179,29 +171,26 @@ class _LiveResidentVehicleDetailPageState
           }
           final v = snapshot.data!;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            padding: Sp.pagePadding,
             children: [
-              Text(
-                v.registrationNumber,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: C.navy,
-                ),
+              Text(v.registrationNumber, style: T.h2),
+              const SizedBox(height: 8),
+              StatusBadge(
+                v.isActive ? 'Active' : 'Inactive',
+                tone: v.isActive ? BadgeTone.success : BadgeTone.neutral,
               ),
-              const SizedBox(height: 8),
-              StatusBadge(v.isActive ? 'Active' : 'Inactive'),
               const SizedBox(height: 16),
-              _line('Type', vehicleTypeLabel(v.vehicleType)),
-              _line('Make / model', v.makeModelLabel),
-              _line('Flat', v.flatLabel),
-              if (v.deactivationReason != null)
-                _line('Deactivated', v.deactivationReason!),
-              const SizedBox(height: 8),
-              _line('Parking number', v.parkingLabel),
+              DetailCard(children: [
+                DetailRow('Type', vehicleTypeLabel(v.vehicleType)),
+                DetailRow('Make / model', v.makeModelLabel),
+                DetailRow('Flat', v.flatLabel),
+                DetailRow('Parking number', v.parkingLabel),
+                if (v.deactivationReason != null)
+                  DetailRow('Deactivated', v.deactivationReason!),
+              ]),
               const SizedBox(height: 12),
               const InfoNote(
-                'Vehicle details are managed by the society admin.',
+                'Vehicle details are managed by the society office.',
               ),
             ],
           );
@@ -210,35 +199,6 @@ class _LiveResidentVehicleDetailPageState
     );
   }
 
-  Widget _line(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: C.muted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: C.navy,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

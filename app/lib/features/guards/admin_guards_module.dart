@@ -252,6 +252,7 @@ class _LiveAdminGuardsPageState extends State<LiveAdminGuardsPage> {
                     children: [
                       const PageHeader(
                         'Security guards',
+                        showTitle: false,
                         subtitle:
                             'Gate login accounts for this society. Attendance and shifts stay off this screen.',
                       ),

@@ -644,29 +644,33 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = badgeColors(tone ?? toneForStatus(status));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-          color: colors.bg, borderRadius: BorderRadius.circular(Rd.pill)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[
-          Icon(icon, size: 12, color: colors.fg),
-          const SizedBox(width: 4),
-        ],
-        Flexible(
-          child: Text(
-            humanizeStatus(status),
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: colors.fg,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.1,
-              height: 1.2,
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+            color: colors.bg, borderRadius: BorderRadius.circular(Rd.pill)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: colors.fg),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: Text(
+              humanizeStatus(status),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: TextStyle(
+                color: colors.fg,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.1,
+                height: 1.2,
+              ),
             ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 }
@@ -1460,28 +1464,42 @@ class HeroMoneyCard extends StatelessWidget {
 
 /// In-content page header (title + optional subtitle + trailing action).
 class PageHeader extends StatelessWidget {
-  const PageHeader(this.title, {super.key, this.subtitle, this.trailing});
+  const PageHeader(
+    this.title, {
+    super.key,
+    this.subtitle,
+    this.trailing,
+    this.showTitle = true,
+  });
   final String title;
   final String? subtitle;
   final Widget? trailing;
+  final bool showTitle;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: T.h3),
-              if (subtitle != null && subtitle!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(subtitle!, style: T.secondary),
-              ],
-            ]),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-        ]),
-      );
+  Widget build(BuildContext context) {
+    final hasTitle = showTitle && title.isNotEmpty;
+    final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
+    if (!hasTitle && !hasSubtitle && trailing == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (hasTitle) Text(title, style: T.h3),
+            if (hasSubtitle) ...[
+              if (hasTitle) const SizedBox(height: 4),
+              Text(subtitle!, style: T.secondary),
+            ],
+          ]),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+      ]),
+    );
+  }
 }
 
 /// Section heading with optional trailing action.
@@ -2383,9 +2401,12 @@ class PrimaryButton extends StatelessWidget {
               Icon(icon, size: 18),
               const SizedBox(width: 8),
             ],
-            Flexible(
-                child:
-                    Text(label, overflow: TextOverflow.ellipsis, maxLines: 1)),
+            if (expand)
+              Flexible(
+                  child: Text(label,
+                      overflow: TextOverflow.ellipsis, maxLines: 1))
+            else
+              Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
           ]);
     final button = FilledButton(
       onPressed: busy ? null : onPressed,
@@ -2431,9 +2452,12 @@ class SecondaryButton extends StatelessWidget {
               Icon(icon, size: 18),
               const SizedBox(width: 8),
             ],
-            Flexible(
-                child:
-                    Text(label, overflow: TextOverflow.ellipsis, maxLines: 1)),
+            if (expand)
+              Flexible(
+                  child: Text(label,
+                      overflow: TextOverflow.ellipsis, maxLines: 1))
+            else
+              Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
           ]);
     final button = OutlinedButton(
       onPressed: busy ? null : onPressed,

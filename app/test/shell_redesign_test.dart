@@ -11,17 +11,17 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Login As'), findsOneWidget);
+    expect(find.text('Sign in as'), findsOneWidget);
     expect(find.text('Flat Owner'), findsOneWidget);
     expect(find.text('Flat Tenant'), findsOneWidget);
     expect(find.text('Admin'), findsOneWidget);
     expect(find.text('Security Guard'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.textContaining('Sign In'), findsOneWidget);
 
     await tester.tap(find.text('Security Guard'));
     await tester.pump();
 
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.textContaining('Sign In'), findsOneWidget);
     expect(find.text('Verify & Login'), findsNothing);
   });
 

@@ -43,6 +43,11 @@ const kDemoGuardMobile = '9876500099';
 /// Product / app name (launcher & product branding) — do not rename for society branding.
 const kAppName = 'ApnaSociety';
 
+/// Public SkyLine contact used on login and in the sample-society sheet.
+const kSupportEmail = 'info@skylinetv.in';
+const kSupportWebsite = 'https://skylinetv.in';
+const kSupportWebsiteLabel = 'skylinetv.in';
+
 /// Official residential society name shown across demo screens.
 const kSocietyName = 'Monarch Solitaire A to E';
 const kSocietyAddress = 'Monarch Solitaire A to E Residential Society';
@@ -52,7 +57,7 @@ const kAppTagline = 'Simplifying Society Management.';
 const kResidentOnlinePaymentsEnabled = false;
 
 const kOfficePaymentMessage =
-    'Online payment is not available yet. Please pay cash or cheque at the society office. Your receipt will appear here after the admin records it.';
+    'Online payment is not available yet. Please pay cash or cheque at the society office. Your receipt will appear here after the admin records the offline payment.';
 const kBuildingA = 'Monarch Solitaire A';
 const kBuildingB = 'Monarch Solitaire B';
 const kBuildingC = 'Monarch Solitaire C';

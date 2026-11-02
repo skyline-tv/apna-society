@@ -2190,7 +2190,8 @@ class _LiveAdminVisitorsPageState extends State<LiveAdminVisitorsPage> {
             padding: Sp.pagePadding,
             children: [
               const PageHeader('Visitors',
-                  subtitle: 'Society-wide visitor log'),
+                  subtitle: 'Society-wide visitor log',
+                  showTitle: false),
               MiniStatStrip(children: [
                 MiniStat('Total', '${s.total}'),
                 MiniStat('Pending', '${s.byApprovalStatus['PENDING'] ?? 0}',

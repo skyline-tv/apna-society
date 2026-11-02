@@ -105,11 +105,11 @@ void main() {
 
     test('guard desk is three large actions without extra modules', () {
       final desk = File('lib/features/security/guard_desk.dart').readAsStringSync();
-      expect(desk.contains("'New Visitor'"), isTrue);
+      expect(desk.contains("'New visitor'"), isTrue);
       expect(desk.contains("'Verify OTP'"), isTrue);
-      expect(desk.contains("'Check Vehicle'"), isTrue);
+      expect(desk.contains("'Check vehicle'"), isTrue);
       expect(desk.contains('SEND FOR APPROVAL'), isTrue);
-      expect(desk.contains('Waiting for Approval'), isTrue);
+      expect(desk.contains('Waiting for approval'), isTrue);
       expect(desk.contains('BUILDING VEHICLE'), isTrue);
       expect(desk.contains('NOT REGISTERED'), isTrue);
       expect(desk.contains('verifyEntryOtpByCode'), isTrue);

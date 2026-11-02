@@ -13,9 +13,10 @@ import '../../api/socket/visitor_socket.dart';
 import '../../services/session_store.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
+import '../auth/society_selection_screen.dart';
 import '../visitors/visitor_messages.dart';
 
-/// Simplified gate desk: New Visitor, Verify OTP, Check Vehicle.
+/// Simplified gate desk: New visitor, Verify OTP, Check vehicle.
 class GuardDeskHome extends StatefulWidget {
   const GuardDeskHome({super.key, required this.guard});
   final dynamic guard;
@@ -68,7 +69,7 @@ class _GuardDeskHomeState extends State<GuardDeskHome> {
       await SessionStore.clear();
     }
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+    Navigator.of(context).pushAndRemoveUntil(unsignedInRoute(), (_) => false);
   }
 
   Future<void> _open(Widget page) async {
@@ -118,7 +119,7 @@ class _GuardDeskHomeState extends State<GuardDeskHome> {
                 ],
                 _BigActionButton(
                   icon: Icons.person_add_alt_1_rounded,
-                  label: 'New Visitor',
+                  label: 'New visitor',
                   subtitle: 'Send for approval',
                   color: C.blue,
                   onTap: () => _open(const GuardNewVisitorPage()),
@@ -134,7 +135,7 @@ class _GuardDeskHomeState extends State<GuardDeskHome> {
                 const SizedBox(height: 14),
                 _BigActionButton(
                   icon: Icons.directions_car_rounded,
-                  label: 'Check Vehicle',
+                  label: 'Check vehicle',
                   subtitle: 'Is this a building vehicle?',
                   color: C.navy,
                   onTap: () => _open(const GuardVehicleCheckPage()),
@@ -380,7 +381,7 @@ class _GuardNewVisitorPageState extends State<GuardNewVisitorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New Visitor')),
+      appBar: AppBar(title: const Text('New visitor')),
       body: _loadingFlats
           ? const LoadingView(label: 'Loading flats…')
           : Form(
@@ -784,7 +785,7 @@ class _StatusCard extends StatelessWidget {
     } else if (v.approvalStatus == 'PENDING') {
       bg = C.amberSoft;
       fg = C.amber;
-      label = 'Waiting for Approval';
+      label = 'Waiting for approval';
       icon = Icons.hourglass_top_rounded;
     } else if (v.approvalStatus == 'APPROVED') {
       bg = C.greenSoft;
@@ -891,7 +892,7 @@ class _GuardPendingPageState extends State<GuardPendingPage> {
                   ),
                 ),
                 subtitle: Text(
-                  'Flat ${v.flatLabel} · Waiting for Approval',
+                  'Flat ${v.flatLabel} · Waiting for approval',
                   style: const TextStyle(fontSize: 16),
                 ),
                 onTap: () => Navigator.push(
@@ -1193,7 +1194,7 @@ class _GuardVehicleCheckPageState extends State<GuardVehicleCheckPage> {
   Widget build(BuildContext context) {
     final result = _result;
     return Scaffold(
-      appBar: AppBar(title: const Text('Check Vehicle')),
+      appBar: AppBar(title: const Text('Check vehicle')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../apna_api.dart';
 import '../config/api_config.dart';
+import '../config/demo_environment.dart';
 import '../http/api_client.dart';
 import '../http/api_exception.dart';
 import '../models/auth_models.dart';
@@ -154,10 +155,10 @@ class AuthSession {
     );
     final generation = _generation;
     await _applyTokens(tokens, generation);
-    if (rememberMe) {
-      await _tokenStore.writeRememberedUsername(username.trim());
-    } else {
+    if (DemoEnvironment.isDemoUsername(username) || !rememberMe) {
       await _tokenStore.clearRememberedUsername();
+    } else {
+      await _tokenStore.writeRememberedUsername(username.trim());
     }
     try {
       return await loadProfileAndContext();
@@ -172,6 +173,9 @@ class AuthSession {
 
   Future<String?> readRememberedUsername() =>
       _tokenStore.readRememberedUsername();
+
+  Future<void> clearRememberedUsername() =>
+      _tokenStore.clearRememberedUsername();
 
   /// Changes password. Revokes server sessions; caller should re-login.
   Future<ChangePasswordResult> changePassword({

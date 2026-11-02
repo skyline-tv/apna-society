@@ -153,7 +153,8 @@ class _LiveAdditionalServicesPageState extends State<LiveAdditionalServicesPage>
         padding: Sp.pagePadding,
         children: [
           const PageHeader('Additional services',
-              subtitle: 'Recurring monthly charges attached to a flat'),
+              subtitle: 'Recurring monthly charges attached to a flat',
+              showTitle: false),
           PrimaryButton(
             label: atCap ? 'Add service (10/10)' : 'Add service',
             icon: Icons.add_rounded,

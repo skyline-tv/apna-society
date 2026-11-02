@@ -483,28 +483,30 @@ class _AdminProvisionResidentPageState
 
   List<Widget> _formBody() => [
         const FormSectionLabel('Role in this society'),
-        ScaleToWidth(
-          child: SegmentedButton<String>(
-            showSelectedIcon: MediaQuery.sizeOf(context).width >= 400,
-            segments: const [
-              ButtonSegment(
-                  value: 'OWNER',
-                  label: Text('Owner'),
-                  icon: Icon(Icons.home_outlined, size: 18)),
-              ButtonSegment(
-                  value: 'TENANT',
-                  label: Text('Tenant'),
-                  icon: Icon(Icons.person_pin_circle_outlined, size: 18)),
-            ],
-            selected: {role},
-            onSelectionChanged: saving
-                ? null
-                : (s) => setState(() {
-                      role = s.first;
+        FilterBar(children: [
+          AppFilterChip(
+            label: 'Owner',
+            icon: Icons.home_outlined,
+            selected: role == 'OWNER',
+            onSelected: saving
+                ? () {}
+                : () => setState(() {
+                      role = 'OWNER';
                       flatId = null;
                     }),
           ),
-        ),
+          AppFilterChip(
+            label: 'Tenant',
+            icon: Icons.person_pin_circle_outlined,
+            selected: role == 'TENANT',
+            onSelected: saving
+                ? () {}
+                : () => setState(() {
+                      role = 'TENANT';
+                      flatId = null;
+                    }),
+          ),
+        ]),
         const SizedBox(height: 8),
         Text(
           role == 'OWNER'

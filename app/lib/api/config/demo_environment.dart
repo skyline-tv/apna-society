@@ -7,7 +7,8 @@ import 'api_config.dart';
 class DemoEnvironment {
   DemoEnvironment._();
 
-  static const label = 'DEMO MODE — SAMPLE DATA';
+  /// Compact overlay chip. Keep short — clients and reviewers see this on every screen.
+  static const label = 'Sample';
   static const visitorOtp = '246810';
   static const loginOtp = '123456';
 
@@ -48,21 +49,29 @@ class DemoEnvironment {
     );
   }
 
+  static bool isDemoUsername(String? username) {
+    final value = username?.trim() ?? '';
+    if (value.isEmpty) return false;
+    return accounts.any((account) => account.username == value);
+  }
+
+  /// Sample mode is opt-in for this process only. Cold start always lands on
+  /// the normal login, even if a previous run left the old sticky pref behind.
   static Future<bool> restorePersisted() async {
     final prefs = await SharedPreferences.getInstance();
-    final on = prefs.getBool(_prefsKey) ?? false;
-    active.value = on;
-    return on;
+    if (prefs.containsKey(_prefsKey)) {
+      await prefs.remove(_prefsKey);
+    }
+    active.value = false;
+    return false;
   }
 
   static Future<void> persist(bool on) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (on) {
-      await prefs.setBool(_prefsKey, true);
-    } else {
+    active.value = on;
+    if (!on) {
+      final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKey);
     }
-    active.value = on;
   }
 }
 

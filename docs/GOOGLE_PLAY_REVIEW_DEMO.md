@@ -2,7 +2,7 @@
 
 This document is for Play Console reviewers and the SkyLine operator who deploys the **demo API**. It does **not** contain production credentials.
 
-**Label shown in the app:** `DEMO MODE — SAMPLE DATA`
+**Label shown in the app:** a compact `Sample` chip (top-right). Tap it for sample-account notes and contact details.
 
 ## What this is
 
@@ -21,12 +21,11 @@ The production API **rejects** `DEMO_MODE` and reserved demo usernames (`demo_ad
 You do **not** need a personal email, a real mobile number, a new registration, an expiring OTP, or a real payment.
 
 1. Open Apna Society.
-2. Tap **Explore sample data**.
-3. Wait until the amber bar reads `DEMO MODE — SAMPLE DATA`.
-4. Tap a role chip (Admin, Owner, Tenant, Security Guard) or type a username below.
-5. Tap **Login**.
+2. Tap **Try a sample society**. Sign-in is filled with the Admin sample account and a `Sample` chip appears top-right.
+3. Tap a role chip (Admin, Owner, Tenant, Security Guard) if you want a different account, or type a username below.
+4. Tap **Sign in**.
 
-If **Explore sample data** cannot reach the demo server, use the same usernames against the demo API host provided by the developer. Do not use these accounts on the production login screen; they will fail there on purpose.
+If **Try a sample society** cannot reach the demo server, use the same usernames against the demo API host provided by the developer. Do not use these accounts on the production login screen; they will fail there on purpose.
 
 ### Accounts
 
