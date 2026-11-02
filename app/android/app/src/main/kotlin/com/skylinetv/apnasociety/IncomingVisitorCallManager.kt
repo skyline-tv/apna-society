@@ -42,6 +42,9 @@ object IncomingVisitorCallManager {
     private const val TAG = "IncomingVisitorCall"
     private const val NOTIFICATION_ID = 71001
 
+    /** Keep in sync with [kIncomingVisitorFullScreenEnabled] in app_core.dart. */
+    const val FULL_SCREEN_ENABLED = false
+
     @Volatile
     var activeVisitorId: String? = null
         private set
@@ -91,6 +94,10 @@ object IncomingVisitorCallManager {
         purpose: String = "",
         expiresAt: String = "",
     ) {
+        if (action == ACTION_SHOW && !FULL_SCREEN_ENABLED) {
+            Log.i(TAG, "Incoming visitor full-screen paused")
+            return
+        }
         val intent =
             Intent(context, IncomingVisitorCallService::class.java).apply {
                 this.action = action
@@ -250,7 +257,11 @@ object IncomingVisitorCallManager {
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setContentIntent(openIntent)
-                .setFullScreenIntent(openIntent, true)
+                .apply {
+                    if (FULL_SCREEN_ENABLED) {
+                        setFullScreenIntent(openIntent, true)
+                    }
+                }
                 .setDeleteIntent(dismissIntent)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .addAction(0, "APPROVE", openIntent)

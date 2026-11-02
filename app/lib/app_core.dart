@@ -56,6 +56,10 @@ const kAppTagline = 'Simplifying Society Management.';
 /// First publish: residents cannot pay in-app. Admin records cash or cheque.
 const kResidentOnlinePaymentsEnabled = false;
 
+/// Incoming visitor call-style full-screen (ringtone, lock-screen takeover,
+/// [IncomingVisitorPage]). Code stays; flip to true to restore.
+const kIncomingVisitorFullScreenEnabled = false;
+
 const kOfficePaymentMessage =
     'Online payment is not available yet. Please pay cash or cheque at the society office. Your receipt will appear here after the admin records the offline payment.';
 const kBuildingA = 'Monarch Solitaire A';

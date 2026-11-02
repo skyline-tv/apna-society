@@ -140,6 +140,10 @@ void main() {
     expect(kOfficePaymentMessage, contains('cash or cheque'));
   });
 
+  test('incoming visitor full-screen takeover is paused', () {
+    expect(kIncomingVisitorFullScreenEnabled, isFalse);
+  });
+
   test('dayGreeting splits the day', () {
     expect(dayGreeting(DateTime(2026, 10, 23, 8)), 'Good morning');
     expect(dayGreeting(DateTime(2026, 10, 23, 14)), 'Good afternoon');

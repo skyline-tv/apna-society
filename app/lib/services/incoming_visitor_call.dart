@@ -8,6 +8,7 @@ import '../api/auth/app_role.dart';
 import '../api/auth/auth_session.dart';
 import '../api/models/visitor_models.dart';
 import '../api/socket/visitor_socket.dart';
+import '../app_core.dart';
 import 'notification_deep_link.dart';
 
 /// Coordinates Android incoming-call alerts for walk-in visitor requests.
@@ -103,6 +104,7 @@ class IncomingVisitorCallCoordinator {
     String purpose = '',
     String expiresAt = '',
   }) async {
+    if (!kIncomingVisitorFullScreenEnabled) return;
     if (!_isResident) return;
     if (Platform.isAndroid) {
       try {
@@ -144,6 +146,7 @@ class IncomingVisitorCallCoordinator {
   }
 
   void openIncoming(String visitorId) {
+    if (!kIncomingVisitorFullScreenEnabled) return;
     if (!_isResident || visitorId.isEmpty) return;
     if (_openVisitorId == visitorId) return;
     _openVisitorId = visitorId;

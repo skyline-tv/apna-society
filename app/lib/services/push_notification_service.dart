@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/auth/app_role.dart';
 import '../api/auth/auth_session.dart';
+import '../app_core.dart';
 import 'incoming_visitor_call.dart';
 import 'notification_deep_link.dart';
 
@@ -264,7 +265,9 @@ class PushNotificationService {
       final android = _local.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
-      await android?.requestFullScreenIntentPermission();
+      if (kIncomingVisitorFullScreenEnabled) {
+        await android?.requestFullScreenIntentPermission();
+      }
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         debugPrint('Notification permission denied; FCM token not requested.');
         return;
@@ -320,8 +323,15 @@ class PushNotificationService {
     IncomingVisitorCallCoordinator.instance.handleFcmData(data);
     final link = NotificationDeepLink.fromFcmData(data);
     final incoming = link?.kind == NotificationLinkKind.visitorApproval;
-    if (incoming || data['callAction'] == 'stop') return;
-    await _showLocal(message, data, incoming: false);
+    if (kIncomingVisitorFullScreenEnabled &&
+        (incoming || data['callAction'] == 'stop')) {
+      return;
+    }
+    await _showLocal(
+      message,
+      data,
+      incoming: kIncomingVisitorFullScreenEnabled && incoming,
+    );
   }
 
   Future<void> _showLocal(
