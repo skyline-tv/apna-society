@@ -19,6 +19,7 @@
     "reset:launch": "tsx scripts/reset-launch.ts",
     "import:monarch-owners": "tsx scripts/import-monarch-owners.ts",
     "import:monarch-maintenance": "tsx scripts/import-monarch-maintenance.ts",
+    "import:monarch-chs-formation": "tsx scripts/import-monarch-chs-formation.ts",
     "prepare:admin": "tsx scripts/create-admin.ts",
     "migrate:password-auth": "tsx scripts/migrate-password-auth.ts",
     "backup:mongo": "bash scripts/backup-mongodb.sh",

@@ -1,0 +1,184 @@
+[
+  {
+    "wing": "A",
+    "flat": "101",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "A",
+    "flat": "102",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "A",
+    "flat": "402",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "A",
+    "flat": "404",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "A",
+    "flat": "504",
+    "amountRupees": 5000,
+    "method": "CASH"
+  },
+  {
+    "wing": "A",
+    "flat": "603",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "302",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "303",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "402",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "403",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "502",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "B",
+    "flat": "601",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "C",
+    "flat": "201",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "C",
+    "flat": "202",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "C",
+    "flat": "204",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "C",
+    "flat": "303",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "C",
+    "flat": "404",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "202",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "203",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "204",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "303",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "503",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "D",
+    "flat": "504",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "E",
+    "flat": "102",
+    "amountRupees": 5000,
+    "method": "BANK",
+    "notes": "S GHOLAP"
+  },
+  {
+    "wing": "E",
+    "flat": "204",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "E",
+    "flat": "302",
+    "amountRupees": 5000,
+    "method": "BANK",
+    "notes": "S GHOLAP"
+  },
+  {
+    "wing": "E",
+    "flat": "401",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "E",
+    "flat": "501",
+    "amountRupees": 5000,
+    "method": "BANK"
+  },
+  {
+    "wing": "E",
+    "flat": "603",
+    "amountRupees": 5000,
+    "method": "CASH"
+  },
+  {
+    "wing": "E",
+    "flat": "604",
+    "amountRupees": 5000,
+    "method": "CASH"
+  }
+]
