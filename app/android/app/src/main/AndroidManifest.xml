@@ -9,7 +9,8 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.TURN_SCREEN_ON"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- Not needed while incoming visitor full-screen / ringtone FGS is paused. -->
+    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/> -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="ApnaSociety"
@@ -45,10 +46,11 @@
                 <data android:scheme="apnasociety"/>
             </intent-filter>
         </activity>
+        <!-- mediaPlayback FGS type paused with FOREGROUND_SERVICE_MEDIA_PLAYBACK -->
         <service
             android:name=".IncomingVisitorCallService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"/>
+            android:exported="false"/>
+        <!-- android:foregroundServiceType="mediaPlayback" -->
         <receiver
             android:name=".IncomingVisitorCallReceiver"
             android:exported="true"

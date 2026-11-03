@@ -8,7 +8,7 @@ import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
+// import android.content.pm.ServiceInfo // MEDIA_PLAYBACK FGS paused
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -187,28 +187,29 @@ object IncomingVisitorCallManager {
 
     fun promoteToForeground(service: Service, notification: Notification) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                service.startForeground(
-                    SERVICE_NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                )
-            } else {
-                service.startForeground(SERVICE_NOTIFICATION_ID, notification)
-            }
+            // MEDIA_PLAYBACK FGS type paused while FOREGROUND_SERVICE_MEDIA_PLAYBACK is commented out.
+            // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            //     service.startForeground(
+            //         SERVICE_NOTIFICATION_ID,
+            //         notification,
+            //         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            //     )
+            // } else {
+            service.startForeground(SERVICE_NOTIFICATION_ID, notification)
+            // }
         } catch (error: Exception) {
             Log.w(TAG, "startForeground failed, retrying with a simple notice: ${error.message}")
             try {
                 val fallback = buildPlaceholderNotification(service)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    service.startForeground(
-                        SERVICE_NOTIFICATION_ID,
-                        fallback,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                    )
-                } else {
-                    service.startForeground(SERVICE_NOTIFICATION_ID, fallback)
-                }
+                // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                //     service.startForeground(
+                //         SERVICE_NOTIFICATION_ID,
+                //         fallback,
+                //         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+                //     )
+                // } else {
+                service.startForeground(SERVICE_NOTIFICATION_ID, fallback)
+                // }
             } catch (ignored: Exception) {
                 Log.e(TAG, "startForeground retry failed: ${ignored.message}")
             }
