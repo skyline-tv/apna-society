@@ -37,6 +37,7 @@ class AdminUserRepository {
     final key = [
       query.search,
       query.role,
+      query.wingId,
       query.isActive,
       query.page,
       query.limit,

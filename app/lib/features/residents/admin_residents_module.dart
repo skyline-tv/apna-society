@@ -43,6 +43,11 @@ class _ResidentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final roles = user.societyRoles.isEmpty ? user.roles : user.societyRoles;
+    final flats = user.flatLabelsSummary;
+    final phone = _userPhone(user);
+    final subtitle = flats.isEmpty
+        ? '$phone\n${user.email}'
+        : 'Flat $flats\n$phone';
     return ListRow(
       onTap: onTap,
       leading: AppAvatar(
@@ -51,8 +56,15 @@ class _ResidentRow extends StatelessWidget {
         size: 42,
       ),
       title: user.name.isEmpty ? user.email : user.name,
-      subtitle: '${_userPhone(user)}\n${user.email}',
+      subtitle: subtitle,
       badges: [
+        if (user.activeOccupancies.length == 1)
+          StatusBadge(flats, tone: BadgeTone.info),
+        if (user.activeOccupancies.length > 1)
+          StatusBadge(
+            '${user.activeOccupancies.length} flats',
+            tone: BadgeTone.info,
+          ),
         for (final r in roles) StatusBadge(_roleLabel(r), tone: BadgeTone.info),
         if (!user.isActive) const StatusBadge('Inactive'),
         if (user.mobileE164 != null && !user.mobileVerified)
@@ -87,11 +99,13 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
       TabController(length: 2, vsync: this, initialIndex: 0);
   String query = '';
   String statusFilter = 'all';
+  String? wingId;
   int ownersPage = 1;
   int tenantsPage = 1;
   static const _limit = 20;
   late Future<_ResidentsBundle> _ownersFuture = _load(role: 'OWNER', page: 1);
   late Future<_ResidentsBundle> _tenantsFuture = _load(role: 'TENANT', page: 1);
+  late Future<List<WingSummary>> _wingsFuture = _loadWings();
   final _searchDebounce = Debouncer();
   final _searchCtrl = TextEditingController();
 
@@ -101,6 +115,12 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
     _searchDebounce.dispose();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<List<WingSummary>> _loadWings({bool force = false}) async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    return ensureLiveRepositories(session.api).society.wings(force: force);
   }
 
   Future<_ResidentsBundle> _load({
@@ -118,6 +138,7 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
           query: ListUsersQuery(
             role: role,
             search: query.trim().isEmpty ? null : query.trim(),
+            wingId: wingId,
             isActive: isActive,
             page: page,
             limit: _limit,
@@ -134,8 +155,9 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
   }
 
   Future<void> _refreshAll() async {
+    setState(() => _wingsFuture = _loadWings(force: true));
     reload();
-    await Future.wait([_ownersFuture, _tenantsFuture]);
+    await Future.wait([_ownersFuture, _tenantsFuture, _wingsFuture]);
   }
 
   Future<void> _openProvision(String role) async {
@@ -174,7 +196,7 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
             child: SearchField(
               controller: _searchCtrl,
-              hint: 'Search name, email or phone',
+              hint: 'Search name, email, phone or username',
               onChanged: (v) {
                 query = v;
                 _searchDebounce.run(() {
@@ -204,6 +226,39 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
                   },
                 ),
             ],
+          ),
+          FutureBuilder<List<WingSummary>>(
+            future: _wingsFuture,
+            builder: (context, snap) {
+              final wings = snap.data ?? const <WingSummary>[];
+              if (wings.isEmpty) return const SizedBox.shrink();
+              return FilterBar(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                children: [
+                  AppFilterChip(
+                    label: 'All wings',
+                    selected: wingId == null,
+                    onSelected: () {
+                      wingId = null;
+                      ownersPage = 1;
+                      tenantsPage = 1;
+                      reload();
+                    },
+                  ),
+                  for (final wing in wings)
+                    AppFilterChip(
+                      label: 'Wing ${wing.code}',
+                      selected: wingId == wing.id,
+                      onSelected: () {
+                        wingId = wingId == wing.id ? null : wing.id;
+                        ownersPage = 1;
+                        tenantsPage = 1;
+                        reload();
+                      },
+                    ),
+                ],
+              );
+            },
           ),
           Material(
             color: C.surface,
@@ -278,13 +333,16 @@ class _AdminResidentsPageState extends State<AdminResidentsPage>
             EmptyState(
               emptyLabel,
               icon: Icons.people_outline_rounded,
-              actionLabel: query.isNotEmpty || statusFilter != 'all'
+              actionLabel: query.isNotEmpty ||
+                      statusFilter != 'all' ||
+                      wingId != null
                   ? 'Clear filters'
                   : null,
               onAction: () {
                 _searchCtrl.clear();
                 query = '';
                 statusFilter = 'all';
+                wingId = null;
                 ownersPage = 1;
                 tenantsPage = 1;
                 reload();
@@ -698,6 +756,170 @@ class _AdminProvisionResidentPageState
   }
 }
 
+/// Edit resident contact details via `PATCH /admin/users/:userId`.
+class AdminEditResidentPage extends StatefulWidget {
+  const AdminEditResidentPage({super.key, required this.user});
+  final AdminUser user;
+
+  @override
+  State<AdminEditResidentPage> createState() => _AdminEditResidentPageState();
+}
+
+class _AdminEditResidentPageState extends State<AdminEditResidentPage> {
+  final _formKey = GlobalKey<FormState>();
+  late final name = TextEditingController(text: widget.user.name);
+  late final phone = TextEditingController(text: widget.user.phone ?? '');
+  late final username = TextEditingController(text: widget.user.username ?? '');
+  bool saving = false;
+  String? formError;
+
+  @override
+  void dispose() {
+    name.dispose();
+    phone.dispose();
+    username.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => formError = null);
+    if (!_formKey.currentState!.validate()) return;
+    final session = authSession;
+    if (session == null) {
+      setState(() => formError = 'Not signed in.');
+      return;
+    }
+
+    final nextName = name.text.trim();
+    final nextUsername = username.text.trim();
+    final nextPhone = phone.text.trim();
+    final nameChanged = nextName != widget.user.name;
+    final usernameChanged =
+        nextUsername != (widget.user.username ?? '').trim();
+    final phoneChanged = nextPhone != (widget.user.phone ?? '').trim();
+
+    if (!nameChanged && !usernameChanged && !phoneChanged) {
+      Navigator.pop(context, false);
+      return;
+    }
+    if (phoneChanged && nextPhone.isEmpty) {
+      setState(() => formError = 'Clearing phone is not supported here.');
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      final repos = ensureLiveRepositories(session.api);
+      await repos.users.updateUser(
+        widget.user.id,
+        name: nameChanged ? nextName : null,
+        username: usernameChanged ? nextUsername : null,
+        phone: phoneChanged ? nextPhone : null,
+      );
+      repos.invalidateAfterResidentMutation();
+      if (!mounted) return;
+      showSuccessSnack(context, 'Resident details saved.');
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => formError = adminApiErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final flats = widget.user.flatLabelsSummary;
+    return FormScaffold(
+      title: 'Edit resident',
+      formKey: _formKey,
+      bottom: PrimaryButton(
+        label: 'Save changes',
+        icon: Icons.check_rounded,
+        busy: saving,
+        onPressed: saving ? null : save,
+      ),
+      children: [
+        if (flats.isNotEmpty) ...[
+          InfoNote('Assigned flat: $flats'),
+          const SizedBox(height: 16),
+        ],
+        const FormSectionLabel('Contact'),
+        TextFormField(
+          controller: name,
+          enabled: !saving,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: 'Full name *',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Name is required.' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: username,
+          enabled: !saving,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(
+            labelText: 'Username *',
+            helperText: '3–32 chars: letters, numbers, underscore, hyphen.',
+            prefixIcon: Icon(Icons.badge_outlined),
+          ),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return 'Username is required.';
+            if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$').hasMatch(t)) {
+              return 'Enter a valid username.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: phone,
+          enabled: !saving,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => saving ? null : save(),
+          decoration: const InputDecoration(
+            labelText: 'Phone',
+            hintText: '+91 98765 43210',
+            helperText: 'Optional contact number (not used for login).',
+            prefixIcon: Icon(Icons.phone_outlined),
+          ),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return null;
+            if (t.length < 7 || t.length > 32) {
+              return 'Enter a valid phone number.';
+            }
+            if (!RegExp(r'^[+0-9\-\s()]+$').hasMatch(t)) {
+              return 'Enter a valid phone number.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        DetailCard(title: 'Read-only', children: [
+          DetailRow('Email', widget.user.email),
+          if (flats.isNotEmpty) DetailRow('Flat', flats),
+        ]),
+        const SizedBox(height: 12),
+        const InfoNote(
+          'Email and flat assignment are managed separately. Change flats from Flat details.',
+        ),
+        InlineError(formError),
+      ],
+    );
+  }
+}
+
 class AdminResidentDetailPage extends StatefulWidget {
   const AdminResidentDetailPage({super.key, required this.userId});
   final String userId;
@@ -739,6 +961,18 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
       await action();
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _editResident(AdminUser user) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminEditResidentPage(user: user),
+      ),
+    );
+    if (saved == true && mounted) {
+      setState(() => _future = _load(force: true));
     }
   }
 
@@ -892,7 +1126,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, occupancy.flatId),
                 child: Text(
-                  '${_roleLabel(occupancy.role)} occupancy',
+                  '${occupancy.displayFlat} · ${_roleLabel(occupancy.role)}',
                 ),
               ),
           ],
@@ -997,7 +1231,24 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AppPageBar('Resident details'),
+      appBar: AppPageBar(
+        'Resident details',
+        actions: [
+          FutureBuilder<_ResidentDetailBundle>(
+            future: _future,
+            builder: (context, snap) {
+              final user = snap.data?.user;
+              if (user == null) return const SizedBox.shrink();
+              return TextButton.icon(
+                onPressed: _busy ? null : () => _editResident(user),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit'),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: FutureBuilder<_ResidentDetailBundle>(
         future: _future,
         builder: (context, snap) {
@@ -1022,6 +1273,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
           final needsMobile = user.mobileE164 == null;
           final needsConfirm =
               user.mobileE164 != null && !user.mobileVerified;
+          final flatSummary = user.flatLabelsSummary;
           return RefreshIndicator(
             color: C.blue,
             onRefresh: () async {
@@ -1033,13 +1285,17 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
               children: [
                 DetailHero(
                   title: user.name.isEmpty ? user.email : user.name,
-                  subtitle: user.email,
+                  subtitle: flatSummary.isEmpty
+                      ? user.email
+                      : 'Flat $flatSummary · ${user.email}',
                   leading: AppAvatar(
                     text: initialsOf(user.name.isEmpty ? user.email : user.name),
                     size: Sz.avatarLg,
                     color: user.isActive ? C.blue : C.muted,
                   ),
                   badges: [
+                    if (flatSummary.isNotEmpty)
+                      StatusBadge(flatSummary, tone: BadgeTone.info),
                     for (final r in roles)
                       StatusBadge(_roleLabel(r), tone: BadgeTone.info),
                     StatusBadge(user.isActive ? 'Active' : 'Inactive'),
@@ -1134,9 +1390,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                               horizontal: 12, vertical: 12),
                           child: Row(children: [
                             AppAvatar(
-                              icon: user.activeOccupancies[i].role == 'OWNER'
-                                  ? Icons.home_outlined
-                                  : Icons.person_pin_circle_outlined,
+                              text: user.activeOccupancies[i].wingCode ?? '?',
                               square: true,
                               size: 36,
                             ),
@@ -1146,12 +1400,13 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '${_roleLabel(user.activeOccupancies[i].role)} occupancy',
+                                    user.activeOccupancies[i].displayFlat,
                                     style: T.bodyStrong,
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Since ${occupancyDateLabel(user.activeOccupancies[i].startsAt)}',
+                                    '${_roleLabel(user.activeOccupancies[i].role)}'
+                                    ' · Since ${occupancyDateLabel(user.activeOccupancies[i].startsAt)}',
                                     style: T.caption,
                                   ),
                                 ],
@@ -1212,39 +1467,45 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
                 const SectionTitle('Manage access'),
                 ActionRail(
                   busy: _busy,
-                  primary: (user.username ?? '').isNotEmpty
-                      ? ToolLink(
-                          icon: Icons.password_rounded,
-                          label: user.hasPassword
-                              ? 'Reset password'
-                              : 'Issue temporary password',
-                          subtitle:
-                              'Shows a one-time credential; sessions are revoked',
-                          onTap: () => _resetPassword(user),
-                        )
-                      : needsMobile
-                          ? ToolLink(
-                              icon: Icons.phone_android_outlined,
-                              label: 'Set mobile number',
-                              subtitle: 'Optional contact number',
-                              onTap: () => _setMobile(user),
-                            )
-                          : needsConfirm
-                              ? ToolLink(
-                                  icon: Icons.verified_outlined,
-                                  label: 'Confirm mobile ownership',
-                                  subtitle: 'Marks +${user.mobileE164} verified',
-                                  onTap: () => _confirmMobile(user),
-                                )
-                              : null,
+                  primary: ToolLink(
+                    icon: Icons.edit_outlined,
+                    label: 'Edit resident details',
+                    subtitle: 'Update name, username, or phone',
+                    onTap: () => _editResident(user),
+                  ),
                   secondary: [
-                    if (!needsMobile)
+                    if ((user.username ?? '').isNotEmpty)
+                      ToolLink(
+                        icon: Icons.password_rounded,
+                        label: user.hasPassword
+                            ? 'Reset password'
+                            : 'Issue temporary password',
+                        subtitle:
+                            'Shows a one-time credential; sessions are revoked',
+                        onTap: () => _resetPassword(user),
+                      ),
+                    if (needsMobile)
+                      ToolLink(
+                        icon: Icons.phone_android_outlined,
+                        label: 'Set mobile number',
+                        subtitle: 'Optional contact number',
+                        onTap: () => _setMobile(user),
+                      )
+                    else ...[
+                      if (needsConfirm)
+                        ToolLink(
+                          icon: Icons.verified_outlined,
+                          label: 'Confirm mobile ownership',
+                          subtitle: 'Marks +${user.mobileE164} verified',
+                          onTap: () => _confirmMobile(user),
+                        ),
                       ToolLink(
                         icon: Icons.phone_android_outlined,
                         label: 'Update mobile number',
                         subtitle: 'Optional contact number',
                         onTap: () => _setMobile(user),
                       ),
+                    ],
                     if (canDeactivate)
                       ToolLink(
                         icon: Icons.person_off_outlined,

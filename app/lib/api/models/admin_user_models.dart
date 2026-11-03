@@ -54,6 +54,12 @@ class AdminUser {
   bool get isTenant =>
       roles.contains('TENANT') || societyRoles.contains('TENANT');
 
+  /// Comma-separated flat labels for list rows (e.g. `A-101, B-202`).
+  String get flatLabelsSummary {
+    if (activeOccupancies.isEmpty) return '';
+    return activeOccupancies.map((o) => o.displayFlat).join(', ');
+  }
+
   factory AdminUser.fromJson(Object? data) {
     final json = requireMap(data, 'user');
     final roles = requireStringList(json, 'roles');
@@ -97,17 +103,37 @@ class ActiveOccupancySummary {
     required this.flatId,
     required this.role,
     required this.startsAt,
+    this.flatNumber,
+    this.flatLabel,
+    this.wingId,
+    this.wingCode,
   });
 
   final String id;
   final String flatId;
+  final String? flatNumber;
+  final String? flatLabel;
+  final String? wingId;
+  final String? wingCode;
   final String role;
   final String startsAt;
+
+  String get displayFlat {
+    final label = (flatLabel ?? '').trim();
+    if (label.isNotEmpty) return label;
+    final number = (flatNumber ?? '').trim();
+    if (number.isNotEmpty) return number;
+    return 'Flat';
+  }
 
   factory ActiveOccupancySummary.fromJson(JsonMap json) {
     return ActiveOccupancySummary(
       id: requireString(json, 'id'),
       flatId: requireString(json, 'flatId'),
+      flatNumber: optionalString(json, 'flatNumber'),
+      flatLabel: optionalString(json, 'flatLabel'),
+      wingId: optionalString(json, 'wingId'),
+      wingCode: optionalString(json, 'wingCode'),
       role: requireString(json, 'role'),
       startsAt: requireString(json, 'startsAt'),
     );
@@ -174,6 +200,7 @@ class ListUsersQuery {
   const ListUsersQuery({
     this.search,
     this.role,
+    this.wingId,
     this.isActive,
     this.page,
     this.limit,
@@ -181,6 +208,7 @@ class ListUsersQuery {
 
   final String? search;
   final String? role;
+  final String? wingId;
   final bool? isActive;
   final int? page;
   final int? limit;
@@ -188,6 +216,7 @@ class ListUsersQuery {
   Map<String, Object?> toQuery() => {
         'search': search,
         'role': role,
+        'wingId': wingId,
         'isActive': isActive == null ? null : (isActive! ? 'true' : 'false'),
         'page': page,
         'limit': limit,

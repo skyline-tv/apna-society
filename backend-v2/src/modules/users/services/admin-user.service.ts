@@ -10,7 +10,10 @@ import { normalizeMobileE164 } from '../../../utils/phone';
 import { assertValidUsername, usernameFromEmail } from '../../../utils/username';
 import { writeAuditLog } from '../../auth/services/audit.service';
 import { RefreshSessionModel } from '../../auth/models/refresh-session.model';
+import { FlatModel } from '../../society/models/flat.model';
 import { OccupancyRecordModel } from '../../society/models/occupancy-record.model';
+import { WingModel } from '../../society/models/wing.model';
+import { formatFlatLabel } from '../../../utils/flat-label';
 import { MembershipModel } from '../models/membership.model';
 import { UserModel } from '../models/user.model';
 import type {
@@ -21,6 +24,89 @@ import type {
 } from '../validators/admin-user.validators';
 
 type Actor = { userId: string; ipAddress?: string; userAgent?: string };
+
+type OccupancyRow = {
+  _id: { toString(): string };
+  flatId: { toString(): string };
+  userId: { toString(): string };
+  role: string;
+  startsAt: Date;
+};
+
+async function serializeActiveOccupancies(
+  societyId: string,
+  rows: OccupancyRow[],
+) {
+  if (rows.length === 0) return [];
+
+  const flatIds = [...new Set(rows.map((row) => String(row.flatId)))];
+  const flats = await FlatModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    _id: { $in: flatIds },
+  })
+    .select('_id number wingId')
+    .lean();
+
+  const wingIds = [...new Set(flats.map((flat) => String(flat.wingId)))];
+  const wings = await WingModel.find({ _id: { $in: wingIds } })
+    .select('_id code')
+    .lean();
+  const wingCodeById = new Map(wings.map((wing) => [String(wing._id), wing.code]));
+  const flatById = new Map(
+    flats.map((flat) => {
+      const wingId = String(flat.wingId);
+      const wingCode = wingCodeById.get(wingId);
+      return [
+        String(flat._id),
+        {
+          flatId: String(flat._id),
+          flatNumber: flat.number,
+          flatLabel: formatFlatLabel(wingCode, flat.number),
+          wingId,
+          wingCode,
+        },
+      ] as const;
+    }),
+  );
+
+  return rows.map((row) => {
+    const flat = flatById.get(String(row.flatId));
+    return {
+      id: String(row._id),
+      flatId: String(row.flatId),
+      flatNumber: flat?.flatNumber,
+      flatLabel: flat?.flatLabel,
+      wingId: flat?.wingId,
+      wingCode: flat?.wingCode,
+      role: row.role,
+      startsAt: new Date(row.startsAt).toISOString(),
+    };
+  });
+}
+
+async function activeOccupanciesByUserIds(societyId: string, userIds: string[]) {
+  if (userIds.length === 0) {
+    return new Map<string, Awaited<ReturnType<typeof serializeActiveOccupancies>>>();
+  }
+
+  const rows = await OccupancyRecordModel.find({
+    societyId: parseObjectId(societyId, 'societyId'),
+    userId: { $in: userIds.map((id) => parseObjectId(id, 'userId')) },
+    status: 'ACTIVE',
+  })
+    .select('_id flatId userId role startsAt')
+    .lean();
+
+  const serialized = await serializeActiveOccupancies(societyId, rows as OccupancyRow[]);
+  const byUser = new Map<string, typeof serialized>();
+  for (let i = 0; i < rows.length; i += 1) {
+    const userId = String(rows[i].userId);
+    const current = byUser.get(userId) ?? [];
+    current.push(serialized[i]);
+    byUser.set(userId, current);
+  }
+  return byUser;
+}
 
 function serializeUser(user: {
   _id: { toString(): string };
@@ -248,8 +334,9 @@ export async function provisionResident(
 }
 
 export async function listAdminUsers(societyId: string, query: ListUsersQuery) {
+  const societyObjectId = parseObjectId(societyId, 'societyId');
   const membershipFilter: Record<string, unknown> = {
-    societyId: parseObjectId(societyId, 'societyId'),
+    societyId: societyObjectId,
     isActive: true,
   };
   if (query.role) {
@@ -257,7 +344,38 @@ export async function listAdminUsers(societyId: string, query: ListUsersQuery) {
   }
 
   const memberships = await MembershipModel.find(membershipFilter).select('userId role').lean();
-  const userIds = [...new Set(memberships.map((m) => String(m.userId)))];
+  let userIds = [...new Set(memberships.map((m) => String(m.userId)))];
+
+  if (query.wingId) {
+    const flatsInWing = await FlatModel.find({
+      societyId: societyObjectId,
+      wingId: parseObjectId(query.wingId, 'wingId'),
+    })
+      .select('_id')
+      .lean();
+    const flatIds = flatsInWing.map((flat) => flat._id);
+    if (flatIds.length === 0) {
+      return {
+        items: [],
+        pagination: {
+          page: query.page,
+          limit: query.limit,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
+
+    const wingOccupancies = await OccupancyRecordModel.find({
+      societyId: societyObjectId,
+      flatId: { $in: flatIds },
+      status: 'ACTIVE',
+    })
+      .select('userId')
+      .lean();
+    const wingUserIds = new Set(wingOccupancies.map((row) => String(row.userId)));
+    userIds = userIds.filter((id) => wingUserIds.has(id));
+  }
 
   const filter: Record<string, unknown> = {
     _id: { $in: userIds },
@@ -269,6 +387,7 @@ export async function listAdminUsers(societyId: string, query: ListUsersQuery) {
       { name: { $regex: escaped, $options: 'i' } },
       { email: { $regex: escaped, $options: 'i' } },
       { phone: { $regex: escaped, $options: 'i' } },
+      { username: { $regex: escaped, $options: 'i' } },
     ];
   }
 
@@ -291,10 +410,14 @@ export async function listAdminUsers(societyId: string, query: ListUsersQuery) {
     rolesByUser.set(key, current);
   }
 
+  const pageUserIds = users.map((user) => String(user._id));
+  const occupanciesByUser = await activeOccupanciesByUserIds(societyId, pageUserIds);
+
   const items = await Promise.all(
     users.map(async (user) => ({
       ...serializeUser(await withPasswordFlag(user)),
       societyRoles: rolesByUser.get(String(user._id)) ?? [],
+      activeOccupancies: occupanciesByUser.get(String(user._id)) ?? [],
     })),
   );
 
@@ -327,16 +450,16 @@ export async function getAdminUser(societyId: string, userId: string) {
     societyId,
     userId,
     status: 'ACTIVE',
-  }).lean();
+  })
+    .select('_id flatId userId role startsAt')
+    .lean();
 
   return {
     ...serializeUser(await withPasswordFlag(user)),
-    activeOccupancies: activeOccupancies.map((row) => ({
-      id: String(row._id),
-      flatId: String(row.flatId),
-      role: row.role,
-      startsAt: new Date(row.startsAt).toISOString(),
-    })),
+    activeOccupancies: await serializeActiveOccupancies(
+      societyId,
+      activeOccupancies as OccupancyRow[],
+    ),
   };
 }
 

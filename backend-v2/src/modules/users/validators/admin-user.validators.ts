@@ -64,6 +64,7 @@ export const userIdParamSchema = z.object({
 export const listUsersQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
   role: z.enum(['OWNER', 'TENANT', 'ADMIN', 'GUARD']).optional(),
+  wingId: objectId.optional(),
   isActive: z
     .enum(['true', 'false'])
     .optional()
