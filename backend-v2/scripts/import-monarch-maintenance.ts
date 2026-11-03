@@ -1,8 +1,8 @@
 /**
  * Seed Monarch maintenance bills + offline payments from the office sheet.
  *
- * For each row with an amount:
- * - months = amountRupees / flat.maintenanceRate (must divide evenly, 1–12)
+ * For each row with an amount + months:
+ * - months must be 1–12 and match amountRupees / flat.maintenanceRate
  * - generate a bill for that many months from --from (1st of month)
  * - record a full offline payment (BANK → NEFT, CASH → CASH)
  *
@@ -30,6 +30,7 @@ type RosterRow = {
   wing: string;
   flat: string;
   amountRupees: number;
+  months: number;
   method: 'BANK' | 'CASH';
 };
 
@@ -126,18 +127,18 @@ async function main(): Promise<void> {
       }
 
       const rate = flat.maintenanceRate;
-      if (!Number.isInteger(rate) || rate <= 0 || row.amountRupees % rate !== 0) {
-        summary.errors.push({
-          flat: number,
-          error: `Amount ₹${row.amountRupees} is not a whole multiple of rate ₹${rate}`,
-        });
-        continue;
-      }
-      const months = row.amountRupees / rate;
-      if (months < 1 || months > 12) {
+      const months = row.months;
+      if (!Number.isInteger(months) || months < 1 || months > 12) {
         summary.errors.push({
           flat: number,
           error: `Months ${months} out of range 1–12`,
+        });
+        continue;
+      }
+      if (!Number.isInteger(rate) || rate <= 0 || rate * months !== row.amountRupees) {
+        summary.errors.push({
+          flat: number,
+          error: `Amount ₹${row.amountRupees} for ${months} month(s) does not match rate ₹${rate}`,
         });
         continue;
       }
