@@ -95,6 +95,7 @@ async function main(): Promise<void> {
   const actor = { userId: String(admin._id) };
 
   const summary = {
+    scriptVersion: 'pay-existing-extend-v2',
     from: fromRaw,
     totalRows: roster.length,
     createdBills: 0,
