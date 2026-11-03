@@ -55,7 +55,7 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
   final keyId = order.order.keyId?.trim();
   if (keyId == null || keyId.isEmpty) {
     return const RazorpayCheckoutResult.failed(
-      'Payment provider key is missing from the server order response.',
+      'Payment could not start. Please try again.',
     );
   }
   if (order.order.provider != 'razorpay' && order.order.provider != 'mock-razorpay') {

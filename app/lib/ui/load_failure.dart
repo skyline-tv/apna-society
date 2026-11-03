@@ -97,8 +97,8 @@ class LoadFailure extends StatelessWidget {
         ),
       FailureKind.server => (
           Icons.cloud_off_rounded,
-          'Server unavailable',
-          'The service is having trouble right now. Please try again shortly.',
+          'Temporarily unavailable',
+          'Something went wrong on our side. Please try again shortly.',
         ),
       FailureKind.generic => (
           Icons.error_outline_rounded,

@@ -335,7 +335,7 @@ class ApiClient {
       case DioExceptionType.connectionError:
         return ApiException(
           code: 'NETWORK_UNAVAILABLE',
-          message: 'Could not reach the server',
+          message: 'Could not connect. Check your internet and try again.',
         );
       case DioExceptionType.cancel:
         return ApiException(
@@ -345,7 +345,7 @@ class ApiClient {
       case DioExceptionType.badCertificate:
         return ApiException(
           code: 'TLS_ERROR',
-          message: 'The server certificate could not be verified',
+          message: 'Secure connection could not be verified. Please try again.',
         );
       case DioExceptionType.badResponse:
         final status = error.response?.statusCode;

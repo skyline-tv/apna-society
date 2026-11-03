@@ -61,7 +61,7 @@ class OccupancyAccess {
   }) {
     final role = backendRole.toUpperCase();
     if (role != 'OWNER' && role != 'TENANT') {
-      throw StateError('Unsupported resident role from backend.');
+      throw StateError('Unsupported resident role.');
     }
     final occupancy = occupancyStatus.toUpperCase() == 'TENANT_OCCUPIED'
         ? kOccupancyTenantOccupied

@@ -130,7 +130,7 @@ void main() {
                 options: adminOfflineMonthOptions(bill: _bill, selected: 3),
                 preview: '₹12,000.00 · This bill: paid in full',
                 caption:
-                    'Choose how many months were received. Extra months are added to this bill and marked paid. Additional services for the extra months are included on the server.',
+                    'Choose how many months were received. Extra months are added to this bill and marked paid. Additional services for the extra months are included automatically.',
                 onToggle: () {},
                 onSelected: (_) {},
               ),

@@ -11,7 +11,7 @@ String adminApiErrorMessage(Object error) {
       case 'MOBILE_REQUIRED':
         return 'Set a mobile number before confirming verification.';
       case 'PROTECTED_ROLE':
-        return 'This account cannot be managed through resident APIs.';
+        return 'This account cannot be managed from the residents screen.';
       case 'DUPLICATE_ACTIVE_ASSIGNMENT':
         return 'This user already has an active assignment in the society.';
       case 'ACTIVE_OWNER_EXISTS':

@@ -710,7 +710,7 @@ class _AdminProvisionResidentPageState
         ),
         const SizedBox(height: 16),
         const InfoNote(
-          'A temporary password is generated securely. Share it out-of-band; the resident must change it on first login. If this email already exists, the server reuses that account.',
+          'A temporary password is generated securely. Share it privately with the resident; they must change it on first login. If this email already exists, that account is reused.',
         ),
         InlineError(formError),
       ];
@@ -1013,7 +1013,7 @@ class _AdminResidentDetailPageState extends State<AdminResidentDetailPage> {
       context,
       title: 'Reset password for ${user.name}?',
       message:
-          'A temporary password will be generated once. All active sessions for this account will be revoked. Share the password out-of-band; it is never logged.',
+          'A temporary password will be generated once. All active sign-ins for this account will be signed out. Share the password privately; it is shown only once.',
       confirmLabel: 'Reset password',
       destructive: true,
     );

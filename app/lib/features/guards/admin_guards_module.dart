@@ -357,7 +357,7 @@ class _LiveAdminGuardDetailPageState extends State<LiveAdminGuardDetailPage> {
       context,
       title: 'Deactivate ${g.name}?',
       message:
-          'Ends this guard assignment in the society. The current API has no reactivate action, so a new assignment would be required later.',
+          'Ends this guard assignment in the society. To bring them back later, create a new assignment.',
       label: 'Reason (optional)',
       confirmLabel: 'Deactivate',
       destructive: true,
@@ -385,7 +385,7 @@ class _LiveAdminGuardDetailPageState extends State<LiveAdminGuardDetailPage> {
       context,
       title: 'Reset password for ${g.name}?',
       message:
-          'A temporary password will be generated once. Active sessions are revoked. Share it out-of-band; it is never logged.',
+          'A temporary password will be generated once. Active sign-ins are signed out. Share it privately; it is shown only once.',
       confirmLabel: 'Reset password',
       destructive: true,
     );
@@ -479,7 +479,7 @@ class _LiveAdminGuardDetailPageState extends State<LiveAdminGuardDetailPage> {
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12),
                     child: InfoNote(
-                      'This guard assignment has ended. The live API does not offer a reactivate action, so create a new assignment if they should return.',
+                      'This guard assignment has ended. Create a new assignment if they should return.',
                       tone: NoteTone.warning,
                     ),
                   ),

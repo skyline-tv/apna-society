@@ -252,7 +252,7 @@ class _BookingDetails extends StatelessWidget {
       if (b.status == 'PENDING' && b.expiresAt != null)
         InfoNote(
           b.isPendingExpired
-              ? 'The pending window has passed. The server may mark this booking cancelled.'
+              ? 'The pending window has passed. This booking may be marked cancelled automatically.'
               : 'Awaiting approval. This request expires on ${fmtIsoDateTime(b.expiresAt)} if not approved.',
           tone: b.isPendingExpired ? NoteTone.warning : NoteTone.info,
           icon: Icons.timer_outlined,

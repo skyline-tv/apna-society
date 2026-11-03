@@ -42,7 +42,7 @@ String billingErrorMessage(Object error) {
       case 'ONLINE_PAYMENTS_DISABLED':
         return kOfficePaymentMessage;
       case 'OFFLINE_PAYMENTS_DISABLED':
-        return 'Offline collection recording is not enabled on the server.';
+        return 'Offline payment recording is not enabled for this society.';
       case 'DEMO_PAYMENTS_DISABLED':
         return 'Payment simulation is turned off.';
       case 'DEMO_PROVIDER_REQUIRED':
@@ -703,7 +703,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
       context,
       title: 'Create bills now?',
       message:
-          'The server will create bills for $_periodLabel across ${rows.length} configured ${rows.length == 1 ? 'flat' : 'flats'}, including vacant and unassigned flats. Due date: $_dueLabel.',
+          'Bills will be created for $_periodLabel across ${rows.length} configured ${rows.length == 1 ? 'flat' : 'flats'}, including vacant and unassigned flats. Due date: $_dueLabel.',
       confirmLabel: 'Create bills',
       icon: Icons.auto_awesome_outlined,
     );
@@ -781,7 +781,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
             ]
           : null,
       bottom: PrimaryButton(
-        label: reviewing ? 'Create bills on server' : 'Preview eligible flats',
+        label: reviewing ? 'Create bills' : 'Preview eligible flats',
         icon: reviewing ? Icons.auto_awesome_outlined : Icons.preview_outlined,
         busy: busy || _loadingEligible,
         onPressed: reviewing
@@ -811,7 +811,7 @@ class _LiveGenerateBillsPageState extends State<LiveGenerateBillsPage> {
                     ),
                   ],
                   note:
-                      'Estimate uses current monthly rates plus active additional services × months. The server remains the source of truth for totals, proration and conflicts.',
+                      'Estimate uses current monthly rates plus active additional services × months. Final totals, proration, and any conflicts are confirmed when bills are created.',
                 ),
                 const SizedBox(height: 16),
                 SectionTitle('Billable flats',
@@ -1089,7 +1089,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                 labelText: 'Adjustment (₹)',
                 prefixText: '₹ ',
                 errorText: fieldError,
-                helperText: 'Server sets total = base + adjustment',
+                helperText: 'Total = base + adjustment',
               ),
               onChanged: (_) {
                 if (fieldError != null) setLocal(() => fieldError = null);
@@ -1765,7 +1765,7 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
     final bill = widget.bill;
     final estimate = moneyPaise(billEstimateForMonthsPaise(bill, monthsPaid));
     const caption =
-        'Choose how many months were received. Extra months are added to this bill and marked paid. Additional services for the extra months are included on the server.';
+        'Choose how many months were received. Extra months are added to this bill and marked paid. Additional services for the extra months are included automatically.';
     return Scaffold(
       backgroundColor: kOfflineCream,
       appBar: AppBar(
@@ -2604,9 +2604,9 @@ class _LiveOwnerBillDetailPageState extends State<LiveOwnerBillDetailPage> {
                     if (payable && !kResidentOnlinePaymentsEnabled)
                       const InfoNote(kOfficePaymentMessage),
                     const InfoNote(
-                      'Interest accrues automatically after the due date. '
-                      'The society server calculates simple daily interest. '
-                      'This app never recalculates interest locally.',
+                      'Interest accrues automatically after the due date '
+                      'using simple daily interest. Amounts shown here are '
+                      'the official totals for this bill.',
                     ),
                     const SizedBox(height: 12),
                   ],

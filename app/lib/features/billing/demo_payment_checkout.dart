@@ -96,7 +96,7 @@ Future<DemoPaymentChoice> openDemoPaymentCheckoutForOrder({
               const SizedBox(height: 8),
               const InfoNote(
                 'This is a mock gateway for development. No real money is charged. '
-                'The server settles the payment — the app never holds a payment secret.',
+                'Payment is confirmed securely — the app never stores payment secrets.',
               ),
               const SizedBox(height: 16),
               FilledButton(
@@ -150,7 +150,7 @@ Future<RazorpayCheckoutResult> openDemoPaymentCheckoutAsRazorpayResult({
       // Intentionally not a gateway success — no paymentId/signature.
       // Callers that still go through verify-payment will reject this.
       return const RazorpayCheckoutResult.failed(
-        'Demo payment requires server-side demo-complete settlement.',
+        'Demo payment could not be completed. Please try again.',
       );
   }
 }

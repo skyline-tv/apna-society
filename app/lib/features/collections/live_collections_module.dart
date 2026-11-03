@@ -60,7 +60,7 @@ String collectionErrorMessage(Object error) {
       case 'INVALID_GATEWAY_SIGNATURE':
         return 'Payment could not be verified. Contact the society office if money was deducted.';
       case 'OFFLINE_PAYMENTS_DISABLED':
-        return 'Offline collection recording is not enabled on the server.';
+        return 'Offline payment recording is not enabled for this society.';
       case 'ADJUSTMENT_BELOW_PAID':
         return 'The assigned amount cannot go below what has already been paid.';
       default:

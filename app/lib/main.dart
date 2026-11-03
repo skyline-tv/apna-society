@@ -51,6 +51,7 @@ import 'services/session_store.dart';
 import 'ui/components.dart';
 import 'ui/demo_chrome.dart';
 import 'ui/load_failure.dart';
+import 'ui/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -156,96 +157,6 @@ class _AppBootstrapState extends State<AppBootstrap> {
   Widget build(BuildContext context) => const AuthGate();
 }
 
-/// Branded splash used while the app boots or restores a session.
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen({required this.label, this.error, this.onRetry});
-  final String label;
-  final String? error;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Scaffold(
-          backgroundColor: C.blue,
-          body: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(28),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 380),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(Rd.xxl),
-                      ),
-                      child: const BrandLogo(size: 52, radius: 16),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(kAppName,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                        )),
-                    const SizedBox(height: 6),
-                    Text(kSocietyName,
-                        textAlign: TextAlign.center,
-                        style: T.secondary.copyWith(
-                            color: Colors.white.withValues(alpha: 0.72))),
-                    const SizedBox(height: 4),
-                    Text(kAppTagline,
-                        textAlign: TextAlign.center,
-                        style: T.caption.copyWith(
-                            color: Colors.white.withValues(alpha: 0.55))),
-                    const SizedBox(height: 32),
-                    if (error == null) ...[
-                      const SizedBox(
-                          width: 26,
-                          height: 26,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            color: Colors.white,
-                          )),
-                      const SizedBox(height: 14),
-                      Text(label,
-                          style: T.caption.copyWith(
-                              color: Colors.white.withValues(alpha: 0.8))),
-                    ] else ...[
-                      Text(label,
-                          textAlign: TextAlign.center,
-                          style: T.h3.copyWith(color: Colors.white)),
-                      const SizedBox(height: 8),
-                      Text(error!,
-                          textAlign: TextAlign.center,
-                          style: T.secondary.copyWith(
-                              color: Colors.white.withValues(alpha: 0.78))),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: onRetry,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: C.blue,
-                        ),
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('Try again'),
-                      ),
-                    ],
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-}
-
 String _sessionRestoreError(Object error) {
   final base = authErrorMessage(error);
   if (error is! ApiException) {
@@ -259,7 +170,7 @@ String _sessionRestoreError(Object error) {
   }
   final config = ApiConfig.fromEnvironment();
   if (config.flavor == ApiFlavor.development) {
-    return '$base\n\nThis debug build is calling ${config.baseUrl} (local API). Your internet cannot reach that host unless the backend is running on that LAN address.\n\nQuit flutter run and start it with:\nflutter run --dart-define-from-file=dart_defines.production.json';
+    return '$base\n\nThis debug build is calling ${config.baseUrl}. That address is only reachable on your local network.\n\nQuit flutter run and start it with:\nflutter run --dart-define-from-file=dart_defines.production.json';
   }
   return '$base\n\nYour sign-in was kept. Check your connection and try again.';
 }
@@ -331,7 +242,7 @@ class _AuthGateState extends State<AuthGate> {
         future: _boot,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return _SplashScreen(
+            return SplashScreen(
               label: 'Could not restore your session',
               error: _sessionRestoreError(snapshot.error!),
               onRetry: () {
@@ -342,7 +253,7 @@ class _AuthGateState extends State<AuthGate> {
             );
           }
           if (!snapshot.hasData) {
-            return const _SplashScreen(label: 'Opening your society…');
+            return const SplashScreen(label: 'Opening your society…');
           }
           return snapshot.data!;
         },
@@ -550,7 +461,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final message = e is ApiException
           ? e.message
-          : 'Could not reach the demo server. Sample data is isolated and is not available on the production API.';
+          : 'Could not open demo mode. Sample data is separate from the live society and could not be reached.';
       setState(() => error = message);
     }
   }
@@ -564,7 +475,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         error =
-            'The demo server is not in DEMO MODE. Reviewer sample data was not opened.';
+            'Demo mode is not available right now. Sample data was not opened.';
       });
     } catch (_) {
       // Sign-in will surface a connection error if the demo API is down.
@@ -662,7 +573,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 2),
                           const Text(
-                            'Your account role is confirmed by the server. This only sets the sign-in context.',
+                            'Choose how you want to sign in. Your account role is confirmed after login.',
                             style: TextStyle(
                               fontSize: 11.5,
                               height: 1.35,
@@ -3134,12 +3045,12 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                     value: '${society.timezone} · ${society.currency}'),
               ]),
               const InfoNote(
-                'Late interest for live bills is calculated by the server. '
+                'Late interest on bills is calculated automatically. '
                 'This screen does not change the rate.',
               ),
               const SizedBox(height: 20),
               const SectionTitle('Wings',
-                  subtitle: 'Structure is managed on the server'),
+                  subtitle: 'Building structure for this society'),
               if (config.wings.isEmpty)
                 const EmptyState('No wings yet',
                     icon: Icons.domain_outlined, compact: true)

@@ -417,7 +417,7 @@ void main() {
       expect(src.contains('db.lateInterestAnnualRate'), isFalse);
       expect(
         src.contains(
-            'Late interest for live bills is calculated by the server'),
+            'Late interest on bills is calculated automatically'),
         isTrue,
       );
     });
