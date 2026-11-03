@@ -79,8 +79,10 @@ void main() {
     expect(find.text('27 Oct 2026'), findsOneWidget);
     expect(find.text('UPI'), findsOneWidget);
     expect(find.text('Wing A - Flat 101'), findsOneWidget);
-    expect(find.text('Base Maintenance Charges'), findsOneWidget);
+    expect(find.textContaining('Base Maintenance Charges'), findsOneWidget);
     expect(find.text('Total Amount Paid'), findsOneWidget);
+    expect(find.text('BILL NUMBER'), findsOneWidget);
+    expect(find.text('TRANSACTION REFERENCE'), findsOneWidget);
     expect(find.text('BILL-2026-000001'), findsOneWidget);
     expect(find.text('offline_PAY-2026-000001'), findsOneWidget);
     expect(

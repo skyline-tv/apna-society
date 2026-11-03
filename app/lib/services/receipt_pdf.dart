@@ -19,9 +19,9 @@ class ReceiptPdf {
 
   static const societyName = 'Monarch Solitaire A to E';
   static const brandBlue = PdfColor.fromInt(0xFF0B3C68);
-  static const muted = PdfColor.fromInt(0xFF94A3B8);
+  static const muted = PdfColor.fromInt(0xFF334155);
   static const ink = PdfColor.fromInt(0xFF0F172A);
-  static const rule = PdfColor.fromInt(0xFF94A3B8);
+  static const rule = PdfColor.fromInt(0xFF64748B);
   static const border = PdfColor.fromInt(0xFFE2E8F0);
   static const headerBg = PdfColor.fromInt(0xFFF1F5F9);
   static const footerBg = PdfColor.fromInt(0xFFF8FAFC);
@@ -495,7 +495,7 @@ class ReceiptPdf {
               font: pw.Font.helveticaBold(),
               fontSize: 7,
               letterSpacing: 0.4,
-              color: PdfColor.fromInt(0xFF334155),
+              color: ink,
             ),
           ),
         );
@@ -569,23 +569,16 @@ class ReceiptPdf {
   }
 
   static List<pw.Widget> _refGrid(List<_Kv> refs) {
-    final widgets = <pw.Widget>[];
-    for (var i = 0; i < refs.length; i += 2) {
-      widgets.add(pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 10),
-        child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(child: _meta(refs[i].label, refs[i].value)),
-            if (i + 1 < refs.length)
-              pw.Expanded(child: _meta(refs[i + 1].label, refs[i + 1].value))
-            else
-              pw.Expanded(child: pw.SizedBox()),
-          ],
-        ),
-      ));
-    }
-    return widgets;
+    if (refs.isEmpty) return const [];
+    return [
+      pw.SizedBox(height: 6),
+      pw.Container(height: 0.6, color: border),
+      pw.SizedBox(height: 12),
+      for (final ref in refs) ...[
+        _meta(ref.label, ref.value),
+        pw.SizedBox(height: 12),
+      ],
+    ];
   }
 
   static pw.Widget _cell(String text,

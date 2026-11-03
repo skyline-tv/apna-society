@@ -30,9 +30,10 @@ export type ReceiptPdfInput = {
 const LEFT = 50;
 const RIGHT = 545;
 const BLUE = '0.043 0.235 0.408';
-const MUTED = '0.580 0.639 0.722';
+/** Slate-700 — labels stay readable on white paper / print. */
+const MUTED = '0.200 0.255 0.333';
 const INK = '0.059 0.090 0.165';
-const RULE = '0.580 0.639 0.722';
+const RULE = '0.392 0.455 0.545';
 const BORDER = '0.886 0.910 0.941';
 const HEADER_BG = '0.945 0.961 0.973';
 const FOOTER_BG = '0.976 0.980 0.984';
@@ -396,19 +397,19 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   }
 
   if (refs.length) {
-    y -= 6;
-    for (let i = 0; i < refs.length; i += 2) {
-      const leftRef = refs[i];
-      const rightRef = refs[i + 1];
-      if (leftRef) {
-        text('F1', 8, LEFT, y, leftRef.label.toUpperCase(), MUTED);
-        text('F2', 11, LEFT, y - 14, leftRef.value);
+    // Keep refs clear of the charge table and of each other.
+    y -= 18;
+    ops.push(`${BORDER} RG 0.6 w ${LEFT} ${y + 8} m ${RIGHT} ${y + 8} l S`);
+    y -= 4;
+    for (const ref of refs) {
+      text('F1', 8, LEFT, y, ref.label.toUpperCase(), MUTED);
+      y -= 14;
+      const valueLines = wrapText(ref.value, 78);
+      for (const line of valueLines) {
+        text('F2', 11, LEFT, y, line, INK);
+        y -= 13;
       }
-      if (rightRef) {
-        text('F1', 8, 320, y, rightRef.label.toUpperCase(), MUTED);
-        text('F2', 11, 320, y - 14, rightRef.value);
-      }
-      y -= 32;
+      y -= 10;
     }
   }
 

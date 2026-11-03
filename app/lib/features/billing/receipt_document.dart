@@ -7,10 +7,10 @@ import '../../ui/components.dart';
 const kReceiptNavy = Color(0xFF0B3C68);
 const kReceiptNavyDark = Color(0xFF00254C);
 const kReceiptPage = Color(0xFFF7F9FA);
-const kReceiptMuted = Color(0xFF94A3B8);
+const kReceiptMuted = Color(0xFF334155);
 const kReceiptInk = Color(0xFF0F172A);
 const kReceiptBorder = Color(0xFFE2E8F0);
-const kReceiptRule = Color(0xFF94A3B8);
+const kReceiptRule = Color(0xFF64748B);
 
 class ReceiptChargeLine {
   const ReceiptChargeLine({
@@ -126,14 +126,14 @@ class ReceiptActionBar extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.description_outlined, size: 16, color: Color(0xFF64748B)),
+                  Icon(Icons.description_outlined, size: 16, color: kReceiptMuted),
                   SizedBox(width: 6),
                   Text(
                     'A4 Paper',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
+                      color: kReceiptInk,
                     ),
                   ),
                 ],
@@ -148,14 +148,14 @@ class ReceiptActionBar extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.verified_outlined, size: 14, color: Color(0xFF64748B)),
+                  Icon(Icons.verified_outlined, size: 14, color: kReceiptMuted),
                   SizedBox(width: 4),
                   Text(
                     'Verified record',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                      color: kReceiptMuted,
                     ),
                   ),
                 ],
@@ -372,7 +372,7 @@ class ReceiptSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            const Divider(height: 1, thickness: 1, color: Color(0xCC94A3B8)),
+            const Divider(height: 1, thickness: 1, color: kReceiptRule),
             const SizedBox(height: 18),
             LayoutBuilder(builder: (context, constraints) {
               final stacked = constraints.maxWidth < 520;
@@ -422,42 +422,16 @@ class ReceiptSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _ChargeTable(lines: lines, totalAmount: totalAmount),
-            const SizedBox(height: 18),
-            LayoutBuilder(builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 520;
-              final bill = billNumber == null || billNumber!.isEmpty
-                  ? null
-                  : _MetaBlock(
-                      label: 'BILL NUMBER',
-                      child: Text(billNumber!, style: _refStyle),
-                    );
-              final txn =
-                  transactionReference == null || transactionReference!.isEmpty
-                      ? null
-                      : _MetaBlock(
-                          label: 'TRANSACTION REFERENCE',
-                          child: Text(transactionReference!, style: _refStyle),
-                        );
-              if (bill == null && txn == null) return const SizedBox.shrink();
-              if (stacked || txn == null || bill == null) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (bill != null) bill,
-                    if (bill != null && txn != null) const SizedBox(height: 12),
-                    if (txn != null) txn,
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: bill),
-                  const SizedBox(width: 24),
-                  Expanded(child: txn),
-                ],
-              );
-            }),
+            if ((billNumber ?? '').isNotEmpty ||
+                (transactionReference ?? '').isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Divider(height: 1, thickness: 1, color: kReceiptBorder),
+              const SizedBox(height: 16),
+              _ReceiptRefs(
+                billNumber: billNumber,
+                transactionReference: transactionReference,
+              ),
+            ],
             const SizedBox(height: 48),
             LayoutBuilder(builder: (context, constraints) {
               final stacked = constraints.maxWidth < 520;
@@ -466,7 +440,8 @@ class ReceiptSheet extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   height: 1.45,
-                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                  color: kReceiptMuted,
                 ),
               );
               final authorized = Column(
@@ -477,7 +452,7 @@ class ReceiptSheet extends StatelessWidget {
                   Container(
                     width: stacked ? double.infinity : 180,
                     height: 1,
-                    color: const Color(0xFFCBD5E1),
+                    color: kReceiptRule,
                   ),
                   const SizedBox(height: 6),
                   const Text(
@@ -485,8 +460,8 @@ class ReceiptSheet extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       letterSpacing: 1.1,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w700,
+                      color: kReceiptMuted,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -496,8 +471,8 @@ class ReceiptSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 11,
                       letterSpacing: 0.8,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF334155),
+                      fontWeight: FontWeight.w600,
+                      color: kReceiptInk,
                     ),
                   ),
                 ],
@@ -555,7 +530,7 @@ class _MetaBlock extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             letterSpacing: 1.1,
             color: kReceiptMuted,
           ),
@@ -567,6 +542,56 @@ class _MetaBlock extends StatelessWidget {
   }
 }
 
+class _ReceiptRefs extends StatelessWidget {
+  const _ReceiptRefs({this.billNumber, this.transactionReference});
+
+  final String? billNumber;
+  final String? transactionReference;
+
+  @override
+  Widget build(BuildContext context) {
+    final bill = (billNumber ?? '').trim();
+    final txn = (transactionReference ?? '').trim();
+    return LayoutBuilder(builder: (context, constraints) {
+      final sideBySide = constraints.maxWidth >= 520 && bill.isNotEmpty && txn.isNotEmpty;
+      final billBlock = bill.isEmpty
+          ? null
+          : _MetaBlock(
+              label: 'BILL NUMBER',
+              child: Text(bill, style: _refStyle),
+            );
+      final txnBlock = txn.isEmpty
+          ? null
+          : _MetaBlock(
+              label: 'TRANSACTION REFERENCE',
+              child: Text(
+                txn,
+                style: _refStyle,
+                softWrap: true,
+              ),
+            );
+      if (sideBySide) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: billBlock!),
+            const SizedBox(width: 24),
+            Expanded(child: txnBlock!),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (billBlock != null) billBlock,
+          if (billBlock != null && txnBlock != null) const SizedBox(height: 14),
+          if (txnBlock != null) txnBlock,
+        ],
+      );
+    });
+  }
+}
+
 class _ChargeTable extends StatelessWidget {
   const _ChargeTable({required this.lines, required this.totalAmount});
 
@@ -575,129 +600,204 @@ class _ChargeTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: kReceiptBorder),
-      ),
-      child: Column(
-        children: [
-          Container(
-            color: const Color(0xFFF1F5F9),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: const Row(
-              children: [
-                SizedBox(
-                  width: 22,
-                  child: Text('#', textAlign: TextAlign.center, style: _headStyle),
-                ),
-                SizedBox(width: 8),
-                Expanded(flex: 5, child: Text('Particulars', style: _headStyle)),
-                SizedBox(width: 8),
-                Expanded(flex: 4, child: Text('Period / Tenure', style: _headStyle)),
-                SizedBox(width: 8),
-                SizedBox(
-                  width: 84,
-                  child: Text('Amount', textAlign: TextAlign.right, style: _headStyle),
-                ),
-              ],
+    return LayoutBuilder(builder: (context, constraints) {
+      final compact = constraints.maxWidth < 420;
+      return Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: kReceiptBorder),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFF1F5F9),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: compact
+                  ? const Row(
+                      children: [
+                        Expanded(
+                          child: Text('Particulars / Period', style: _headStyle),
+                        ),
+                        SizedBox(width: 8),
+                        SizedBox(
+                          width: 88,
+                          child: Text(
+                            'Amount',
+                            textAlign: TextAlign.right,
+                            style: _headStyle,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          child: Text('#',
+                              textAlign: TextAlign.center, style: _headStyle),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          flex: 5,
+                          child: Text('Particulars', style: _headStyle),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          flex: 4,
+                          child: Text('Period / Tenure', style: _headStyle),
+                        ),
+                        SizedBox(width: 8),
+                        SizedBox(
+                          width: 88,
+                          child: Text(
+                            'Amount',
+                            textAlign: TextAlign.right,
+                            style: _headStyle,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
-          ),
-          ...lines.asMap().entries.map((entry) {
-            final line = entry.value;
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            ...lines.asMap().entries.map((entry) {
+              final line = entry.value;
+              return Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: compact
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${entry.key + 1}. ${line.particulars}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: kReceiptInk,
+                                    height: 1.25,
+                                  ),
+                                ),
+                                if (line.period.trim().isNotEmpty &&
+                                    line.period != '-') ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    line.period,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: kReceiptMuted,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 88,
+                            child: Text(
+                              line.amount,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: kReceiptInk,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 22,
+                            child: Text(
+                              '${entry.key + 1}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: kReceiptMuted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 5,
+                            child: Text(
+                              line.particulars,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: kReceiptInk,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 4,
+                            child: Text(
+                              line.period,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: kReceiptMuted,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 88,
+                            child: Text(
+                              line.amount,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: kReceiptInk,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              );
+            }),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
               decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                color: Color(0xFFF8FAFC),
+                border: Border(top: BorderSide(color: kReceiptBorder)),
               ),
               child: Row(
                 children: [
-                  SizedBox(
-                    width: 22,
+                  const Expanded(
                     child: Text(
-                      '${entry.key + 1}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      'Total Amount Paid',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: kReceiptNavy,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      line.particulars,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: kReceiptInk,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 4,
-                    child: Text(
-                      line.period,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   SizedBox(
-                    width: 84,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        line.amount,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: kReceiptInk,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFFF8FAFC),
-              border: Border(top: BorderSide(color: kReceiptBorder)),
-            ),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Total Amount Paid',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                      color: kReceiptNavy,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 84,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
+                    width: 88,
                     child: Text(
                       totalAmount,
+                      textAlign: TextAlign.right,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -705,19 +805,19 @@ class _ChargeTable extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
 }
 
 const _headStyle = TextStyle(
   fontSize: 10,
-  fontWeight: FontWeight.w600,
+  fontWeight: FontWeight.w700,
   letterSpacing: 0.6,
-  color: Color(0xFF334155),
+  color: kReceiptInk,
 );
