@@ -1,14 +1,17 @@
 /**
- * Record Monarch maintenance offline payments against existing bills.
+ * Record Monarch maintenance payments for the prepaid months on the sheet.
  *
- * Does not create or cancel bills. For each sheet row, applies amountRupees
- * FIFO across the flat's outstanding (non-cancelled) bills.
+ * For each flat:
+ * - Prefer an existing non-cancelled bill (does not wipe prior payments)
+ * - Pay `months` via offline monthsPaid (extends the bill when more months are needed)
+ * - Example: A-604 sheet = 6 months / ₹30,000. If a 3-month bill is already paid,
+ *   records 3 more months (extends + pays ₹15,000) so coverage becomes 6 months.
  *
- * BANK → NEFT, CASH → CASH. Idempotent via payment keys.
+ * BANK → NEFT, CASH → CASH.
  *
  * Usage:
  *   npm run import:monarch-maintenance -- --confirm
- *   npm run import:monarch-maintenance -- --confirm --paid-at 2026-11-01
+ *   npm run import:monarch-maintenance -- --confirm --from 2026-11-01
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -19,17 +22,19 @@ import { SocietyModel } from '../src/modules/society/models/society.model';
 import { FlatModel } from '../src/modules/society/models/flat.model';
 import { UserModel } from '../src/modules/users/models/user.model';
 import { BillModel } from '../src/modules/billing/models/bill.model';
+import { generateBillForFlat } from '../src/modules/billing/services/bill-generation.service';
 import { recordOfflinePayment } from '../src/modules/billing/services/payment.service';
-import { rupeesIntegerToPaise } from '../src/modules/billing/utils/money';
+import { billingPeriodBounds } from '../src/modules/billing/utils/billing-calendar';
+import { billedMonthsProgress } from '../src/modules/billing/utils/bill-months';
 
 const SOCIETY_CODE = 'MONARCH_SOLITAIRE';
-const DEFAULT_PAID_AT = '2026-11-01';
+const DEFAULT_FROM = '2026-11-01';
 
 type RosterRow = {
   wing: string;
   flat: string;
   amountRupees: number;
-  months?: number;
+  months: number;
   method: 'BANK' | 'CASH';
 };
 
@@ -52,10 +57,10 @@ function loadRoster(): RosterRow[] {
   return JSON.parse(readFileSync(path, 'utf8')) as RosterRow[];
 }
 
-function parsePaidAt(raw: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+function parsePeriodStart(raw: string): Date {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(raw.trim());
   if (!match) {
-    throw new Error('--paid-at must be YYYY-MM-DD');
+    throw new Error('--from must be YYYY-MM-01 (1st of a calendar month)');
   }
   return new Date(`${raw.trim()}T00:00:00.000+05:30`);
 }
@@ -68,8 +73,8 @@ async function main(): Promise<void> {
   loadEnv();
   await connectDatabase();
 
-  const paidAtRaw = arg('paid-at') ?? arg('from') ?? DEFAULT_PAID_AT;
-  const paidAt = parsePaidAt(paidAtRaw);
+  const fromRaw = arg('from') ?? DEFAULT_FROM;
+  const requestedStart = parsePeriodStart(fromRaw);
   const roster = loadRoster();
 
   const society = await SocietyModel.findOne({ code: SOCIETY_CODE });
@@ -77,6 +82,7 @@ async function main(): Promise<void> {
     throw new Error(`Society ${SOCIETY_CODE} not found. Run npm run seed first.`);
   }
   const societyId = String(society._id);
+  const timeZone = society.config?.timezone ?? 'Asia/Kolkata';
 
   const admin = await UserModel.findOne({ roles: 'ADMIN', isActive: true }).select('_id').lean();
   if (!admin) {
@@ -85,19 +91,23 @@ async function main(): Promise<void> {
   const actor = { userId: String(admin._id) };
 
   const summary = {
-    paidAt: paidAtRaw,
+    from: fromRaw,
     totalRows: roster.length,
-    paid: 0,
-    alreadyPaid: 0,
+    createdBills: 0,
+    paidMonthsRecorded: 0,
+    alreadyComplete: 0,
     skipped: 0,
-    remainingUnappliedRupees: 0,
     errors: [] as Array<{ flat: string; error: string }>,
     payments: [] as Array<{
       flat: string;
-      amountRupees: number;
-      appliedRupees: number;
+      sheetMonths: number;
+      sheetAmountRupees: number;
+      previouslyPaidMonths: number;
+      monthsRecordedNow: number;
+      billId: string;
+      billNumber?: string;
+      paymentId?: string;
       method: string;
-      billPayments: Array<{ billId: string; billNumber?: string; amountRupees: number; paymentId?: string }>;
     }>,
   };
 
@@ -114,88 +124,104 @@ async function main(): Promise<void> {
         summary.errors.push({ flat: number, error: 'Flat not found' });
         continue;
       }
-
-      const amountPaise = rupeesIntegerToPaise(row.amountRupees);
-      const paymentMethod = mapMethod(row.method);
-
-      const bills = await BillModel.find({
-        societyId: society._id,
-        flatId: flat._id,
-        status: { $nin: ['CANCELLED', 'PAID'] },
-        outstandingPrincipalPaise: { $gt: 0 },
-      }).sort({ billingPeriodStart: 1, createdAt: 1 });
-
-      if (bills.length === 0) {
-        summary.errors.push({ flat: number, error: 'No outstanding bills to pay' });
+      if (!flat.activeOwnerUserId || flat.occupancyStatus === 'VACANT') {
+        summary.errors.push({
+          flat: number,
+          error: 'Flat has no active owner — import owners first',
+        });
         continue;
       }
 
-      let remainingPaise = amountPaise;
-      let appliedPaise = 0;
-      const billPayments: Array<{
-        billId: string;
-        billNumber?: string;
-        amountRupees: number;
-        paymentId?: string;
-      }> = [];
+      const rate = flat.maintenanceRate;
+      const months = row.months;
+      if (!Number.isInteger(months) || months < 1 || months > 12) {
+        summary.errors.push({ flat: number, error: `Months ${months} out of range 1–12` });
+        continue;
+      }
+      if (!Number.isInteger(rate) || rate <= 0 || rate * months !== row.amountRupees) {
+        summary.errors.push({
+          flat: number,
+          error: `Amount ₹${row.amountRupees} for ${months} month(s) does not match rate ₹${rate}`,
+        });
+        continue;
+      }
 
-      for (const bill of bills) {
-        if (remainingPaise <= 0) break;
+      const { periodStart } = billingPeriodBounds(requestedStart, months, timeZone);
+      const paymentMethod = mapMethod(row.method);
 
-        // Re-read outstanding in case a prior payment in this loop settled interest-only edges.
-        const live = await BillModel.findById(bill._id);
-        if (!live || live.status === 'CANCELLED' || live.status === 'PAID') continue;
-        if (live.outstandingPrincipalPaise <= 0) continue;
+      let bill = await BillModel.findOne({
+        societyId: society._id,
+        flatId: flat._id,
+        status: { $ne: 'CANCELLED' },
+      }).sort({ billingPeriodStart: 1, createdAt: 1 });
 
-        const chunkPaise = Math.min(remainingPaise, live.outstandingPrincipalPaise);
-        const idempotencyKey = `monarch-maint-pay-${number}-${String(live._id)}-${chunkPaise}-${row.method}`;
-
-        const paid = await recordOfflinePayment(
+      if (!bill) {
+        const generated = await generateBillForFlat(
           societyId,
           {
-            billId: String(live._id),
-            amountPaise: chunkPaise,
-            paidAt,
-            paymentMethod,
-            referenceNumber: `SEED-${number}-${paidAtRaw}`,
-            notes: `Seeded from maintenance sheet (${row.method})`,
-            idempotencyKey,
+            flatId: String(flat._id),
+            billingPeriodStart: periodStart,
+            numberOfMonths: months,
+            notes: `Monarch maintenance seed (${row.method})`,
           },
           actor,
         );
-
-        if (paid.alreadySettled) summary.alreadyPaid += 1;
-        else summary.paid += 1;
-
-        billPayments.push({
-          billId: String(live._id),
-          billNumber: live.billNumber,
-          amountRupees: chunkPaise / 100,
-          paymentId: paid.paymentId,
-        });
-
-        remainingPaise -= chunkPaise;
-        appliedPaise += chunkPaise;
+        bill = await BillModel.findById(generated.bill.id);
+        if (!bill) {
+          summary.errors.push({ flat: number, error: 'Bill create returned no document' });
+          continue;
+        }
+        summary.createdBills += 1;
       }
 
-      if (appliedPaise === 0 && remainingPaise === amountPaise) {
-        summary.alreadyPaid += 1;
-      }
+      const progress = billedMonthsProgress(bill);
+      const previouslyPaidMonths = progress.paidMonths;
+      const monthsNeeded = months - previouslyPaidMonths;
 
-      summary.remainingUnappliedRupees += remainingPaise / 100;
-      if (remainingPaise > 0) {
-        summary.errors.push({
+      if (monthsNeeded <= 0) {
+        summary.alreadyComplete += 1;
+        summary.payments.push({
           flat: number,
-          error: `Applied ₹${appliedPaise / 100} of ₹${row.amountRupees}; ₹${remainingPaise / 100} left (not enough outstanding)`,
+          sheetMonths: months,
+          sheetAmountRupees: row.amountRupees,
+          previouslyPaidMonths,
+          monthsRecordedNow: 0,
+          billId: String(bill._id),
+          billNumber: bill.billNumber,
+          method: paymentMethod,
         });
+        continue;
       }
 
+      // monthsPaid here means "record this many months now".
+      // If the bill is already fully paid, the payment service extends it by that many months.
+      // If unpaid months remain, it extends only the shortfall then settles.
+      const idempotencyKey = `monarch-maint-months-${number}-${fromRaw}-${months}-${row.method}-need-${monthsNeeded}`;
+      const paid = await recordOfflinePayment(
+        societyId,
+        {
+          billId: String(bill._id),
+          monthsPaid: monthsNeeded,
+          paidAt: periodStart,
+          paymentMethod,
+          referenceNumber: `SEED-${number}-${fromRaw}`,
+          notes: `Seeded ${monthsNeeded} month(s) from maintenance sheet (${row.method}); target ${months} months / ₹${row.amountRupees}`,
+          idempotencyKey,
+        },
+        actor,
+      );
+
+      summary.paidMonthsRecorded += monthsNeeded;
       summary.payments.push({
         flat: number,
-        amountRupees: row.amountRupees,
-        appliedRupees: appliedPaise / 100,
+        sheetMonths: months,
+        sheetAmountRupees: row.amountRupees,
+        previouslyPaidMonths,
+        monthsRecordedNow: monthsNeeded,
+        billId: String(bill._id),
+        billNumber: bill.billNumber,
+        paymentId: paid.paymentId,
         method: paymentMethod,
-        billPayments,
       });
     } catch (error: unknown) {
       const message =
