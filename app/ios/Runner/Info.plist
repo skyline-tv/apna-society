@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>ApnaSociety needs the microphone so security guards can register visitors by voice at the gate.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>ApnaSociety uses speech recognition to fill visitor name, flat, mobile and purpose from the guard’s spoken request. Audio is not stored.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

@@ -502,7 +502,7 @@ void main() {
       expect(mainSrc.contains("label: 'Security Staff'"), isFalse);
 
       final moreSrc =
-          File('lib/features/security/security_module.dart').readAsStringSync();
+          File('lib/features/admin/admin_more_page.dart').readAsStringSync();
       expect(moreSrc.contains("onOpen('security')"), isFalse);
       expect(moreSrc.contains("label: 'Security Staff'"), isFalse);
     });

@@ -274,7 +274,6 @@ class PushNotificationService {
       }
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
-        debugPrint('FCM token: $token');
         await _registerToken(token, session: session);
       } else {
         debugPrint('FCM token was empty after permission was granted.');

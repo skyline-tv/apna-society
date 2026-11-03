@@ -6,7 +6,6 @@ import 'admin_dashboard.dart';
 const _kMoreBrand = Color(0xFF153B69);
 const _kMoreBrand50 = Color(0xFFF0F5FA);
 const _kMoreBrand100 = Color(0xFFE2ECF5);
-const _kMoreBrand200 = Color(0xFFC5D9EC);
 const _kMoreBorder = Color(0xFFE8EDF5);
 const _kMoreMuted = Color(0xFF64748B);
 

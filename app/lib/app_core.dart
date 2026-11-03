@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import 'data/local_database.dart';
-import 'services/late_interest.dart';
 import 'ui/components.dart';
 
 final db = LocalDatabase();
@@ -25,20 +23,6 @@ class Debouncer {
     _timer = null;
   }
 }
-
-/// Fixed demo OTP for local presentation (no SMS gateway).
-const kDemoOtp = '123456';
-const kDemoAdminMobile = '9876500001';
-
-/// A-101 owner (tenant-occupied flat) — financial access only.
-const kDemoOwnerMobile = '9876510032';
-
-/// A-101 active tenant — residential access only.
-const kDemoTenantMobile = '9876510101';
-
-/// A-102 owner-occupied flat — full owner access.
-const kDemoOwnerOccupiedMobile = '9876510033';
-const kDemoGuardMobile = '9876500099';
 
 /// Product / app name (launcher & product branding) — do not rename for society branding.
 const kAppName = 'ApnaSociety';
@@ -62,20 +46,6 @@ const kIncomingVisitorFullScreenEnabled = false;
 
 const kOfficePaymentMessage =
     'Online payment is not available yet. Please pay cash or cheque at the society office. Your receipt will appear here after the admin records the offline payment.';
-const kBuildingA = 'Monarch Solitaire A';
-const kBuildingB = 'Monarch Solitaire B';
-const kBuildingC = 'Monarch Solitaire C';
-const kBuildingD = 'Monarch Solitaire D';
-const kBuildingE = 'Monarch Solitaire E';
-
-/// All wings in the society (used for admin flat/vehicle mapping).
-const kAllBuildings = [
-  kBuildingA,
-  kBuildingB,
-  kBuildingC,
-  kBuildingD,
-  kBuildingE
-];
 
 /// Source art (landscape). Prefer [kAppIconAsset] for square UI / launcher use.
 const kLogoAsset = 'assets/icons/icon.png';
@@ -154,119 +124,6 @@ String maintenancePeriodLabel({
       ? DateTime(periodEnd.year, periodEnd.month)
       : DateTime(start.year, start.month + months - 1);
   return '${monthName(start)} - ${monthName(end)}';
-}
-
-String shortDate(String iso) {
-  final d = DateTime.tryParse(iso);
-  if (d == null) return iso;
-  return '${d.day.toString().padLeft(2, '0')} ${kMonths[d.month - 1].substring(0, 3)} ${d.year}';
-}
-
-Widget billDetailLine(String label, String value) => DetailRow(label, value);
-
-List<Map<String, dynamic>> billOtherChargesOf(dynamic bill) {
-  final raw = bill is Map
-      ? bill['other_charges_json']
-      : bill.data['other_charges_json'];
-  if (raw is String) return LocalDatabase.parseOtherChargesJson(raw);
-  if (raw is List) {
-    try {
-      return LocalDatabase.parseOtherChargesJson(jsonEncode(raw));
-    } catch (_) {
-      return const [];
-    }
-  }
-  return const [];
-}
-
-int billMaintenanceAmountOf(dynamic bill) {
-  final data = bill is Map ? bill : bill.data as Map;
-  final stored = data['maintenance_amount'] as int?;
-  if (stored != null && stored > 0) return stored;
-  final unit = data['unit_amount'] as int? ?? 0;
-  final months = data['months_covered'] as int? ?? 1;
-  final amount = data['amount'] as int? ?? 0;
-  final other = data['other_charges_total'] as int? ?? 0;
-  if (other > 0 && amount >= other) return amount - other;
-  if (unit > 0) return unit * months;
-  return amount;
-}
-
-int billOtherChargesTotalOf(dynamic bill) {
-  final data = bill is Map ? bill : bill.data as Map;
-  final stored = data['other_charges_total'] as int?;
-  if (stored != null) return stored;
-  return billOtherChargesOf(bill)
-      .fold<int>(0, (s, c) => s + (c['amount'] as int? ?? 0));
-}
-
-/// Maintenance + other-charges breakdown lines for bill UIs.
-List<Widget> billAmountBreakdownLines(dynamic bill) {
-  final months = (bill is Map
-          ? bill['months_covered']
-          : bill.data['months_covered']) as int? ??
-      1;
-  final unit =
-      (bill is Map ? bill['unit_amount'] : bill.data['unit_amount']) as int? ??
-          0;
-  final maint = billMaintenanceAmountOf(bill);
-  final otherTotal = billOtherChargesTotalOf(bill);
-  final charges = billOtherChargesOf(bill);
-  final grand =
-      (bill is Map ? bill['amount'] : bill.read<int>('amount')) as int;
-  return [
-    billDetailLine('Monthly maintenance', money(unit)),
-    billDetailLine('Prepaid months', '$months'),
-    billDetailLine('Maintenance subtotal', money(maint)),
-    if (charges.isNotEmpty) ...[
-      const SizedBox(height: 4),
-      const Text('Other Charges',
-          style: TextStyle(
-              fontWeight: FontWeight.w800, color: C.navy, fontSize: 12)),
-      const SizedBox(height: 4),
-      ...charges.map((c) => billDetailLine(
-          '${c['description']}', money(c['amount'] as int? ?? 0))),
-      billDetailLine('Other Charges total', money(otherTotal)),
-    ] else if (otherTotal > 0)
-      billDetailLine('Other Charges total', money(otherTotal)),
-    billDetailLine('Original bill total', money(grand)),
-  ];
-}
-
-List<Widget> billInterestBreakdownLines(BillInterestSummary s,
-    {bool paid = false}) {
-  final due = s.dueDate == null ? '—' : shortDate(s.dueDate!.toIso8601String());
-  return [
-    const SizedBox(height: 4),
-    const Text('Late payment interest',
-        style: TextStyle(
-            fontWeight: FontWeight.w800, color: C.navy, fontSize: 12)),
-    const SizedBox(height: 4),
-    billDetailLine('Due date', due),
-    billDetailLine('Overdue months', '${s.overdueMonths}'),
-    billDetailLine('Annual interest rate',
-        '${s.annualRatePercent.toStringAsFixed(0)}% (monthly ${s.monthlyRatePercent.toStringAsFixed(2)}%)'),
-    billDetailLine(paid ? 'Interest collected' : 'Accumulated interest',
-        money(paid ? s.interestPaid : s.interestOutstanding)),
-    if (!paid) ...[
-      billDetailLine('Principal outstanding', money(s.principalOutstanding)),
-      billDetailLine('Total outstanding', money(s.totalOutstanding)),
-    ],
-  ];
-}
-
-/// Loads interest and returns maintenance + interest display lines.
-Future<List<Widget>> billFullBreakdownLines(dynamic bill) async {
-  final id = bill is Map ? bill['id'] as int : bill.read<int>('id') as int;
-  final status =
-      bill is Map ? bill['status'] as String : bill.read<String>('status');
-  final summary = await db.billInterestSummary(id);
-  return [
-    ...billAmountBreakdownLines(bill),
-    ...billInterestBreakdownLines(summary, paid: status == 'paid'),
-    if (status != 'paid' && summary.interestOutstanding > 0)
-      billDetailLine('Total payable now', money(summary.totalOutstanding)),
-  ];
 }
 
 /// Shared Monarch Solitaire / ApnaSociety brand mark.

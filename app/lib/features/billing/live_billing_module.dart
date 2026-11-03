@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -272,40 +271,16 @@ Future<PaymentSummary?> _latestSuccessfulPaymentForBill(
   return page.items.first;
 }
 
-Widget _billShortcutButton({
-  required IconData icon,
-  required String label,
-  required VoidCallback onPressed,
-}) {
-  return TextButton.icon(
-    onPressed: onPressed,
-    style: TextButton.styleFrom(
-      visualDensity: VisualDensity.compact,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      foregroundColor: C.navy,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    ),
-    icon: Icon(icon, size: 18),
-    label: Text(label),
-  );
-}
-
 /// Shared bill row for admin and resident lists.
 class _BillRow extends StatelessWidget {
   const _BillRow({
     required this.bill,
     required this.onTap,
     this.showFlat = true,
-    this.onRecordPayment,
-    this.onDownloadReceipt,
-    this.onShareReceipt,
   });
   final Bill bill;
   final VoidCallback onTap;
   final bool showFlat;
-  final VoidCallback? onRecordPayment;
-  final VoidCallback? onDownloadReceipt;
-  final VoidCallback? onShareReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -318,9 +293,6 @@ class _BillRow extends StatelessWidget {
       'PARTIALLY_PAID' => C.amber,
       _ => C.blue,
     };
-    final hasShortcuts = onRecordPayment != null ||
-        onDownloadReceipt != null ||
-        onShareReceipt != null;
     return ListRow(
       onTap: onTap,
       leading:
@@ -348,43 +320,15 @@ class _BillRow extends StatelessWidget {
           ),
         ],
       ),
-      showChevron: !hasShortcuts,
-      footer: hasShortcuts
-          ? Wrap(
-              spacing: 0,
-              runSpacing: 0,
-              children: [
-                if (onRecordPayment != null)
-                  _billShortcutButton(
-                    icon: Icons.payments_outlined,
-                    label: 'Record',
-                    onPressed: onRecordPayment!,
-                  ),
-                if (onDownloadReceipt != null)
-                  _billShortcutButton(
-                    icon: Icons.download_outlined,
-                    label: 'Download',
-                    onPressed: onDownloadReceipt!,
-                  ),
-                if (onShareReceipt != null)
-                  _billShortcutButton(
-                    icon: Icons.ios_share_outlined,
-                    label: 'Share',
-                    onPressed: onShareReceipt!,
-                  ),
-              ],
-            )
-          : null,
     );
   }
 }
 
 /// Shared payment row for admin and resident lists.
 class _PaymentRow extends StatelessWidget {
-  const _PaymentRow({required this.payment, this.onTap, this.onLongPress});
+  const _PaymentRow({required this.payment, this.onTap});
   final PaymentSummary payment;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -410,7 +354,6 @@ class _PaymentRow extends StatelessWidget {
     ].join(' · ');
     return ListRow(
       onTap: onTap,
-      onLongPress: onLongPress,
       leading: AppAvatar(icon: icon, color: tone, size: 42),
       title: flat.isNotEmpty ? flat : p.paymentNumber,
       subtitle: details +

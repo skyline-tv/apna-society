@@ -17,8 +17,6 @@ import '../vehicles/live_vehicles_module.dart';
 import 'incoming_visitor_page.dart';
 import 'visitor_messages.dart';
 
-export 'visitor_messages.dart';
-
 /// Approval + entry badges for a visitor.
 Widget visitorStatusChips(Visitor v) {
   return Wrap(

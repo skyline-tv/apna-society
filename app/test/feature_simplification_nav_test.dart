@@ -38,9 +38,9 @@ void main() {
       );
     });
 
-    test('legacy AdminMorePage no longer lists removed modules', () {
+    test('admin More page no longer lists removed modules', () {
       final moreSrc =
-          File('lib/features/security/security_module.dart').readAsStringSync();
+          File('lib/features/admin/admin_more_page.dart').readAsStringSync();
       for (final needle in [
         "label: 'Complaints'",
         "label: 'Staff HR'",

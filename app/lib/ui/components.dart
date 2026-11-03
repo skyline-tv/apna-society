@@ -691,24 +691,6 @@ class StatusBadge extends StatelessWidget {
   }
 }
 
-/// Small coloured dot + label (e.g. legends, inline state).
-class DotLabel extends StatelessWidget {
-  const DotLabel(this.label, {super.key, required this.color});
-  final String label;
-  final Color color;
-  @override
-  Widget build(BuildContext context) =>
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: T.caption),
-      ]);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Surfaces
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1634,57 +1616,6 @@ class DetailCard extends StatelessWidget {
       );
 }
 
-/// Settings / profile style row (icon + title + value/trailing).
-class KeyValueTile extends StatelessWidget {
-  const KeyValueTile({
-    super.key,
-    required this.title,
-    this.value,
-    this.icon,
-    this.trailing,
-    this.onTap,
-    this.leading,
-  });
-  final String title;
-  final String? value;
-  final IconData? icon;
-  final Widget? leading;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => AppCard(
-        onTap: onTap,
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(children: [
-          if (leading != null) ...[
-            leading!,
-            const SizedBox(width: 12)
-          ] else if (icon != null) ...[
-            AppAvatar(icon: icon, size: 36, square: true),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: T.caption),
-              if (value != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  value!.isEmpty ? '—' : value!,
-                  style: T.bodyStrong,
-                ),
-              ],
-            ]),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 10), trailing!],
-          if (onTap != null && trailing == null)
-            const Icon(Icons.chevron_right_rounded, color: C.faint),
-        ]),
-      );
-}
-
 /// Grouped settings rows in one card separated by dividers.
 class SettingsGroup extends StatelessWidget {
   const SettingsGroup({super.key, this.title, required this.children});
@@ -2006,44 +1937,6 @@ class QuickActionTile extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: C.faint),
           ]),
         ),
-      );
-}
-
-/// Compact navigational tile. Prefer [ToolDirectory] for hubs.
-class ServiceTile extends StatelessWidget {
-  const ServiceTile({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.color = C.blue,
-    this.badge,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color color;
-  final String? badge;
-
-  @override
-  Widget build(BuildContext context) => AppCard(
-        onTap: onTap,
-        margin: EdgeInsets.zero,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: Row(children: [
-          AppAvatar(icon: icon, color: color, size: 32, square: true),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(label,
-                style: T.bodyStrong,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-          ),
-          if (badge != null) ...[
-            const SizedBox(width: 8),
-            StatusBadge(badge!),
-          ],
-        ]),
       );
 }
 
