@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen>
   static const _surfaceContainer = Color(0xFFEAEDFF);
   static const _surfaceContainerHighest = Color(0xFFDAE2FD);
   static const _secondaryFixed = Color(0xFFD5E3FF);
-  static const _appVersion = '1.0.4';
+  static const _appVersion = '1.0.5';
 
   late final AnimationController _orbit =
       AnimationController(vsync: this, duration: const Duration(seconds: 120))
