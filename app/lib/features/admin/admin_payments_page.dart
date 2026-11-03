@@ -153,20 +153,25 @@ int adminPaymentSuccessTotalPaise(Iterable<PaymentSummary> payments) {
 }
 
 class AdminPaymentsHeader extends StatelessWidget {
-  const AdminPaymentsHeader({super.key, required this.onRecord});
+  const AdminPaymentsHeader({
+    super.key,
+    required this.onRecord,
+    this.subtitle = 'Payments across the society',
+  });
 
   final VoidCallback onRecord;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Payments Ledger',
                 style: TextStyle(
                   fontSize: 16,
@@ -175,10 +180,10 @@ class AdminPaymentsHeader extends StatelessWidget {
                   letterSpacing: -0.2,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
-                'Latest 50 payments across the society',
-                style: TextStyle(
+                subtitle,
+                style: const TextStyle(
                   fontSize: 12,
                   color: _kPayNeutral,
                 ),

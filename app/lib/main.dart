@@ -2254,6 +2254,7 @@ class _AdminDashboardBundle {
 
 class _AdminHomeState extends State<AdminHome> {
   int tab = 0;
+  int _paymentsRefreshNonce = 0;
   String? _morePage;
   late Future<_AdminDashboardBundle> _dashboardFuture = _loadDashboard();
 
@@ -2406,7 +2407,9 @@ class _AdminHomeState extends State<AdminHome> {
                       adminDashboard(),
                       AdminFlatsPage(onChanged: refresh),
                       const LiveAdminBillsPage(),
-                      const LiveAdminPaymentsPage(),
+                      LiveAdminPaymentsPage(
+                        refreshNonce: _paymentsRefreshNonce,
+                      ),
                       _adminMoreBody(
                         society: snapshot.data?.society,
                         dashboard: snapshot.data?.dashboard,
@@ -2423,6 +2426,7 @@ class _AdminHomeState extends State<AdminHome> {
                 tab = v;
                 if (v != 4) _morePage = null;
                 if (v == 0) reloadDashboard();
+                if (v == 3) _paymentsRefreshNonce++;
               }),
             ),
           ),

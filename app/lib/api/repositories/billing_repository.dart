@@ -13,6 +13,7 @@ class BillingRepository {
   Paged<Bill>? lastResidentBills;
   String? lastResidentBillsKey;
   Paged<PaymentSummary>? lastAdminPayments;
+  String? _lastAdminPaymentsKey;
   Paged<PaymentSummary>? lastResidentPayments;
   BillingSummary? lastSummary;
   List<EligibleFlat>? lastEligibleFlats;
@@ -31,6 +32,7 @@ class BillingRepository {
     lastResidentBills = null;
     lastResidentBillsKey = null;
     lastAdminPayments = null;
+    _lastAdminPaymentsKey = null;
     lastResidentPayments = null;
     lastSummary = null;
     lastEligibleFlats = null;
@@ -48,6 +50,7 @@ class BillingRepository {
     lastResidentBills = null;
     lastResidentBillsKey = null;
     lastAdminPayments = null;
+    _lastAdminPaymentsKey = null;
     lastResidentPayments = null;
     lastSummary = null;
     lastEligibleFlats = null;
@@ -285,7 +288,11 @@ class BillingRepository {
     int? limit,
     bool force = false,
   }) async {
-    if (!force && lastAdminPayments != null && billId == null && status == null) {
+    final key = [status, billId, page, limit].join('|');
+    if (!force &&
+        lastAdminPayments != null &&
+        _lastAdminPaymentsKey == key &&
+        billId == null) {
       return lastAdminPayments!;
     }
     final result = await _api.listAdminPayments(
@@ -294,7 +301,10 @@ class BillingRepository {
       page: page,
       limit: limit,
     );
-    if (billId == null && status == null) lastAdminPayments = result;
+    if (billId == null) {
+      lastAdminPayments = result;
+      _lastAdminPaymentsKey = key;
+    }
     return result;
   }
 

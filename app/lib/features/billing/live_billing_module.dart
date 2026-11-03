@@ -1051,7 +1051,7 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
       billId: widget.billId,
       status: 'SUCCESS',
       force: force,
-      limit: 10,
+      limit: 100,
     );
     return _BillDetailBundle(
       bill: bill,
@@ -1932,17 +1932,33 @@ class _LiveOfflinePaymentPageState extends State<LiveOfflinePaymentPage> {
 }
 
 class LiveAdminPaymentsPage extends StatefulWidget {
-  const LiveAdminPaymentsPage({super.key});
+  const LiveAdminPaymentsPage({super.key, this.refreshNonce = 0});
+
+  /// Bumped by AdminHome when the Payments tab is selected so the ledger
+  /// reloads after bills/import instead of keeping a stale IndexedStack cache.
+  final int refreshNonce;
+
   @override
   State<LiveAdminPaymentsPage> createState() => _LiveAdminPaymentsPageState();
 }
 
 class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
-  late Future<Paged<PaymentSummary>> _future = _load();
+  static const _pageSize = 100;
+  late Future<Paged<PaymentSummary>> _future = _load(force: true);
   final _search = TextEditingController();
   String? wingFilter;
   String? statusFilter;
   bool offlineOnly = false;
+  int page = 1;
+
+  @override
+  void didUpdateWidget(covariant LiveAdminPaymentsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshNonce != widget.refreshNonce) {
+      page = 1;
+      _reload();
+    }
+  }
 
   @override
   void dispose() {
@@ -1953,9 +1969,11 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
   Future<Paged<PaymentSummary>> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api)
-        .billing
-        .listAdminPayments(force: force, limit: 50);
+    return ensureLiveRepositories(session.api).billing.listAdminPayments(
+          force: force,
+          page: page,
+          limit: _pageSize,
+        );
   }
 
   Future<void> _refresh() async {
@@ -1969,6 +1987,14 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
 
   void _reload() {
     setState(() {
+      _future = _load(force: true);
+    });
+  }
+
+  void _goToPage(int nextPage) {
+    if (nextPage < 1) return;
+    setState(() {
+      page = nextPage;
       _future = _load(force: true);
     });
   }
@@ -2016,7 +2042,9 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
               onRetry: _reload,
             );
           }
-          final rows = snap.data?.items ?? [];
+          final paged = snap.data;
+          final rows = paged?.items ?? [];
+          final pagination = paged?.pagination;
           final query = _search.text;
           final searched =
               rows.where((p) => adminPaymentMatches(p, query: query)).toList();
@@ -2038,6 +2066,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                   ))
               .toList();
           final successTotal = adminPaymentSuccessTotalPaise(visible);
+          final totalPayments = pagination?.total ?? rows.length;
           return RefreshIndicator(
             color: AdminDash.primary,
             onRefresh: _refresh,
@@ -2045,7 +2074,12 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
-                AdminPaymentsHeader(onRecord: _record),
+                AdminPaymentsHeader(
+                  onRecord: _record,
+                  subtitle: totalPayments == 0
+                      ? 'No payments recorded yet'
+                      : 'Showing ${rows.length} of $totalPayments payments',
+                ),
                 const SizedBox(height: 16),
                 AdminPaymentsMetrics(
                   shownCount: visible.length,
@@ -2106,7 +2140,7 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                       });
                     },
                   )
-                else
+                else ...[
                   for (final payment in visible) ...[
                     AdminPaymentCard(
                       payment: payment,
@@ -2117,6 +2151,14 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
                     ),
                     const SizedBox(height: 12),
                   ],
+                  if (pagination != null && pagination.totalPages > 1)
+                    PaginationBar(
+                      page: pagination.page,
+                      totalPages: pagination.totalPages,
+                      onPrevious: () => _goToPage(page - 1),
+                      onNext: () => _goToPage(page + 1),
+                    ),
+                ],
               ],
             ),
           );
