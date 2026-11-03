@@ -1,7 +1,7 @@
 name: apna_society
 description: ApnaSociety local-first demo for Monarch Solitaire A to E society maintenance (Android and iOS).
 publish_to: 'none'
-version: 1.0.5+7
+version: 1.0.6+8
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
