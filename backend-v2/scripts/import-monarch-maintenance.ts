@@ -2,12 +2,12 @@
  * Record Monarch maintenance payments for the prepaid months on the sheet.
  *
  * For each flat:
- * - Prefer an existing non-cancelled bill (does not wipe prior payments)
- * - Pay `months` via offline monthsPaid (extends the bill when more months are needed)
- * - Example: A-604 sheet = 6 months / ₹30,000. If a 3-month bill is already paid,
- *   records 3 more months (extends + pays ₹15,000) so coverage becomes 6 months.
+ * - Prefer an existing non-cancelled bill
+ * - If more months are needed than the bill currently covers, extend that bill
+ * - Then record an offline payment for the remaining amount (unique reference each time)
  *
- * BANK → NEFT, CASH → CASH.
+ * Example A-604 (₹30,000 / 6 months): if ₹15,000 / 3 months is already paid,
+ * extends by 3 months and records a second ₹15,000 payment on the same bill.
  *
  * Usage:
  *   npm run import:monarch-maintenance -- --confirm
@@ -22,10 +22,14 @@ import { SocietyModel } from '../src/modules/society/models/society.model';
 import { FlatModel } from '../src/modules/society/models/flat.model';
 import { UserModel } from '../src/modules/users/models/user.model';
 import { BillModel } from '../src/modules/billing/models/bill.model';
-import { generateBillForFlat } from '../src/modules/billing/services/bill-generation.service';
+import {
+  extendBillForAdvanceMonths,
+  generateBillForFlat,
+} from '../src/modules/billing/services/bill-generation.service';
 import { recordOfflinePayment } from '../src/modules/billing/services/payment.service';
 import { billingPeriodBounds } from '../src/modules/billing/utils/billing-calendar';
 import { billedMonthsProgress } from '../src/modules/billing/utils/bill-months';
+import { rupeesIntegerToPaise } from '../src/modules/billing/utils/money';
 
 const SOCIETY_CODE = 'MONARCH_SOLITAIRE';
 const DEFAULT_FROM = '2026-11-01';
@@ -94,7 +98,8 @@ async function main(): Promise<void> {
     from: fromRaw,
     totalRows: roster.length,
     createdBills: 0,
-    paidMonthsRecorded: 0,
+    extendedBills: 0,
+    paid: 0,
     alreadyComplete: 0,
     skipped: 0,
     errors: [] as Array<{ flat: string; error: string }>,
@@ -103,7 +108,8 @@ async function main(): Promise<void> {
       sheetMonths: number;
       sheetAmountRupees: number;
       previouslyPaidMonths: number;
-      monthsRecordedNow: number;
+      monthsAdded: number;
+      amountPaidRupees: number;
       billId: string;
       billNumber?: string;
       paymentId?: string;
@@ -148,6 +154,7 @@ async function main(): Promise<void> {
 
       const { periodStart } = billingPeriodBounds(requestedStart, months, timeZone);
       const paymentMethod = mapMethod(row.method);
+      const ratePaise = rupeesIntegerToPaise(rate);
 
       let bill = await BillModel.findOne({
         societyId: society._id,
@@ -174,18 +181,19 @@ async function main(): Promise<void> {
         summary.createdBills += 1;
       }
 
-      const progress = billedMonthsProgress(bill);
+      let progress = billedMonthsProgress(bill);
       const previouslyPaidMonths = progress.paidMonths;
       const monthsNeeded = months - previouslyPaidMonths;
 
-      if (monthsNeeded <= 0) {
+      if (monthsNeeded <= 0 && bill.outstandingPrincipalPaise <= 0) {
         summary.alreadyComplete += 1;
         summary.payments.push({
           flat: number,
           sheetMonths: months,
           sheetAmountRupees: row.amountRupees,
           previouslyPaidMonths,
-          monthsRecordedNow: 0,
+          monthsAdded: 0,
+          amountPaidRupees: 0,
           billId: String(bill._id),
           billNumber: bill.billNumber,
           method: paymentMethod,
@@ -193,33 +201,71 @@ async function main(): Promise<void> {
         continue;
       }
 
-      // monthsPaid here means "record this many months now".
-      // If the bill is already fully paid, the payment service extends it by that many months.
-      // If unpaid months remain, it extends only the shortfall then settles.
-      const idempotencyKey = `monarch-maint-months-${number}-${fromRaw}-${months}-${row.method}-need-${monthsNeeded}`;
+      // Extend coverage when the sheet needs more months than this bill currently has.
+      const extraMonths = Math.max(0, months - bill.numberOfMonths);
+      if (extraMonths > 0) {
+        bill = await extendBillForAdvanceMonths(societyId, bill, extraMonths, actor);
+        summary.extendedBills += 1;
+        progress = billedMonthsProgress(bill);
+      }
+
+      // Reload so outstanding matches any extension.
+      const live = await BillModel.findById(bill._id);
+      if (!live) {
+        summary.errors.push({ flat: number, error: 'Bill missing after extend' });
+        continue;
+      }
+
+      const amountPaise = Math.min(
+        monthsNeeded > 0 ? monthsNeeded * ratePaise : live.outstandingPrincipalPaise,
+        live.outstandingPrincipalPaise,
+      );
+
+      if (amountPaise <= 0) {
+        summary.alreadyComplete += 1;
+        summary.payments.push({
+          flat: number,
+          sheetMonths: months,
+          sheetAmountRupees: row.amountRupees,
+          previouslyPaidMonths,
+          monthsAdded: extraMonths,
+          amountPaidRupees: 0,
+          billId: String(live._id),
+          billNumber: live.billNumber,
+          method: paymentMethod,
+        });
+        continue;
+      }
+
+      // Unique per top-up so a prior SEED-A-604-2026-11-01 payment cannot block this one.
+      const ref = `SEED-${number}-${fromRaw}-m${previouslyPaidMonths}-to-${months}`;
+      const idempotencyKey = `monarch-maint-pay-${number}-${fromRaw}-${months}-from-${previouslyPaidMonths}-${amountPaise}`;
+
       const paid = await recordOfflinePayment(
         societyId,
         {
-          billId: String(bill._id),
-          monthsPaid: monthsNeeded,
+          billId: String(live._id),
+          amountPaise,
           paidAt: periodStart,
           paymentMethod,
-          referenceNumber: `SEED-${number}-${fromRaw}`,
-          notes: `Seeded ${monthsNeeded} month(s) from maintenance sheet (${row.method}); target ${months} months / ₹${row.amountRupees}`,
+          referenceNumber: ref,
+          notes: `Seeded maintenance top-up (${row.method}): +${amountPaise / 100} toward ${months} months / ₹${row.amountRupees}`,
           idempotencyKey,
         },
         actor,
       );
 
-      summary.paidMonthsRecorded += monthsNeeded;
+      if (!paid.alreadySettled) summary.paid += 1;
+
       summary.payments.push({
         flat: number,
         sheetMonths: months,
         sheetAmountRupees: row.amountRupees,
         previouslyPaidMonths,
-        monthsRecordedNow: monthsNeeded,
-        billId: String(bill._id),
-        billNumber: bill.billNumber,
+        monthsAdded: extraMonths,
+        amountPaidRupees: amountPaise / 100,
+        billId: String(live._id),
+        billNumber: live.billNumber,
         paymentId: paid.paymentId,
         method: paymentMethod,
       });
