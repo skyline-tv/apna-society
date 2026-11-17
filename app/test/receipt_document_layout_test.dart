@@ -28,7 +28,7 @@ void main() {
         periodStart: '2026-10-01',
         periodEnd: '2026-12-31',
       ),
-      'e303 oct-dec.pdf',
+      'e303-oct-dec.pdf',
     );
     expect(
       receiptPdfFileName(
@@ -37,7 +37,7 @@ void main() {
         periodStart: '2026-10-01',
         periodEnd: '2026-10-31',
       ),
-      'a101 oct.pdf',
+      'a101-oct.pdf',
     );
   });
 

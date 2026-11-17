@@ -242,8 +242,8 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const payerLines = wrapText(displayPayerName(input.ownerName || ''), 42);
   const wingFlat = wingAndFlatLine(input.wingCode, input.flatNumber);
   const towards = wrapText(towardsLine(input), 78);
-  // CHS not formed yet — receipts always show the proposed society name on one line.
-  const society = ['Proposed Monarch Solitaire A to E'];
+  // CHS not formed yet — full proposed name on a dedicated header line (never wrapped).
+  const societyName = 'Proposed Monarch Solitaire A to E';
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
   const paidAt = formatPaidAtIst(input.paidAt);
   const lines = amountLines(input);
@@ -285,24 +285,21 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   ops.push(`${BORDER} RG 0.8 w 18 18 559 806 re S`);
   ops.push(`${BORDER} RG 0.8 w 32 32 531 778 re S`);
 
-  let titleY = 766;
-  for (const line of society) {
-    text('F4', 16, LEFT, titleY, line, BLUE);
-    titleY -= 16;
-  }
+  // Full-width society title — own row so it never wraps beside RECEIPT.
+  text('F4', 13, LEFT, 778, societyName, BLUE);
 
-  rightText('F2', 8, 772, 'RECEIPT', BLUE, true);
-  rightText('F4', 13, 754, pdfLatin(input.receiptNumber), INK, true);
+  rightText('F2', 8, 756, 'RECEIPT', BLUE, true);
+  rightText('F4', 12, 738, pdfLatin(input.receiptNumber), INK, true);
 
   const statusLabel = status.toUpperCase();
   const badgeW = Math.max(72, estimateWidth(statusLabel, 8, true) + 14);
   const badgeX = RIGHT - badgeW;
-  ops.push(`${BLUE} RG 0.8 w ${badgeX.toFixed(2)} 736 ${badgeW.toFixed(2)} 14 re S`);
-  text('F2', 8, badgeX + 7, 740, statusLabel, BLUE);
+  ops.push(`${BLUE} RG 0.8 w ${badgeX.toFixed(2)} 720 ${badgeW.toFixed(2)} 14 re S`);
+  text('F2', 8, badgeX + 7, 724, statusLabel, BLUE);
 
-  ops.push(`${RULE} RG 0.8 w ${LEFT} 726 m ${RIGHT} 726 l S`);
+  ops.push(`${RULE} RG 0.8 w ${LEFT} 710 m ${RIGHT} 710 l S`);
 
-  let y = 706;
+  let y = 690;
   text('F1', 8, LEFT, y, 'PAYMENT DATE', MUTED);
   text('F1', 8, 320, y, 'PAYMENT METHOD', MUTED);
   y -= 14;
@@ -441,13 +438,8 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   );
   ops.push(`${RULE} RG 0.6 w 365 ${footerY + 28} m 545 ${footerY + 28} l S`);
   rightText('F1', 8, footerY + 16, 'AUTHORIZED', MUTED);
-  rightText(
-    'F1',
-    8,
-    footerY,
-    'PROPOSED MONARCH SOLITAIRE A TO E',
-    MUTED,
-  );
+  // Keep the full proposed name on one footer line.
+  rightText('F1', 7, footerY, societyName.toUpperCase(), MUTED);
 
   return assemblePdf(ops.join('\n'));
 }

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../api/auth/auth_session.dart';
 import '../../api/http/api_exception.dart';
@@ -241,19 +240,10 @@ Future<void> _downloadReceiptPdf(ReceiptDetail detail) async {
 }
 
 Future<void> _shareReceiptPdf(ReceiptDetail detail) async {
-  final bytes = base64Decode(detail.pdfBase64);
   final name = receiptPdfFileNameFromBody(detail.receipt);
-  await SharePlus.instance.share(
-    ShareParams(
-      files: [
-        XFile.fromData(
-          Uint8List.fromList(bytes),
-          mimeType: 'application/pdf',
-          name: name,
-        ),
-      ],
-      text: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
-    ),
+  await shareReceiptPdfBytes(
+    bytes: base64Decode(detail.pdfBase64),
+    filename: name,
   );
 }
 

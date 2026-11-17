@@ -3285,11 +3285,9 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
         paidAt: detail.paidAt,
         fallback: detail.receiptNumber,
       );
-      await _shareBytes(
+      await shareReceiptPdfBytes(
         bytes: base64Decode(detail.pdfBase64),
         filename: name,
-        mimeType: 'application/pdf',
-        title: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
       );
     } catch (_) {
       if (mounted) showErrorSnack(context, 'Could not share the receipt.');

@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../api/models/billing_models.dart';
 import '../../app_core.dart';
@@ -155,12 +159,14 @@ String receiptPdfFileName({
     periodEnd: periodEnd,
     paidAt: paidAt,
   );
+  // Hyphen keeps the name intact when sharing on Android/iOS.
   final stem = [
     if (flat.isNotEmpty) flat,
     if (months.isNotEmpty) months,
-  ].join(' ');
+  ].join('-');
   final safe = (stem.isEmpty ? fallback : stem)
-      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '-')
+      .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '-')
+      .replaceAll(RegExp(r'-{2,}'), '-')
       .trim();
   return '$safe.pdf';
 }
@@ -174,6 +180,37 @@ String receiptPdfFileNameFromBody(ReceiptBody receipt) => receiptPdfFileName(
       paidAt: receipt.paidAt,
       fallback: receipt.receiptNumber,
     );
+
+/// Writes bytes to a real temp file so share sheets keep the human PDF name
+/// (XFile.fromData often falls back to a random name on Android).
+Future<void> shareReceiptPdfBytes({
+  required List<int> bytes,
+  required String filename,
+  String? text,
+}) async {
+  final fileName = filename.toLowerCase().endsWith('.pdf')
+      ? filename
+      : '$filename.pdf';
+  final safeName = fileName
+      .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '-')
+      .replaceAll(RegExp(r'-{2,}'), '-');
+  final file = File('${Directory.systemTemp.path}/$safeName');
+  await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
+  final label = safeName.replaceFirst(RegExp(r'\.pdf$'), '');
+  await SharePlus.instance.share(
+    ShareParams(
+      files: [
+        XFile(
+          file.path,
+          mimeType: 'application/pdf',
+          name: safeName,
+        ),
+      ],
+      text: text ?? 'Receipt $label',
+      subject: 'Receipt $label',
+    ),
+  );
+}
 
 String receiptMethodLabel(String method) {
   switch (method.toUpperCase()) {
@@ -412,48 +449,46 @@ class ReceiptSheet extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Full-width society name on its own row so it never wraps beside RECEIPT.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                societyName,
+                maxLines: 1,
+                softWrap: false,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: kReceiptNavy,
+                  height: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      societyName,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: kReceiptNavy,
-                        height: 1.2,
-                      ),
-                    ),
+                const Text(
+                  'RECEIPT',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                    color: kReceiptNavy,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                    const Text(
-                      'RECEIPT',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                        color: kReceiptNavy,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
+                const Spacer(),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Text(
                       receiptNumber,
                       textAlign: TextAlign.right,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: kReceiptInk,
                       ),
@@ -476,7 +511,6 @@ class ReceiptSheet extends StatelessWidget {
                       ),
                     ),
                   ],
-                  ),
                 ),
               ],
             ),
