@@ -56,26 +56,11 @@ String receiptWingFlatLine({String? wingCode, String? flatNumber, String? fallba
   return '-';
 }
 
-String _receiptCivilDayLabel(String? raw) {
-  final value = (raw ?? '').trim();
-  if (value.isEmpty) return '-';
-  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
-  if (match != null) {
-    final year = int.tryParse(match.group(1)!);
-    final month = int.tryParse(match.group(2)!);
-    final day = int.tryParse(match.group(3)!);
-    if (year != null && month != null && day != null) {
-      return fmtDate(DateTime(year, month, day));
-    }
-  }
-  return fmtIsoDate(raw);
-}
-
 String receiptPeriodRange(String? start, String? end) {
   if ((start ?? '').isEmpty) return '-';
-  final left = _receiptCivilDayLabel(start);
+  final left = fmtIsoDate(start);
   if ((end ?? '').isEmpty) return left;
-  return '$left - ${_receiptCivilDayLabel(end)}';
+  return '$left - ${fmtIsoDate(end)}';
 }
 
 String receiptTowards({
@@ -112,26 +97,6 @@ DateTime? _receiptParseDate(String? raw) {
   return DateTime.tryParse(value);
 }
 
-/// Civil Y-M from an ISO string without UTC day-shift.
-/// `2026-10-01T00:00:00.000+05:30` must stay October, not September.
-({int year, int month})? _receiptCivilYearMonth(String? raw) {
-  final value = (raw ?? '').trim();
-  if (value.isEmpty) return null;
-  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
-  if (match != null) {
-    final year = int.tryParse(match.group(1)!);
-    final month = int.tryParse(match.group(2)!);
-    if (year != null && month != null && month >= 1 && month <= 12) {
-      return (year: year, month: month);
-    }
-  }
-  final dt = DateTime.tryParse(value);
-  if (dt == null) return null;
-  // Society bills use Asia/Kolkata civil dates.
-  final ist = dt.toUtc().add(const Duration(hours: 5, minutes: 30));
-  return (year: ist.year, month: ist.month);
-}
-
 /// Compact flat token for filenames, e.g. `e303`.
 String receiptFlatFileToken({
   String? wingCode,
@@ -165,16 +130,15 @@ String receiptFlatFileToken({
   return token;
 }
 
-/// Paid months for filenames, e.g. `oct`, `oct-dec`, or `oct-mar`.
+/// Paid months for filenames, e.g. `oct` or `oct-dec`.
 String receiptMonthsFileToken({
   String? periodStart,
   String? periodEnd,
   String? paidAt,
 }) {
-  final start =
-      _receiptCivilYearMonth(periodStart) ?? _receiptCivilYearMonth(paidAt);
+  final start = _receiptParseDate(periodStart) ?? _receiptParseDate(paidAt);
   if (start == null) return '';
-  final end = _receiptCivilYearMonth(periodEnd) ?? start;
+  final end = _receiptParseDate(periodEnd) ?? start;
   final startLabel = _receiptShortMonths[start.month - 1];
   final endLabel = _receiptShortMonths[end.month - 1];
   if (start.year == end.year && start.month == end.month) return startLabel;
