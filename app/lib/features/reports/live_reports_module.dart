@@ -245,8 +245,8 @@ class _LiveAdminReportsPageState extends State<LiveAdminReportsPage>
               name: name,
             ),
           ],
-          subject: 'ApnaSociety $type report',
-          text: 'ApnaSociety $type report ($name)',
+          subject: 'Apna Society $type report',
+          text: 'Apna Society $type report ($name)',
         ),
       );
     } catch (e) {

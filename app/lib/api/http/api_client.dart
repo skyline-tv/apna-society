@@ -391,7 +391,7 @@ class ApiClient {
     if (!isObjectId(value)) {
       throw ApiException(
         code: 'INVALID_SOCIETY_CONTEXT',
-        message: 'x-society-id must be a 24-character hex ObjectId',
+        message: 'Society selection is invalid. Please sign in again.',
       );
     }
   }

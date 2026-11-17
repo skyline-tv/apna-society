@@ -25,7 +25,7 @@ class Debouncer {
 }
 
 /// Product / app name (launcher & product branding) — do not rename for society branding.
-const kAppName = 'ApnaSociety';
+const kAppName = 'Apna Society';
 
 /// Public SkyLine contact used on login and in the sample-society sheet.
 const kSupportEmail = 'info@skylinetv.in';
@@ -35,6 +35,8 @@ const kSupportWebsiteLabel = 'skylinetv.in';
 /// Official residential society name shown across demo screens.
 const kSocietyName = 'Monarch Solitaire A to E';
 const kSocietyAddress = 'Monarch Solitaire A to E Residential Society';
+/// Receipt header only — CHS not formed yet, so receipts stay "Proposed".
+const kReceiptSocietyName = 'Proposed Monarch Solitaire A to E';
 const kAppTagline = 'Simplifying Society Management.';
 
 /// First publish: residents cannot pay in-app. Admin records cash or cheque.

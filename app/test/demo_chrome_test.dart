@@ -42,7 +42,7 @@ void main() {
     expect(find.text('Contact us'), findsNothing);
     expect(find.text('Explore sample data'), findsNothing);
     expect(find.text('Step 2 of 2'), findsOneWidget);
-    expect(find.text('LIVE'), findsOneWidget);
+    expect(find.text('SOCIETY'), findsOneWidget);
     expect(find.text('Societies'), findsOneWidget);
     expect(find.text('Change Society'), findsOneWidget);
     expect(find.text('Powered by SkyLine Tech Ventures'), findsOneWidget);

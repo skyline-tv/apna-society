@@ -109,7 +109,7 @@ class _DemoInfoSheet extends StatelessWidget {
           const Text('Sample society', style: T.title),
           const SizedBox(height: 6),
           const Text(
-            'Fictional Maple Grove Residences data for a walkthrough. Payments are simulated. Nothing here is a live society.',
+            'Fictional Maple Grove Residences data for a walkthrough. Payments are simulated. This does not change your society records.',
             style: T.secondary,
           ),
           if (onUseAccount != null) ...[

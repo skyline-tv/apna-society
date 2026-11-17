@@ -18,6 +18,7 @@ import '../../app_core.dart';
 import '../../ui/components.dart';
 import '../../ui/load_failure.dart';
 import '../billing/demo_payment_checkout.dart';
+import '../billing/receipt_document.dart';
 
 String collectionErrorMessage(Object error) {
   if (error is ApiException) {
@@ -210,6 +211,62 @@ const _offlinePaymentMethods = [
 
 bool _isSuccessfulPayment(CollectionPayment payment) =>
     payment.status.toUpperCase() == 'SUCCESS';
+
+Future<void> _recordCollectionOfflinePayment(
+  BuildContext context,
+  CollectionCharge charge,
+) async {
+  await Navigator.push<bool>(
+    context,
+    MaterialPageRoute(
+      builder: (_) => LiveCollectionOfflinePaymentPage(charge: charge),
+    ),
+  );
+}
+
+Future<void> _printCollectionChargeReceipt(
+  BuildContext context,
+  CollectionCharge charge,
+) async {
+  try {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final collections = ensureLiveRepositories(session.api).collections;
+    final payments = await collections.listAdminPayments(
+      charge.collectionId,
+      chargeId: charge.id,
+    );
+    final successful =
+        payments.items.where(_isSuccessfulPayment).toList(growable: false);
+    successful.sort((a, b) {
+      final left = DateTime.tryParse(a.paidAt ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final right = DateTime.tryParse(b.paidAt ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return right.compareTo(left);
+    });
+    final latest = successful.isEmpty ? null : successful.first;
+    if (latest == null) {
+      if (context.mounted) {
+        showWarningSnack(context, 'No receipt yet for ${charge.flatLabel}.');
+      }
+      return;
+    }
+    final detail = await collections.adminPaymentReceipt(latest.id);
+    if (!context.mounted) return;
+    final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
+    await Printing.layoutPdf(
+      name: receiptPdfFileName(
+        flatLabel: detail.flatLabel,
+        paidAt: detail.paidAt,
+        fallback: detail.receiptNumber,
+      ),
+      onLayout: (_) async => bytes,
+    );
+  } catch (e) {
+    if (context.mounted) {
+      showErrorSnack(context, collectionErrorMessage(e));
+    }
+  }
+}
 
 class _CollectionPaymentCard extends StatelessWidget {
   const _CollectionPaymentCard({required this.payment, this.onReceipt});
@@ -1648,45 +1705,24 @@ class LiveAdminCollectionDetailPage extends StatefulWidget {
 
 class _LiveAdminCollectionDetailPageState
     extends State<LiveAdminCollectionDetailPage> {
-  late Future<_AdminCollectionBundle> _future = _load();
-  String? statusFilter;
-  String? wingFilter;
-  String search = '';
-  int page = 1;
+  late Future<_AdminCollectionOverview> _future = _load();
   bool exporting = false;
 
-  Future<_AdminCollectionBundle> _load() async {
+  Future<_AdminCollectionOverview> _load() async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
     final repos = ensureLiveRepositories(session.api);
-    final collection = await repos.collections.adminCollection(widget.collectionId);
+    final collection =
+        await repos.collections.adminCollection(widget.collectionId);
     final dashboard = collection.dashboard ??
         await repos.collections.dashboard(widget.collectionId);
-    final charges = await repos.collections.listCharges(
-      widget.collectionId,
-      query: CollectionChargeQuery(
-        status: statusFilter,
-        wingCode: wingFilter,
-        search: search.isEmpty ? null : search,
-        page: page,
-        limit: 50,
-      ),
-    );
-    final payments = await repos.collections.listAdminPayments(widget.collectionId);
-    final wings = await repos.society.wings();
-    return _AdminCollectionBundle(
+    return _AdminCollectionOverview(
       collection: collection,
       dashboard: dashboard,
-      charges: charges,
-      payments: payments,
-      wings: wings,
     );
   }
 
-  void reload({bool resetPage = false}) {
-    if (resetPage) page = 1;
-    setState(() => _future = _load());
-  }
+  void reload() => setState(() => _future = _load());
 
   Future<void> _exportCsv() async {
     if (exporting) return;
@@ -1709,7 +1745,7 @@ class _LiveAdminCollectionDetailPageState
     }
   }
 
-  Future<void> _exportPdf(_AdminCollectionBundle bundle) async {
+  Future<void> _exportPdf(_AdminCollectionOverview overview) async {
     if (exporting) return;
     setState(() => exporting = true);
     try {
@@ -1719,12 +1755,12 @@ class _LiveAdminCollectionDetailPageState
             query: const CollectionChargeQuery(limit: 200),
           );
       final bytes = await _collectionReportPdf(
-        collection: bundle.collection,
-        dashboard: bundle.dashboard,
+        collection: overview.collection,
+        dashboard: overview.dashboard,
         charges: all.items,
       );
       await Printing.layoutPdf(
-        name: '${bundle.collection.collectionNumber}.pdf',
+        name: '${overview.collection.collectionNumber}.pdf',
         onLayout: (_) async => bytes,
       );
     } catch (e) {
@@ -1778,11 +1814,37 @@ class _LiveAdminCollectionDetailPageState
     }
   }
 
+  Future<void> _openFlats(_AdminCollectionOverview overview) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveAdminCollectionFlatsPage(
+          collectionId: widget.collectionId,
+          collection: overview.collection,
+        ),
+      ),
+    );
+    if (mounted) reload();
+  }
+
+  Future<void> _openPayments(_AdminCollectionOverview overview) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveAdminCollectionPaymentsPage(
+          collectionId: widget.collectionId,
+          collectionTitle: overview.collection.title,
+        ),
+      ),
+    );
+    if (mounted) reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppPageBar('Collection'),
-      body: FutureBuilder<_AdminCollectionBundle>(
+      body: FutureBuilder<_AdminCollectionOverview>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
@@ -1795,9 +1857,9 @@ class _LiveAdminCollectionDetailPageState
               onRetry: reload,
             );
           }
-          final bundle = snap.data!;
-          final c = bundle.collection;
-          final d = bundle.dashboard;
+          final overview = snap.data!;
+          final c = overview.collection;
+          final d = overview.dashboard;
           final pct = d.collectionPercentage.clamp(0, 100);
           return RefreshIndicator(
             color: C.blue,
@@ -1878,7 +1940,27 @@ class _LiveAdminCollectionDetailPageState
                   if (c.description.isNotEmpty)
                     DetailRow('Description', c.description),
                 ]),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+                const SectionTitle('Browse'),
+                ActionRail(
+                  secondary: [
+                    ToolLink(
+                      icon: Icons.apartment_outlined,
+                      label: 'Flat-wise details',
+                      subtitle:
+                          '${d.assignedFlatCount} flats · search, filter and record payments',
+                      onTap: () => _openFlats(overview),
+                    ),
+                    ToolLink(
+                      icon: Icons.history_rounded,
+                      label: 'Payment history',
+                      subtitle: 'All payments and receipts for this collection',
+                      onTap: () => _openPayments(overview),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const SectionTitle('Manage'),
                 ActionRail(
                   busy: exporting,
                   secondary: [
@@ -1892,7 +1974,7 @@ class _LiveAdminCollectionDetailPageState
                       icon: Icons.picture_as_pdf_outlined,
                       label: 'PDF report',
                       subtitle: 'Printable collection report',
-                      onTap: () => _exportPdf(bundle),
+                      onTap: () => _exportPdf(overview),
                     ),
                     if (c.status == 'ACTIVE') ...[
                       ToolLink(
@@ -1925,8 +2007,219 @@ class _LiveAdminCollectionDetailPageState
                     ],
                   ],
                 ),
-                const SizedBox(height: 18),
-                const SectionTitle('Flat-wise details'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AdminCollectionOverview {
+  const _AdminCollectionOverview({
+    required this.collection,
+    required this.dashboard,
+  });
+  final CollectionSummary collection;
+  final CollectionDashboard dashboard;
+}
+
+/// Flat card with maintenance-style Record / Receipt shortcuts.
+class _AdminCollectionChargeCard extends StatelessWidget {
+  const _AdminCollectionChargeCard({
+    required this.charge,
+    required this.collectionActive,
+    required this.onOpen,
+    this.onRecordPayment,
+    this.onReceipt,
+    this.onRemove,
+  });
+
+  final CollectionCharge charge;
+  final bool collectionActive;
+  final VoidCallback onOpen;
+  final VoidCallback? onRecordPayment;
+  final VoidCallback? onReceipt;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = charge.status.toUpperCase();
+    final paid = status == 'PAID';
+    final showReceipt = paid && onReceipt != null;
+    final canRecord = onRecordPayment != null &&
+        collectionActive &&
+        status != 'PAID' &&
+        status != 'CANCELLED' &&
+        charge.outstandingPaise > 0;
+    final actionLabel = showReceipt
+        ? 'Receipt'
+        : canRecord
+            ? 'Record'
+            : 'View';
+    final actionIcon = showReceipt
+        ? Icons.receipt_outlined
+        : canRecord
+            ? Icons.payments_outlined
+            : Icons.arrow_forward_rounded;
+    final action = showReceipt
+        ? onReceipt!
+        : canRecord
+            ? onRecordPayment!
+            : onOpen;
+
+    return ListRow(
+      onTap: onOpen,
+      leading: AppAvatar(
+        icon: Icons.apartment_outlined,
+        color: _collectionStatusColor(charge.status),
+        size: 42,
+      ),
+      title: charge.flatLabel,
+      subtitle:
+          '${charge.ownerNameSnapshot} · ${humanizeStatus(charge.occupancyStatusSnapshot)}\n'
+          'Assigned ${moneyPaise(charge.assignedAmountPaise)} · paid ${moneyPaise(charge.amountPaidPaise)}',
+      badges: [
+        StatusBadge(_collectionStatusLabel(charge.status)),
+      ],
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            moneyPaise(paid ? charge.assignedAmountPaise : charge.outstandingPaise),
+            style: T.money.copyWith(fontSize: 15),
+          ),
+          Text(paid ? 'paid' : 'due', style: T.caption),
+        ],
+      ),
+      showChevron: false,
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: action,
+              style: TextButton.styleFrom(
+                foregroundColor: C.blue,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    actionLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(actionIcon, size: 16),
+                ],
+              ),
+            ),
+          ),
+          if (onRemove != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('Remove unpaid flat'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Flat-wise charge list for one collection (opened from the overview shortcuts).
+class LiveAdminCollectionFlatsPage extends StatefulWidget {
+  const LiveAdminCollectionFlatsPage({
+    super.key,
+    required this.collectionId,
+    required this.collection,
+  });
+
+  final String collectionId;
+  final CollectionSummary collection;
+
+  @override
+  State<LiveAdminCollectionFlatsPage> createState() =>
+      _LiveAdminCollectionFlatsPageState();
+}
+
+class _LiveAdminCollectionFlatsPageState
+    extends State<LiveAdminCollectionFlatsPage> {
+  late Future<_AdminCollectionFlatsBundle> _future = _load();
+  String? statusFilter;
+  String? wingFilter;
+  String search = '';
+  int page = 1;
+
+  Future<_AdminCollectionFlatsBundle> _load() async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final repos = ensureLiveRepositories(session.api);
+    final charges = await repos.collections.listCharges(
+      widget.collectionId,
+      query: CollectionChargeQuery(
+        status: statusFilter,
+        wingCode: wingFilter,
+        search: search.isEmpty ? null : search,
+        page: page,
+        limit: 50,
+      ),
+    );
+    final wings = await repos.society.wings();
+    return _AdminCollectionFlatsBundle(charges: charges, wings: wings);
+  }
+
+  void reload({bool resetPage = false}) {
+    if (resetPage) page = 1;
+    setState(() => _future = _load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.collection;
+    return Scaffold(
+      appBar: const AppPageBar('Flat-wise details'),
+      body: FutureBuilder<_AdminCollectionFlatsBundle>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const LoadingView(label: 'Loading flats…');
+          }
+          if (snap.hasError) {
+            return LoadFailure(
+              error: snap.error!,
+              title: 'Could not load flats',
+              onRetry: reload,
+            );
+          }
+          final bundle = snap.data!;
+          return RefreshIndicator(
+            color: C.blue,
+            onRefresh: () async {
+              reload();
+              await _future;
+            },
+            child: ListView(
+              padding: Sp.pagePadding,
+              children: [
+                Text(c.title, style: T.h3),
+                const SizedBox(height: 2),
+                Text(
+                  '${c.collectionNumber} · ${bundle.charges.pagination.total} flats',
+                  style: T.secondary,
+                ),
+                const SizedBox(height: 12),
                 SearchField(
                   hint: 'Search flat or owner',
                   onSubmitted: (v) {
@@ -1978,8 +2271,10 @@ class _LiveAdminCollectionDetailPageState
                       icon: Icons.apartment_outlined, compact: true)
                 else
                   ...bundle.charges.items.map(
-                    (row) => ListRow(
-                      onTap: () async {
+                    (row) => _AdminCollectionChargeCard(
+                      charge: row,
+                      collectionActive: c.status == 'ACTIVE',
+                      onOpen: () async {
                         await Navigator.push<void>(
                           context,
                           MaterialPageRoute(
@@ -1993,51 +2288,32 @@ class _LiveAdminCollectionDetailPageState
                         );
                         if (mounted) reload();
                       },
-                      leading: AppAvatar(
-                        icon: Icons.apartment_outlined,
-                        color: _collectionStatusColor(row.status),
-                        size: 42,
-                      ),
-                      title: row.flatLabel,
-                      subtitle:
-                          '${row.ownerNameSnapshot} · ${humanizeStatus(row.occupancyStatusSnapshot)}\n'
-                          'Assigned ${moneyPaise(row.assignedAmountPaise)} · paid ${moneyPaise(row.amountPaidPaise)}',
-                      badges: [
-                        StatusBadge(_collectionStatusLabel(row.status)),
-                      ],
-                      trailing: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            moneyPaise(row.outstandingPaise),
-                            style: T.money.copyWith(fontSize: 15),
-                          ),
-                          const Text('due', style: T.caption),
-                        ],
-                      ),
-                      footer: c.status == 'ACTIVE' &&
+                      onRecordPayment: c.status == 'ACTIVE' &&
+                              row.outstandingPaise > 0 &&
+                              row.status.toUpperCase() != 'CANCELLED'
+                          ? () async {
+                              await _recordCollectionOfflinePayment(
+                                  context, row);
+                              if (mounted) reload();
+                            }
+                          : null,
+                      onReceipt: row.amountPaidPaise > 0
+                          ? () => _printCollectionChargeReceipt(context, row)
+                          : null,
+                      onRemove: c.status == 'ACTIVE' &&
                               _canRemoveCollectionCharge(row)
-                          ? Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () async {
-                                  final removed =
-                                      await _removeUnpaidCollectionFlats(
-                                    context: context,
-                                    collectionId: widget.collectionId,
-                                    chargeIds: [row.id],
-                                    confirmTitle: 'Remove ${row.flatLabel}?',
-                                    successMessage:
-                                        '${row.flatLabel} removed from the collection.',
-                                  );
-                                  if (removed && mounted) reload();
-                                },
-                                icon: const Icon(
-                                    Icons.delete_outline_rounded, size: 18),
-                                label: const Text('Remove unpaid flat'),
-                              ),
-                            )
+                          ? () async {
+                              final removed =
+                                  await _removeUnpaidCollectionFlats(
+                                context: context,
+                                collectionId: widget.collectionId,
+                                chargeIds: [row.id],
+                                confirmTitle: 'Remove ${row.flatLabel}?',
+                                successMessage:
+                                    '${row.flatLabel} removed from the collection.',
+                              );
+                              if (removed && mounted) reload();
+                            }
                           : null,
                     ),
                   ),
@@ -2053,13 +2329,132 @@ class _LiveAdminCollectionDetailPageState
                     reload();
                   },
                 ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AdminCollectionFlatsBundle {
+  const _AdminCollectionFlatsBundle({
+    required this.charges,
+    required this.wings,
+  });
+  final Paged<CollectionCharge> charges;
+  final List<WingSummary> wings;
+}
+
+/// Payment history for one collection (opened from the overview shortcuts).
+class LiveAdminCollectionPaymentsPage extends StatefulWidget {
+  const LiveAdminCollectionPaymentsPage({
+    super.key,
+    required this.collectionId,
+    required this.collectionTitle,
+  });
+
+  final String collectionId;
+  final String collectionTitle;
+
+  @override
+  State<LiveAdminCollectionPaymentsPage> createState() =>
+      _LiveAdminCollectionPaymentsPageState();
+}
+
+class _LiveAdminCollectionPaymentsPageState
+    extends State<LiveAdminCollectionPaymentsPage> {
+  late Future<Paged<CollectionPayment>> _future = _load();
+  ValueNotifier<int>? _financialRevision;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFinancialListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _attachFinancialListener();
+  }
+
+  @override
+  void dispose() {
+    _financialRevision?.removeListener(_onFinancialRevision);
+    super.dispose();
+  }
+
+  void _attachFinancialListener() {
+    final revision = liveRepositories?.financialRevision;
+    if (revision == null || identical(revision, _financialRevision)) return;
+    _financialRevision?.removeListener(_onFinancialRevision);
+    _financialRevision = revision;
+    _financialRevision!.addListener(_onFinancialRevision);
+  }
+
+  void _onFinancialRevision() {
+    if (!mounted) return;
+    reload();
+  }
+
+  Future<Paged<CollectionPayment>> _load() async {
+    final session = authSession;
+    if (session == null) throw StateError('Not signed in.');
+    final repos = ensureLiveRepositories(session.api);
+    _attachFinancialListener();
+    return repos.collections.listAdminPayments(widget.collectionId);
+  }
+
+  void reload() => setState(() => _future = _load());
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const AppPageBar('Payment history'),
+      body: FutureBuilder<Paged<CollectionPayment>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const LoadingView(label: 'Loading payments…');
+          }
+          if (snap.hasError) {
+            return LoadFailure(
+              error: snap.error!,
+              title: 'Could not load payments',
+              onRetry: reload,
+            );
+          }
+          final page = snap.data!;
+          final rows = page.items;
+          return RefreshIndicator(
+            color: C.blue,
+            onRefresh: () async {
+              reload();
+              await _future;
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: Sp.pagePadding,
+              children: [
+                Text(widget.collectionTitle, style: T.h3),
+                const SizedBox(height: 2),
+                Text(
+                  rows.isEmpty
+                      ? 'No payments recorded yet'
+                      : '${rows.length} ${rows.length == 1 ? 'payment' : 'payments'}',
+                  style: T.secondary,
+                ),
                 const SizedBox(height: 12),
-                const SectionTitle('Payment history'),
-                if (bundle.payments.items.isEmpty)
-                  const EmptyState('No payments recorded yet',
-                      icon: Icons.payments_outlined, compact: true)
+                if (rows.isEmpty)
+                  const EmptyState(
+                    'No payments recorded yet',
+                    icon: Icons.payments_outlined,
+                    compact: true,
+                  )
                 else
-                  ...bundle.payments.items.map(
+                  ...rows.map(
                     (p) => _CollectionPaymentCard(
                       payment: p,
                       onReceipt: _isSuccessfulPayment(p)
@@ -2082,21 +2477,6 @@ class _LiveAdminCollectionDetailPageState
       ),
     );
   }
-}
-
-class _AdminCollectionBundle {
-  const _AdminCollectionBundle({
-    required this.collection,
-    required this.dashboard,
-    required this.charges,
-    required this.payments,
-    required this.wings,
-  });
-  final CollectionSummary collection;
-  final CollectionDashboard dashboard;
-  final Paged<CollectionCharge> charges;
-  final Paged<CollectionPayment> payments;
-  final List<WingSummary> wings;
 }
 
 class LiveCollectionOfflinePaymentPage extends StatefulWidget {
@@ -2887,11 +3267,16 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
     if (sharing) return;
     setState(() => sharing = true);
     try {
+      final name = receiptPdfFileName(
+        flatLabel: detail.flatLabel,
+        paidAt: detail.paidAt,
+        fallback: detail.receiptNumber,
+      );
       await _shareBytes(
         bytes: base64Decode(detail.pdfBase64),
-        filename: '${detail.receiptNumber}.pdf',
+        filename: name,
         mimeType: 'application/pdf',
-        title: 'Receipt ${detail.receiptNumber}',
+        title: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
       );
     } catch (_) {
       if (mounted) showErrorSnack(context, 'Could not share the receipt.');
@@ -2906,7 +3291,11 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
     try {
       final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
       await Printing.layoutPdf(
-        name: '${detail.receiptNumber}.pdf',
+        name: receiptPdfFileName(
+          flatLabel: detail.flatLabel,
+          paidAt: detail.paidAt,
+          fallback: detail.receiptNumber,
+        ),
         onLayout: (_) async => bytes,
       );
     } catch (_) {
@@ -2960,8 +3349,6 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
                     DetailRow('Method', _paymentMethodLabel(detail.paymentMethod)),
                     DetailRow('Flat', detail.flatLabel),
                     DetailRow('Owner', detail.ownerName),
-                    if (detail.transactionReference != null)
-                      DetailRow('Reference', detail.transactionReference!),
                   ]),
                 ],
               ),

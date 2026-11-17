@@ -833,7 +833,7 @@ class _OccupancyHealth extends StatelessWidget {
                         borderRadius: BorderRadius.circular(Rd.pill),
                       ),
                       child: Text(
-                        'LIVE',
+                        'Current',
                         style: AdminDash.labelSm
                             .copyWith(color: AdminDash.primary),
                       ),

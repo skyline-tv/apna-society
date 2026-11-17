@@ -233,24 +233,26 @@ Future<ReceiptDetail> _loadReceiptDetail(
 
 Future<void> _downloadReceiptPdf(ReceiptDetail detail) async {
   final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
+  final name = receiptPdfFileNameFromBody(detail.receipt);
   await Printing.layoutPdf(
-    name: '${detail.receipt.receiptNumber}.pdf',
+    name: name,
     onLayout: (_) async => bytes,
   );
 }
 
 Future<void> _shareReceiptPdf(ReceiptDetail detail) async {
   final bytes = base64Decode(detail.pdfBase64);
+  final name = receiptPdfFileNameFromBody(detail.receipt);
   await SharePlus.instance.share(
     ShareParams(
       files: [
         XFile.fromData(
           Uint8List.fromList(bytes),
           mimeType: 'application/pdf',
-          name: '${detail.receipt.receiptNumber}.pdf',
+          name: name,
         ),
       ],
-      text: 'Receipt ${detail.receipt.receiptNumber}',
+      text: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
     ),
   );
 }
@@ -401,11 +403,44 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
   bool? ownerAssignedFilter;
   int page = 1;
   late Future<_AdminBillsBundle> _future = _load();
+  ValueNotifier<int>? _financialRevision;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFinancialListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _attachFinancialListener();
+  }
+
+  @override
+  void dispose() {
+    _financialRevision?.removeListener(_onFinancialRevision);
+    super.dispose();
+  }
+
+  void _attachFinancialListener() {
+    final revision = liveRepositories?.financialRevision;
+    if (revision == null || identical(revision, _financialRevision)) return;
+    _financialRevision?.removeListener(_onFinancialRevision);
+    _financialRevision = revision;
+    _financialRevision!.addListener(_onFinancialRevision);
+  }
+
+  void _onFinancialRevision() {
+    if (!mounted) return;
+    reload();
+  }
 
   Future<_AdminBillsBundle> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
     final repos = ensureLiveRepositories(session.api);
+    _attachFinancialListener();
     final bills = await repos.billing.listAdminBills(
       force: force,
       query: ListBillsQuery(
@@ -1950,6 +1985,19 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
   String? statusFilter;
   bool offlineOnly = false;
   int page = 1;
+  ValueNotifier<int>? _financialRevision;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFinancialListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _attachFinancialListener();
+  }
 
   @override
   void didUpdateWidget(covariant LiveAdminPaymentsPage oldWidget) {
@@ -1962,18 +2010,35 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
 
   @override
   void dispose() {
+    _financialRevision?.removeListener(_onFinancialRevision);
     _search.dispose();
     super.dispose();
+  }
+
+  void _attachFinancialListener() {
+    final revision = liveRepositories?.financialRevision;
+    if (revision == null || identical(revision, _financialRevision)) return;
+    _financialRevision?.removeListener(_onFinancialRevision);
+    _financialRevision = revision;
+    _financialRevision!.addListener(_onFinancialRevision);
+  }
+
+  void _onFinancialRevision() {
+    if (!mounted) return;
+    page = 1;
+    _reload();
   }
 
   Future<Paged<PaymentSummary>> _load({bool force = false}) async {
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api).billing.listAdminPayments(
-          force: force,
-          page: page,
-          limit: _pageSize,
-        );
+    final repos = ensureLiveRepositories(session.api);
+    _attachFinancialListener();
+    return repos.billing.listAdminPayments(
+      force: force,
+      page: page,
+      limit: _pageSize,
+    );
   }
 
   Future<void> _refresh() async {
@@ -2692,6 +2757,38 @@ class LiveOwnerPaymentsPage extends StatefulWidget {
 
 class _LiveOwnerPaymentsPageState extends State<LiveOwnerPaymentsPage> {
   late Future<Paged<PaymentSummary>> _future = _load();
+  ValueNotifier<int>? _financialRevision;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFinancialListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _attachFinancialListener();
+  }
+
+  @override
+  void dispose() {
+    _financialRevision?.removeListener(_onFinancialRevision);
+    super.dispose();
+  }
+
+  void _attachFinancialListener() {
+    final revision = liveRepositories?.financialRevision;
+    if (revision == null || identical(revision, _financialRevision)) return;
+    _financialRevision?.removeListener(_onFinancialRevision);
+    _financialRevision = revision;
+    _financialRevision!.addListener(_onFinancialRevision);
+  }
+
+  void _onFinancialRevision() {
+    if (!mounted) return;
+    setState(() => _future = _load(force: true));
+  }
 
   Future<Paged<PaymentSummary>> _load({bool force = false}) async {
     if (!widget.canFinance) {
@@ -2699,9 +2796,9 @@ class _LiveOwnerPaymentsPageState extends State<LiveOwnerPaymentsPage> {
     }
     final session = authSession;
     if (session == null) throw StateError('Not signed in.');
-    return ensureLiveRepositories(session.api)
-        .billing
-        .listResidentPayments(force: force, limit: 50);
+    final repos = ensureLiveRepositories(session.api);
+    _attachFinancialListener();
+    return repos.billing.listResidentPayments(force: force, limit: 50);
   }
 
   Future<void> _refresh() async {
@@ -2836,16 +2933,17 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
     setState(() => _sharing = true);
     try {
       final bytes = base64Decode(detail.pdfBase64);
+      final name = receiptPdfFileNameFromBody(detail.receipt);
       await SharePlus.instance.share(
         ShareParams(
           files: [
             XFile.fromData(
               Uint8List.fromList(bytes),
               mimeType: 'application/pdf',
-              name: '${detail.receipt.receiptNumber}.pdf',
+              name: name,
             ),
           ],
-          text: 'Receipt ${detail.receipt.receiptNumber}',
+          text: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
         ),
       );
     } catch (e) {
@@ -2861,7 +2959,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
     try {
       final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
       await Printing.layoutPdf(
-        name: '${detail.receipt.receiptNumber}.pdf',
+        name: receiptPdfFileNameFromBody(detail.receipt),
         onLayout: (_) async => bytes,
       );
     } catch (e) {

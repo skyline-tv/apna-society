@@ -114,7 +114,7 @@ class ApiConfig {
               ),
           };
     if (baseUrl.isEmpty) {
-      throw ApiConfigurationException('Resolved API base URL is empty.');
+      throw ApiConfigurationException('App connection settings are incomplete.');
     }
     return ApiConfig(
       flavor: flavor,
@@ -149,8 +149,7 @@ class ApiConfig {
     final url = _normalizeBaseUrl(raw);
     if (url.isEmpty) {
       throw ApiConfigurationException(
-        '$defineName is required for this API flavor. '
-        'Pass --dart-define=$defineName=https://… or --dart-define=API_BASE_URL=https://…',
+        'App connection settings are incomplete. Ask your developer to configure the build.',
       );
     }
     return url;

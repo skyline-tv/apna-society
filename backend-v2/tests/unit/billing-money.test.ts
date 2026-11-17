@@ -95,7 +95,7 @@ describe('receipt pdf', () => {
     const text = pdf.toString('utf8');
     expect(text.startsWith('%PDF-1.4')).toBe(true);
     expect(text).not.toContain('Apna Society');
-    expect(text).toContain('Monarch Solitaire A to E');
+    expect(text).toContain('Proposed Monarch Solitaire');
     expect(text).toContain('15 Jul 2026');
     expect(text).not.toContain('10:30');
     expect(text).toContain('Wing E');
@@ -104,7 +104,8 @@ describe('receipt pdf', () => {
     expect(text).toContain('RCPT-2026-000001');
     expect(text).toContain('SUCCESSFUL');
     expect(text).toContain('BILL-2026-000001');
-    expect(text).toContain('pay_abc');
+    expect(text).not.toContain('pay_abc');
+    expect(text).not.toContain('Transaction reference');
     expect(text).toContain('authorized receipt');
     expect(text).toContain('PARTICULARS / CHARGE DESCRIPTION');
     expect(text).toContain('PERIOD / TENURE');
@@ -113,7 +114,7 @@ describe('receipt pdf', () => {
     expect(text).toContain('MediaBox [0 0 595 842]');
   });
 
-  it('omits empty transaction references and wraps long payer names', () => {
+  it('omits transaction references and wraps long payer names', () => {
     const pdf = buildReceiptPdf({
       receiptNumber: 'COLRCPT-2026-000013',
       societyName: 'Monarch Solitaire A to E',

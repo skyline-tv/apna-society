@@ -28,7 +28,7 @@ extension SocietyKindX on SocietyKind {
       };
 
   String get subtitle => switch (this) {
-        SocietyKind.live => 'Live Society Database',
+        SocietyKind.live => 'Monarch Solitaire society records',
         SocietyKind.demo => 'Sample walkthrough & simulated data',
       };
 

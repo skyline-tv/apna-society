@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen>
   static const _surfaceContainer = Color(0xFFEAEDFF);
   static const _surfaceContainerHighest = Color(0xFFDAE2FD);
   static const _secondaryFixed = Color(0xFFD5E3FF);
-  static const _appVersion = '1.0.6';
+  static const _appVersion = '1.0.7';
 
   late final AnimationController _orbit =
       AnimationController(vsync: this, duration: const Duration(seconds: 120))
@@ -101,35 +101,38 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                    child: Column(
+                    child: Stack(
                       children: [
-                        const Spacer(flex: 2),
-                        const _BrandBlock(
-                          primary: _primary,
-                          secondary: _secondary,
-                          onSurfaceVariant: _onSurfaceVariant,
-                          surfaceContainer: _surfaceContainer,
-                          secondaryFixed: _secondaryFixed,
-                        ),
-                        const Spacer(flex: 3),
-                        if (!hasError)
-                          _LoadingFooter(
-                            label: widget.label,
-                            bounce: _bounce,
+                        const Align(
+                          alignment: Alignment.center,
+                          child: _BrandBlock(
                             primary: _primary,
                             secondary: _secondary,
-                            outline: _outline,
                             onSurfaceVariant: _onSurfaceVariant,
-                            version: _appVersion,
-                          )
-                        else
-                          _ErrorFooter(
-                            label: widget.label,
-                            error: widget.error!,
-                            onRetry: widget.onRetry,
-                            primary: _primary,
-                            onSurfaceVariant: _onSurfaceVariant,
+                            surfaceContainer: _surfaceContainer,
+                            secondaryFixed: _secondaryFixed,
                           ),
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: hasError
+                              ? _ErrorFooter(
+                                  label: widget.label,
+                                  error: widget.error!,
+                                  onRetry: widget.onRetry,
+                                  primary: _primary,
+                                  onSurfaceVariant: _onSurfaceVariant,
+                                )
+                              : _LoadingFooter(
+                                  label: widget.label,
+                                  bounce: _bounce,
+                                  primary: _primary,
+                                  secondary: _secondary,
+                                  outline: _outline,
+                                  onSurfaceVariant: _onSurfaceVariant,
+                                  version: _appVersion,
+                                ),
+                        ),
                       ],
                     ),
                   ),
@@ -151,7 +154,7 @@ class _SplashAtmosphere extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: RadialGradient(
-          center: Alignment(0, -0.15),
+          center: Alignment.center,
           radius: 1.05,
           colors: [
             Color(0x66D5E3FF),
@@ -160,7 +163,7 @@ class _SplashAtmosphere extends StatelessWidget {
         ),
       ),
       child: Align(
-        alignment: const Alignment(0, -0.08),
+        alignment: Alignment.center,
         child: Container(
           width: 280,
           height: 280,
@@ -518,7 +521,7 @@ class _ArchitecturalGridPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2 - 24);
+    final center = Offset(size.width / 2, size.height / 2);
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke

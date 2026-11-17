@@ -461,7 +461,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final message = e is ApiException
           ? e.message
-          : 'Could not open demo mode. Sample data is separate from the live society and could not be reached.';
+          : 'Could not open demo mode. Sample data is separate from your society and could not be reached.';
       setState(() => error = message);
     }
   }
@@ -904,7 +904,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      demo ? 'DEMO MODE' : 'LIVE',
+                      demo ? 'DEMO MODE' : 'SOCIETY',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -1011,7 +1011,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 2),
         Text(
           demo
-              ? 'Sample walkthrough & simulated database'
+              ? 'Sample walkthrough & simulated data'
               : kAppTagline,
           style: const TextStyle(
             fontSize: 13,

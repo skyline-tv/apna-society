@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../apna_api.dart';
 import 'admin_guard_repository.dart';
 import 'admin_user_repository.dart';
@@ -50,6 +52,10 @@ class LiveRepositories {
   final AnnouncementRepository announcements;
   final NotificationRepository notifications;
 
+  /// Bumped after billing/collection mutations so IndexedStack screens reload
+  /// without requiring an app restart or a manual tab switch.
+  final ValueNotifier<int> financialRevision = ValueNotifier(0);
+
   void clear() {
     society.clear();
     resident.clear();
@@ -88,6 +94,7 @@ class LiveRepositories {
     billing.invalidateFinancialCaches(billId: billId);
     collections.clear();
     reports.clear();
+    financialRevision.value++;
   }
 
   /// Clears resident list caches when the active flat changes so screens
@@ -157,6 +164,8 @@ LiveRepositories ensureLiveRepositories(ApnaApi api) {
 }
 
 void clearLiveRepositories() {
+  // Keep financialRevision undisposed: logout can clear repos while
+  // IndexedStack screens still hold listeners; they detach on dispose.
   _liveRepositories?.clear();
   _liveRepositories = null;
 }

@@ -66,6 +66,115 @@ String receiptTowards({
 
 String receiptMoneyPaise(int paise) => moneyPaise(paise).replaceFirst('₹', 'Rs ');
 
+const _receiptShortMonths = [
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+];
+
+DateTime? _receiptParseDate(String? raw) {
+  final value = (raw ?? '').trim();
+  if (value.isEmpty) return null;
+  return DateTime.tryParse(value);
+}
+
+/// Compact flat token for filenames, e.g. `e303`.
+String receiptFlatFileToken({
+  String? wingCode,
+  String? flatNumber,
+  String? flatLabel,
+}) {
+  var wing = (wingCode ?? '').trim().toUpperCase();
+  var number = (flatNumber ?? '').trim().toUpperCase();
+  if (wing.isNotEmpty) {
+    final prefix = '$wing-';
+    while (number.startsWith(prefix)) {
+      number = number.substring(prefix.length);
+    }
+    if (number.startsWith(wing) &&
+        number.length > wing.length &&
+        RegExp(r'^\d').hasMatch(number.substring(wing.length))) {
+      number = number.substring(wing.length).replaceFirst(RegExp(r'^-+'), '');
+    }
+  }
+  if (wing.isEmpty && number.isEmpty) {
+    final label = (flatLabel ?? '').trim().toUpperCase();
+    final match = RegExp(r'^([A-Z]+)\s*[-]?\s*([0-9A-Z]+)$').firstMatch(label);
+    if (match != null) {
+      wing = match.group(1)!;
+      number = match.group(2)!;
+    } else if (label.isNotEmpty) {
+      return label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+    }
+  }
+  final token = '$wing$number'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  return token;
+}
+
+/// Paid months for filenames, e.g. `oct` or `oct-dec`.
+String receiptMonthsFileToken({
+  String? periodStart,
+  String? periodEnd,
+  String? paidAt,
+}) {
+  final start = _receiptParseDate(periodStart) ?? _receiptParseDate(paidAt);
+  if (start == null) return '';
+  final end = _receiptParseDate(periodEnd) ?? start;
+  final startLabel = _receiptShortMonths[start.month - 1];
+  final endLabel = _receiptShortMonths[end.month - 1];
+  if (start.year == end.year && start.month == end.month) return startLabel;
+  return '$startLabel-$endLabel';
+}
+
+/// Human PDF name like `e303 oct-dec.pdf` instead of opaque receipt numbers.
+String receiptPdfFileName({
+  String? wingCode,
+  String? flatNumber,
+  String? flatLabel,
+  String? periodStart,
+  String? periodEnd,
+  String? paidAt,
+  String fallback = 'receipt',
+}) {
+  final flat = receiptFlatFileToken(
+    wingCode: wingCode,
+    flatNumber: flatNumber,
+    flatLabel: flatLabel,
+  );
+  final months = receiptMonthsFileToken(
+    periodStart: periodStart,
+    periodEnd: periodEnd,
+    paidAt: paidAt,
+  );
+  final stem = [
+    if (flat.isNotEmpty) flat,
+    if (months.isNotEmpty) months,
+  ].join(' ');
+  final safe = (stem.isEmpty ? fallback : stem)
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '-')
+      .trim();
+  return '$safe.pdf';
+}
+
+String receiptPdfFileNameFromBody(ReceiptBody receipt) => receiptPdfFileName(
+      wingCode: receipt.wingCodeSnapshot,
+      flatNumber: receipt.flatNumberSnapshot,
+      flatLabel: receipt.flatLabel,
+      periodStart: receipt.billingPeriodStart,
+      periodEnd: receipt.billingPeriodEnd,
+      paidAt: receipt.paidAt,
+      fallback: receipt.receiptNumber,
+    );
+
 String receiptMethodLabel(String method) {
   switch (method.toUpperCase()) {
     case 'ONLINE':
@@ -230,7 +339,6 @@ class ReceiptSheet extends StatelessWidget {
     required this.lines,
     required this.totalAmount,
     this.billNumber,
-    this.transactionReference,
   });
 
   final String societyName;
@@ -244,7 +352,6 @@ class ReceiptSheet extends StatelessWidget {
   final List<ReceiptChargeLine> lines;
   final String totalAmount;
   final String? billNumber;
-  final String? transactionReference;
 
   factory ReceiptSheet.fromBody(ReceiptBody receipt) {
     final period = receiptPeriodRange(
@@ -252,9 +359,8 @@ class ReceiptSheet extends StatelessWidget {
       receipt.billingPeriodEnd,
     );
     return ReceiptSheet(
-      societyName: (receipt.societyNameSnapshot ?? '').trim().isEmpty
-          ? kSocietyName
-          : receipt.societyNameSnapshot!,
+      // Always show the proposed society name on receipts until CHS is formed.
+      societyName: kReceiptSocietyName,
       receiptNumber: receipt.receiptNumber,
       status: 'SUCCESSFUL',
       paidAt: fmtIsoDate(receipt.paidAt),
@@ -278,7 +384,6 @@ class ReceiptSheet extends StatelessWidget {
       ],
       totalAmount: receiptMoneyPaise(receipt.amountPaise),
       billNumber: receipt.billNumber,
-      transactionReference: receipt.transactionReference,
     );
   }
 
@@ -422,15 +527,11 @@ class ReceiptSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _ChargeTable(lines: lines, totalAmount: totalAmount),
-            if ((billNumber ?? '').isNotEmpty ||
-                (transactionReference ?? '').isNotEmpty) ...[
+            if ((billNumber ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 20),
               const Divider(height: 1, thickness: 1, color: kReceiptBorder),
               const SizedBox(height: 16),
-              _ReceiptRefs(
-                billNumber: billNumber,
-                transactionReference: transactionReference,
-              ),
+              _ReceiptRefs(billNumber: billNumber),
             ],
             const SizedBox(height: 48),
             LayoutBuilder(builder: (context, constraints) {
@@ -543,52 +644,18 @@ class _MetaBlock extends StatelessWidget {
 }
 
 class _ReceiptRefs extends StatelessWidget {
-  const _ReceiptRefs({this.billNumber, this.transactionReference});
+  const _ReceiptRefs({this.billNumber});
 
   final String? billNumber;
-  final String? transactionReference;
 
   @override
   Widget build(BuildContext context) {
     final bill = (billNumber ?? '').trim();
-    final txn = (transactionReference ?? '').trim();
-    return LayoutBuilder(builder: (context, constraints) {
-      final sideBySide = constraints.maxWidth >= 520 && bill.isNotEmpty && txn.isNotEmpty;
-      final billBlock = bill.isEmpty
-          ? null
-          : _MetaBlock(
-              label: 'BILL NUMBER',
-              child: Text(bill, style: _refStyle),
-            );
-      final txnBlock = txn.isEmpty
-          ? null
-          : _MetaBlock(
-              label: 'TRANSACTION REFERENCE',
-              child: Text(
-                txn,
-                style: _refStyle,
-                softWrap: true,
-              ),
-            );
-      if (sideBySide) {
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: billBlock!),
-            const SizedBox(width: 24),
-            Expanded(child: txnBlock!),
-          ],
-        );
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (billBlock != null) billBlock,
-          if (billBlock != null && txnBlock != null) const SizedBox(height: 14),
-          if (txnBlock != null) txnBlock,
-        ],
-      );
-    });
+    if (bill.isEmpty) return const SizedBox.shrink();
+    return _MetaBlock(
+      label: 'BILL NUMBER',
+      child: Text(bill, style: _refStyle),
+    );
   }
 }
 

@@ -226,8 +226,7 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
   } else if (input.billNumber?.trim()) {
     refs.push({ label: 'Bill number', value: pdfLatin(input.billNumber) });
   }
-  const txn = input.transactionReference?.trim();
-  if (txn) refs.push({ label: 'Transaction reference', value: pdfLatin(txn) });
+  // Transaction reference omitted — residents find the opaque txn id confusing.
   return refs;
 }
 
@@ -243,7 +242,8 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const payerLines = wrapText(displayPayerName(input.ownerName || ''), 42);
   const wingFlat = wingAndFlatLine(input.wingCode, input.flatNumber);
   const towards = wrapText(towardsLine(input), 78);
-  const society = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
+  // CHS not formed yet — receipts always show the proposed society name.
+  const society = wrapText('Proposed Monarch Solitaire A to E', 32);
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
   const paidAt = formatPaidAtIst(input.paidAt);
   const lines = amountLines(input);
@@ -435,7 +435,7 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     MUTED,
   );
   ops.push(`${RULE} RG 0.6 w 365 ${footerY + 28} m 545 ${footerY + 28} l S`);
-  const societyFooter = wrapText(input.societyName || 'Monarch Solitaire A to E', 32);
+  const societyFooter = wrapText('Proposed Monarch Solitaire A to E', 32);
   rightText('F1', 8, footerY + 16, 'AUTHORIZED', MUTED);
   let authY = footerY;
   for (const line of [...societyFooter].reverse()) {

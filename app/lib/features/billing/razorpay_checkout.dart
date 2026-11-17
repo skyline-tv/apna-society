@@ -98,7 +98,7 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
       'key': keyId,
       'amount': order.order.amountPaise,
       'currency': order.order.currency,
-      'name': 'ApnaSociety',
+      'name': 'Apna Society',
       'description': 'Maintenance bill payment',
       'order_id': order.order.orderId,
       'prefill': {

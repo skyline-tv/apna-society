@@ -748,7 +748,7 @@ class _LiveAdminGuardFormPageState extends State<LiveAdminGuardFormPage> {
             autocorrect: false,
             decoration: const InputDecoration(
               labelText: 'Email *',
-              helperText: 'Required by the existing account API.',
+              helperText: 'Used for account notifications and receipts.',
               prefixIcon: Icon(Icons.alternate_email_rounded),
             ),
             validator: (v) {
@@ -806,7 +806,7 @@ class _LiveAdminGuardFormPageState extends State<LiveAdminGuardFormPage> {
             if (!editing) ('Role', 'Security guard'),
           ],
           note: editing
-              ? 'Only name and mobile are sent to the existing update API.'
+              ? 'Only name and mobile will be updated.'
               : 'A temporary password will be shown once for you to share securely.',
         ),
         InlineError(formError),

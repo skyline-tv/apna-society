@@ -56,7 +56,7 @@ void main() {
     expect(find.text('Step 1 of 2 • Select Society'), findsOneWidget);
     expect(find.text('Select Society'), findsOneWidget);
     expect(find.text('Monarch Solitaire (A to E)'), findsWidgets);
-    expect(find.text('Live Society Database'), findsOneWidget);
+    expect(find.text('Monarch Solitaire society records'), findsOneWidget);
     expect(find.text('Demo Society'), findsOneWidget);
     expect(find.text('Auto-filled'), findsOneWidget);
     expect(find.text('Sample walkthrough & simulated data'), findsOneWidget);

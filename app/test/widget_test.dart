@@ -17,7 +17,7 @@ void main() {
     expect(
         find.textContaining('Simplifying Society Management'), findsOneWidget);
     expect(find.text('Sign in as'), findsOneWidget);
-    expect(find.text('LIVE'), findsOneWidget);
+    expect(find.text('SOCIETY'), findsOneWidget);
     expect(find.text('Change Society'), findsOneWidget);
   });
 }

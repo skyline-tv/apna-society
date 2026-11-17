@@ -21,6 +21,24 @@ void main() {
     );
     expect(receiptMethodLabel('UPI'), 'UPI');
     expect(receiptMoneyPaise(1200000), 'Rs 12,000.00');
+    expect(
+      receiptPdfFileName(
+        wingCode: 'E',
+        flatNumber: '303',
+        periodStart: '2026-10-01',
+        periodEnd: '2026-12-31',
+      ),
+      'e303 oct-dec.pdf',
+    );
+    expect(
+      receiptPdfFileName(
+        wingCode: 'A',
+        flatNumber: 'A-101',
+        periodStart: '2026-10-01',
+        periodEnd: '2026-10-31',
+      ),
+      'a101 oct.pdf',
+    );
   });
 
   testWidgets('receipt sheet matches the A4 template on a phone',
@@ -71,7 +89,7 @@ void main() {
     expect(find.text('A4 Paper'), findsOneWidget);
     expect(find.text('Print (A4)'), findsOneWidget);
     expect(find.text('Download PDF'), findsOneWidget);
-    expect(find.text('Monarch Solitaire A to E'), findsWidgets);
+    expect(find.text('Proposed Monarch Solitaire A to E'), findsWidgets);
     expect(find.text('RECEIPT'), findsOneWidget);
     expect(find.text('RCPT-2026-000001'), findsOneWidget);
     expect(find.text('SUCCESSFUL'), findsOneWidget);
@@ -82,9 +100,9 @@ void main() {
     expect(find.textContaining('Base Maintenance Charges'), findsOneWidget);
     expect(find.text('Total Amount Paid'), findsOneWidget);
     expect(find.text('BILL NUMBER'), findsOneWidget);
-    expect(find.text('TRANSACTION REFERENCE'), findsOneWidget);
+    expect(find.text('TRANSACTION REFERENCE'), findsNothing);
     expect(find.text('BILL-2026-000001'), findsOneWidget);
-    expect(find.text('offline_PAY-2026-000001'), findsOneWidget);
+    expect(find.text('offline_PAY-2026-000001'), findsNothing);
     expect(
       find.text(
           'This is an authorized receipt for a confirmed payment, generated from verified society records.\nNo signature is required for digitally issued receipts.'),
