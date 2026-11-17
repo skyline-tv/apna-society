@@ -8,13 +8,15 @@ import '../../api/models/billing_models.dart';
 import '../../app_core.dart';
 import '../../ui/components.dart';
 
-const kReceiptNavy = Color(0xFF0B3C68);
-const kReceiptNavyDark = Color(0xFF00254C);
-const kReceiptPage = Color(0xFFF7F9FA);
-const kReceiptMuted = Color(0xFF334155);
+const kReceiptNavy = Color(0xFF1C395C);
+const kReceiptNavyDark = Color(0xFF0B3C68);
+const kReceiptPage = Color(0xFFF4F7FB);
+const kReceiptMuted = Color(0xFF64748B);
 const kReceiptInk = Color(0xFF0F172A);
 const kReceiptBorder = Color(0xFFE2E8F0);
-const kReceiptRule = Color(0xFF64748B);
+const kReceiptRule = Color(0xFFCBD5E1);
+const kReceiptGreen = Color(0xFF178E5E);
+const kReceiptHeaderFg = Colors.white;
 
 class ReceiptChargeLine {
   const ReceiptChargeLine({
@@ -429,9 +431,9 @@ class ReceiptSheet extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: kReceiptPage,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kReceiptBorder),
         boxShadow: const [
           BoxShadow(
             color: Color(0x3394A3B8),
@@ -440,227 +442,262 @@ class ReceiptSheet extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(16),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-        decoration: BoxDecoration(
-          border: Border.all(color: kReceiptBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Full-width society name on its own row so it never wraps beside RECEIPT.
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                societyName,
-                maxLines: 1,
-                softWrap: false,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: kReceiptNavy,
-                  height: 1.2,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: double.infinity,
+            color: kReceiptNavy,
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'RECEIPT',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.4,
-                    color: kReceiptNavy,
-                  ),
-                ),
-                const Spacer(),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      receiptNumber,
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: kReceiptInk,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 2),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: kReceiptNavy),
-                      ),
+                LayoutBuilder(builder: (context, constraints) {
+                  return FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(maxWidth: constraints.maxWidth),
                       child: Text(
-                        status.toUpperCase(),
+                        societyName,
+                        maxLines: 1,
+                        softWrap: false,
                         style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.1,
-                          color: kReceiptNavy,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: kReceiptHeaderFg,
+                          height: 1.2,
                         ),
                       ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'RECEIPT',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                          color: Color(0xFFB8C7D8),
+                        ),
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          receiptNumber,
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: kReceiptHeaderFg,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: kReceiptGreen,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                status.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            const Divider(height: 1, thickness: 1, color: kReceiptRule),
-            const SizedBox(height: 18),
-            LayoutBuilder(builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 520;
-              final dateBlock = _MetaBlock(
-                label: 'PAYMENT DATE',
-                child: Text(paidAt, style: _valueStyle),
-              );
-              final nameBlock = _MetaBlock(
-                label: 'NAME',
-                child: Text(payer, style: _valueStyle),
-              );
-              final flatBlock = _MetaBlock(
-                label: 'WING / FLAT NO',
-                child: Text(
-                  flatLabel,
-                  style: _valueStyle.copyWith(color: kReceiptNavy),
-                ),
-              );
-              final methodBlock = _MetaBlock(
-                label: 'PAYMENT METHOD',
-                child: Text(method, style: _valueStyle),
-              );
-              if (stacked) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    dateBlock,
-                    const SizedBox(height: 14),
-                    nameBlock,
-                    const SizedBox(height: 14),
-                    flatBlock,
-                    const SizedBox(height: 14),
-                    methodBlock,
-                  ],
-                );
-              }
-              return Column(
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: dateBlock),
-                      const SizedBox(width: 24),
-                      Expanded(child: methodBlock),
-                    ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: kReceiptBorder),
                   ),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final stacked = !constraints.hasBoundedWidth ||
+                        constraints.maxWidth < 420;
+                    final dateBlock = _MetaBlock(
+                      label: 'PAYMENT DATE',
+                      child: Text(paidAt, style: _valueStyle),
+                    );
+                    final nameBlock = _MetaBlock(
+                      label: 'NAME',
+                      child: Text(payer, style: _valueStyle),
+                    );
+                    final flatBlock = _MetaBlock(
+                      label: 'WING / FLAT NO',
+                      child: Text(
+                        flatLabel,
+                        style: _valueStyle.copyWith(color: kReceiptNavy),
+                      ),
+                    );
+                    final methodBlock = _MetaBlock(
+                      label: 'PAYMENT METHOD',
+                      child: Text(method, style: _valueStyle),
+                    );
+                    final towardsBlock = _MetaBlock(
+                      label: 'TOWARDS',
+                      child: Text(towards, style: _valueStyle),
+                    );
+                    if (stacked) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          dateBlock,
+                          const SizedBox(height: 14),
+                          methodBlock,
+                          const SizedBox(height: 14),
+                          nameBlock,
+                          const SizedBox(height: 14),
+                          flatBlock,
+                          const SizedBox(height: 14),
+                          towardsBlock,
+                        ],
+                      );
+                    }
+                    return Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: dateBlock),
+                            const SizedBox(width: 24),
+                            Expanded(child: methodBlock),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: nameBlock),
+                            const SizedBox(width: 24),
+                            Expanded(child: flatBlock),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        towardsBlock,
+                      ],
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                _ChargeTable(lines: lines, totalAmount: totalAmount),
+                if ((billNumber ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const Divider(height: 1, thickness: 1, color: kReceiptBorder),
                   const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: nameBlock),
-                      const SizedBox(width: 24),
-                      Expanded(child: flatBlock),
-                    ],
-                  ),
+                  _ReceiptRefs(billNumber: billNumber),
                 ],
-              );
-            }),
-            const SizedBox(height: 18),
-            _MetaBlock(
-              label: 'TOWARDS',
-              child: Text(towards, style: _valueStyle),
-            ),
-            const SizedBox(height: 16),
-            _ChargeTable(lines: lines, totalAmount: totalAmount),
-            if ((billNumber ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 20),
-              const Divider(height: 1, thickness: 1, color: kReceiptBorder),
-              const SizedBox(height: 16),
-              _ReceiptRefs(billNumber: billNumber),
-            ],
-            const SizedBox(height: 48),
-            LayoutBuilder(builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 520;
-              final note = const Text(
-                'This is an authorized receipt for a confirmed payment, generated from verified society records.\nNo signature is required for digitally issued receipts.',
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.45,
-                  fontWeight: FontWeight.w500,
-                  color: kReceiptMuted,
-                ),
-              );
-              final authorized = Column(
-                crossAxisAlignment: stacked
-                    ? CrossAxisAlignment.start
-                    : CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: stacked ? double.infinity : 180,
-                    height: 1,
-                    color: kReceiptRule,
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'AUTHORIZED',
+                const SizedBox(height: 28),
+                const Divider(height: 1, thickness: 1, color: kReceiptBorder),
+                const SizedBox(height: 14),
+                LayoutBuilder(builder: (context, constraints) {
+                  final stacked = !constraints.hasBoundedWidth ||
+                      constraints.maxWidth < 520;
+                  final note = const Text(
+                    'This is an authorized receipt for a confirmed payment, generated from verified society records.\nNo signature is required for digitally issued receipts.',
                     style: TextStyle(
-                      fontSize: 10,
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      height: 1.45,
+                      fontWeight: FontWeight.w500,
                       color: kReceiptMuted,
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: stacked
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight,
-                    child: Text(
-                      societyName.toUpperCase(),
-                      maxLines: 1,
-                      softWrap: false,
-                      textAlign: stacked ? TextAlign.left : TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                        color: kReceiptInk,
+                  );
+                  final authorized = Column(
+                    crossAxisAlignment: stacked
+                        ? CrossAxisAlignment.start
+                        : CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'AUTHORIZED',
+                        style: TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w700,
+                          color: kReceiptGreen,
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              );
-              if (stacked) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    note,
-                    const SizedBox(height: 20),
-                    authorized,
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(child: note),
-                  const SizedBox(width: 16),
-                  authorized,
-                ],
-              );
-            }),
-          ],
-        ),
+                      const SizedBox(height: 2),
+                      Text(
+                        societyName.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign:
+                            stacked ? TextAlign.left : TextAlign.right,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 0.4,
+                          fontWeight: FontWeight.w600,
+                          color: kReceiptMuted,
+                        ),
+                      ),
+                    ],
+                  );
+                  if (stacked) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        note,
+                        const SizedBox(height: 16),
+                        authorized,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: note),
+                      const SizedBox(width: 16),
+                      SizedBox(width: 200, child: authorized),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -675,7 +712,7 @@ const _valueStyle = TextStyle(
 const _refStyle = TextStyle(
   fontSize: 13,
   fontWeight: FontWeight.w700,
-  color: kReceiptInk,
+  color: kReceiptNavy,
 );
 
 class _MetaBlock extends StatelessWidget {
@@ -732,15 +769,18 @@ class _ChargeTable extends StatelessWidget {
     return LayoutBuilder(builder: (context, constraints) {
       final compact = constraints.maxWidth < 420;
       return Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: kReceiptBorder),
         ),
         child: Column(
           children: [
             Container(
               width: double.infinity,
-              color: const Color(0xFFF1F5F9),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              color: kReceiptNavy,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               child: compact
                   ? const Row(
                       children: [
@@ -904,15 +944,14 @@ class _ChargeTable extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
               decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
+                color: Color(0xFFEDF3F8),
                 border: Border(top: BorderSide(color: kReceiptBorder)),
               ),
               child: Row(
                 children: [
                   const Expanded(
                     child: Text(
-                      'Total Amount Paid',
-                      textAlign: TextAlign.right,
+                      'TOTAL AMOUNT PAID',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -922,16 +961,13 @@ class _ChargeTable extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  SizedBox(
-                    width: 88,
-                    child: Text(
-                      totalAmount,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: kReceiptNavy,
-                      ),
+                  Text(
+                    totalAmount,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: kReceiptNavy,
                     ),
                   ),
                 ],
@@ -948,5 +984,5 @@ const _headStyle = TextStyle(
   fontSize: 10,
   fontWeight: FontWeight.w700,
   letterSpacing: 0.6,
-  color: kReceiptInk,
+  color: Colors.white,
 );

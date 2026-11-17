@@ -101,7 +101,7 @@ void main() {
     expect(find.text('UPI'), findsOneWidget);
     expect(find.text('Wing A - Flat 101'), findsOneWidget);
     expect(find.textContaining('Base Maintenance Charges'), findsOneWidget);
-    expect(find.text('Total Amount Paid'), findsOneWidget);
+    expect(find.text('TOTAL AMOUNT PAID'), findsOneWidget);
     expect(find.text('BILL NUMBER'), findsOneWidget);
     expect(find.text('TRANSACTION REFERENCE'), findsNothing);
     expect(find.text('BILL-2026-000001'), findsOneWidget);
