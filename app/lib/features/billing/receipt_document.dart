@@ -97,6 +97,16 @@ DateTime? _receiptParseDate(String? raw) {
   return DateTime.tryParse(value);
 }
 
+/// Billing periods are society civil dates in Asia/Kolkata (+05:30).
+/// API ISO strings are UTC, so Oct 1 IST arrives as Sep 30 18:30Z — use IST
+/// wall-clock month/year for filenames so they match the receipt period.
+({int year, int month})? _receiptIstYearMonth(DateTime? value) {
+  if (value == null) return null;
+  final utc = value.toUtc();
+  final ist = utc.add(const Duration(hours: 5, minutes: 30));
+  return (year: ist.year, month: ist.month);
+}
+
 /// Compact flat token for filenames, e.g. `e303`.
 String receiptFlatFileToken({
   String? wingCode,
@@ -130,15 +140,17 @@ String receiptFlatFileToken({
   return token;
 }
 
-/// Paid months for filenames, e.g. `oct` or `oct-dec`.
+/// Paid months for filenames, e.g. `oct` or `oct-mar` (IST civil months).
 String receiptMonthsFileToken({
   String? periodStart,
   String? periodEnd,
   String? paidAt,
 }) {
-  final start = _receiptParseDate(periodStart) ?? _receiptParseDate(paidAt);
+  final start = _receiptIstYearMonth(
+    _receiptParseDate(periodStart) ?? _receiptParseDate(paidAt),
+  );
   if (start == null) return '';
-  final end = _receiptParseDate(periodEnd) ?? start;
+  final end = _receiptIstYearMonth(_receiptParseDate(periodEnd)) ?? start;
   final startLabel = _receiptShortMonths[start.month - 1];
   final endLabel = _receiptShortMonths[end.month - 1];
   if (start.year == end.year && start.month == end.month) return startLabel;

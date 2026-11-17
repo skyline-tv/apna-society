@@ -39,6 +39,16 @@ void main() {
       ),
       'a101-oct.pdf',
     );
+    // API sends IST midnights as UTC — Oct 1 IST is Sep 30 18:30Z.
+    expect(
+      receiptPdfFileName(
+        wingCode: 'E',
+        flatNumber: '303',
+        periodStart: '2026-09-30T18:30:00.000Z',
+        periodEnd: '2027-03-31T18:29:59.999Z',
+      ),
+      'e303-oct-mar.pdf',
+    );
   });
 
   testWidgets('receipt sheet matches the A4 template on a phone',
