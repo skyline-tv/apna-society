@@ -8,15 +8,19 @@ import '../../api/models/billing_models.dart';
 import '../../app_core.dart';
 import '../../ui/components.dart';
 
-const kReceiptNavy = Color(0xFF1C395C);
-const kReceiptNavyDark = Color(0xFF0B3C68);
-const kReceiptPage = Color(0xFFF4F7FB);
-const kReceiptMuted = Color(0xFF64748B);
-const kReceiptInk = Color(0xFF0F172A);
-const kReceiptBorder = Color(0xFFE2E8F0);
-const kReceiptRule = Color(0xFFCBD5E1);
-const kReceiptGreen = Color(0xFF178E5E);
+// Matches the HTML receipt template tokens.
+const kReceiptNavy = Color(0xFF0F3A5F);
+const kReceiptBlue = Color(0xFF1B5E8F);
+const kReceiptInk = Color(0xFF1A2433);
+const kReceiptMuted = Color(0xFF6B7787);
+const kReceiptBorder = Color(0xFFDDE4EC);
+const kReceiptTint = Color(0xFFF3F7FB);
+const kReceiptGreen = Color(0xFF1E8E5A);
+const kReceiptGreenBg = Color(0xFFE6F5ED);
+const kReceiptPage = Color(0xFFE9EEF3);
 const kReceiptHeaderFg = Colors.white;
+const kReceiptNavyDark = kReceiptNavy;
+const kReceiptRule = kReceiptBorder;
 
 class ReceiptChargeLine {
   const ReceiptChargeLine({
@@ -431,271 +435,43 @@ class ReceiptSheet extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: kReceiptPage,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: kReceiptBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x3394A3B8),
-            blurRadius: 24,
-            offset: Offset(0, 10),
-          ),
-        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: double.infinity,
-            color: kReceiptNavy,
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+          _ReceiptHeader(
+            societyName: societyName,
+            receiptNumber: receiptNumber,
+            status: status,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                LayoutBuilder(builder: (context, constraints) {
-                  return FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: ConstrainedBox(
-                      constraints:
-                          BoxConstraints(maxWidth: constraints.maxWidth),
-                      child: Text(
-                        societyName,
-                        maxLines: 1,
-                        softWrap: false,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: kReceiptHeaderFg,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'RECEIPT',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                          color: Color(0xFFB8C7D8),
-                        ),
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          receiptNumber,
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: kReceiptHeaderFg,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: kReceiptGreen,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                status.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                _MetaCard(
+                  paidAt: paidAt,
+                  method: method,
+                  payer: payer,
+                  flatLabel: flatLabel,
+                  towards: towards,
                 ),
+                const SizedBox(height: 22),
+                _ChargeTable(lines: lines, totalAmount: totalAmount),
+                if ((billNumber ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  _ReceiptRefs(billNumber: billNumber),
+                ],
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: kReceiptBorder),
-                  ),
-                  child: LayoutBuilder(builder: (context, constraints) {
-                    final stacked = !constraints.hasBoundedWidth ||
-                        constraints.maxWidth < 420;
-                    final dateBlock = _MetaBlock(
-                      label: 'PAYMENT DATE',
-                      child: Text(paidAt, style: _valueStyle),
-                    );
-                    final nameBlock = _MetaBlock(
-                      label: 'NAME',
-                      child: Text(payer, style: _valueStyle),
-                    );
-                    final flatBlock = _MetaBlock(
-                      label: 'WING / FLAT NO',
-                      child: Text(
-                        flatLabel,
-                        style: _valueStyle.copyWith(color: kReceiptNavy),
-                      ),
-                    );
-                    final methodBlock = _MetaBlock(
-                      label: 'PAYMENT METHOD',
-                      child: Text(method, style: _valueStyle),
-                    );
-                    final towardsBlock = _MetaBlock(
-                      label: 'TOWARDS',
-                      child: Text(towards, style: _valueStyle),
-                    );
-                    if (stacked) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          dateBlock,
-                          const SizedBox(height: 14),
-                          methodBlock,
-                          const SizedBox(height: 14),
-                          nameBlock,
-                          const SizedBox(height: 14),
-                          flatBlock,
-                          const SizedBox(height: 14),
-                          towardsBlock,
-                        ],
-                      );
-                    }
-                    return Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: dateBlock),
-                            const SizedBox(width: 24),
-                            Expanded(child: methodBlock),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: nameBlock),
-                            const SizedBox(width: 24),
-                            Expanded(child: flatBlock),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        towardsBlock,
-                      ],
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-                _ChargeTable(lines: lines, totalAmount: totalAmount),
-                if ((billNumber ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const Divider(height: 1, thickness: 1, color: kReceiptBorder),
-                  const SizedBox(height: 14),
-                  _ReceiptRefs(billNumber: billNumber),
-                ],
-                const SizedBox(height: 28),
-                const Divider(height: 1, thickness: 1, color: kReceiptBorder),
-                const SizedBox(height: 14),
-                LayoutBuilder(builder: (context, constraints) {
-                  final stacked = !constraints.hasBoundedWidth ||
-                      constraints.maxWidth < 520;
-                  final note = const Text(
-                    'This is an authorized receipt for a confirmed payment, generated from verified society records.\nNo signature is required for digitally issued receipts.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
-                      color: kReceiptMuted,
-                    ),
-                  );
-                  final authorized = Column(
-                    crossAxisAlignment: stacked
-                        ? CrossAxisAlignment.start
-                        : CrossAxisAlignment.end,
-                    children: [
-                      const Text(
-                        'AUTHORIZED',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w700,
-                          color: kReceiptGreen,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        societyName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign:
-                            stacked ? TextAlign.left : TextAlign.right,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 0.4,
-                          fontWeight: FontWeight.w600,
-                          color: kReceiptMuted,
-                        ),
-                      ),
-                    ],
-                  );
-                  if (stacked) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        note,
-                        const SizedBox(height: 16),
-                        authorized,
-                      ],
-                    );
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(child: note),
-                      const SizedBox(width: 16),
-                      SizedBox(width: 200, child: authorized),
-                    ],
-                  );
-                }),
-              ],
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+            child: _ReceiptFooter(societyName: societyName),
           ),
         ],
       ),
@@ -704,40 +480,275 @@ class ReceiptSheet extends StatelessWidget {
 }
 
 const _valueStyle = TextStyle(
-  fontSize: 14,
+  fontSize: 15,
   fontWeight: FontWeight.w700,
+  height: 1.25,
   color: kReceiptInk,
 );
 
+const _labelStyle = TextStyle(
+  fontSize: 10,
+  fontWeight: FontWeight.w600,
+  color: kReceiptMuted,
+  height: 1.2,
+);
+
 const _refStyle = TextStyle(
-  fontSize: 13,
+  fontSize: 17,
   fontWeight: FontWeight.w700,
   color: kReceiptNavy,
 );
 
-class _MetaBlock extends StatelessWidget {
-  const _MetaBlock({required this.label, required this.child});
+class _ReceiptHeader extends StatelessWidget {
+  const _ReceiptHeader({
+    required this.societyName,
+    required this.receiptNumber,
+    required this.status,
+  });
 
-  final String label;
-  final Widget child;
+  final String societyName;
+  final String receiptNumber;
+  final String status;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
-            color: kReceiptMuted,
-          ),
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: kReceiptNavy,
+        border: Border(
+          bottom: BorderSide(color: kReceiptBlue, width: 4),
         ),
-        const SizedBox(height: 4),
-        child,
-      ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final stacked =
+            !constraints.hasBoundedWidth || constraints.maxWidth < 480;
+        final title = Text(
+          societyName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: kReceiptHeaderFg,
+            height: 1.2,
+          ),
+        );
+        final rcpt = Column(
+          crossAxisAlignment:
+              stacked ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          children: [
+            const Text(
+              'RECEIPT',
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 1.1,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFA9C4DB),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              receiptNumber,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: kReceiptHeaderFg,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _StatusBadge(status: status),
+          ],
+        );
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              title,
+              const SizedBox(height: 16),
+              rcpt,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 12),
+            Flexible(child: rcpt),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: kReceiptGreenBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: kReceiptGreen,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            status.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: kReceiptGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaCard extends StatelessWidget {
+  const _MetaCard({
+    required this.paidAt,
+    required this.method,
+    required this.payer,
+    required this.flatLabel,
+    required this.towards,
+  });
+
+  final String paidAt;
+  final String method;
+  final String payer;
+  final String flatLabel;
+  final String towards;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: kReceiptTint,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: kReceiptBorder),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final stacked =
+            !constraints.hasBoundedWidth || constraints.maxWidth < 480;
+        final dateCell = _MetaCell(label: 'PAYMENT DATE', value: paidAt);
+        final methodCell = _MetaCell(label: 'PAYMENT METHOD', value: method);
+        final nameCell = _MetaCell(label: 'NAME', value: payer);
+        final flatCell = _MetaCell(
+          label: 'WING / FLAT NO',
+          value: flatLabel,
+          valueColor: kReceiptBlue,
+        );
+        final towardsCell = _MetaCell(
+          label: 'TOWARDS',
+          value: towards,
+          valueStyle: _valueStyle.copyWith(fontSize: 14),
+        );
+        if (stacked) {
+          return Column(
+            children: [
+              dateCell,
+              methodCell,
+              nameCell,
+              flatCell,
+              towardsCell,
+            ],
+          );
+        }
+        return Column(
+          children: [
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: dateCell),
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: kReceiptBorder,
+                  ),
+                  Expanded(child: methodCell),
+                ],
+              ),
+            ),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: nameCell),
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: kReceiptBorder,
+                  ),
+                  Expanded(child: flatCell),
+                ],
+              ),
+            ),
+            towardsCell,
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _MetaCell extends StatelessWidget {
+  const _MetaCell({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.valueStyle,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final TextStyle? valueStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: kReceiptBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: _labelStyle),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: (valueStyle ?? _valueStyle).copyWith(
+              color: valueColor ?? (valueStyle ?? _valueStyle).color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -751,9 +762,92 @@ class _ReceiptRefs extends StatelessWidget {
   Widget build(BuildContext context) {
     final bill = (billNumber ?? '').trim();
     if (bill.isEmpty) return const SizedBox.shrink();
-    return _MetaBlock(
-      label: 'BILL NUMBER',
-      child: Text(bill, style: _refStyle),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 16),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: kReceiptBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('BILL NUMBER', style: _labelStyle),
+          const SizedBox(height: 5),
+          Text(bill, style: _refStyle),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptFooter extends StatelessWidget {
+  const _ReceiptFooter({required this.societyName});
+
+  final String societyName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 12),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: kReceiptBorder)),
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final stacked =
+            !constraints.hasBoundedWidth || constraints.maxWidth < 480;
+        final note = const Text(
+          'This is an authorized receipt for a confirmed payment, generated from verified society records.\nNo signature is required for digitally issued receipts.',
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.6,
+            color: kReceiptMuted,
+          ),
+        );
+        final authorized = Column(
+          crossAxisAlignment:
+              stacked ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          children: [
+            const Text(
+              'AUTHORIZED',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: kReceiptGreen,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              societyName.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: stacked ? TextAlign.left : TextAlign.right,
+              style: const TextStyle(
+                fontSize: 8.5,
+                color: kReceiptMuted,
+              ),
+            ),
+          ],
+        );
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              note,
+              const SizedBox(height: 14),
+              authorized,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: note),
+            const SizedBox(width: 16),
+            authorized,
+          ],
+        );
+      }),
     );
   }
 }
@@ -767,12 +861,13 @@ class _ChargeTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      final compact = constraints.maxWidth < 420;
+      final compact =
+          !constraints.hasBoundedWidth || constraints.maxWidth < 480;
       return Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(5),
           border: Border.all(color: kReceiptBorder),
         ),
         child: Column(
@@ -780,49 +875,56 @@ class _ChargeTable extends StatelessWidget {
             Container(
               width: double.infinity,
               color: kReceiptNavy,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               child: compact
                   ? const Row(
                       children: [
                         Expanded(
-                          child: Text('Particulars / Period', style: _headStyle),
-                        ),
-                        SizedBox(width: 8),
-                        SizedBox(
-                          width: 88,
                           child: Text(
-                            'Amount',
-                            textAlign: TextAlign.right,
+                            'PARTICULARS',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: _headStyle,
                           ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'AMOUNT',
+                          textAlign: TextAlign.right,
+                          style: _headStyle,
                         ),
                       ],
                     )
                   : const Row(
                       children: [
                         SizedBox(
-                          width: 22,
-                          child: Text('#',
-                              textAlign: TextAlign.center, style: _headStyle),
+                          width: 28,
+                          child: Text('#', style: _headStyle),
                         ),
-                        SizedBox(width: 8),
                         Expanded(
                           flex: 5,
-                          child: Text('Particulars', style: _headStyle),
+                          child: Text(
+                            'PARTICULARS / CHARGE DESCRIPTION',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _headStyle,
+                          ),
                         ),
                         SizedBox(width: 8),
                         Expanded(
                           flex: 4,
-                          child: Text('Period / Tenure', style: _headStyle),
-                        ),
-                        SizedBox(width: 8),
-                        SizedBox(
-                          width: 88,
                           child: Text(
-                            'Amount',
-                            textAlign: TextAlign.right,
+                            'PERIOD / TENURE',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: _headStyle,
                           ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'AMOUNT',
+                          textAlign: TextAlign.right,
+                          style: _headStyle,
                         ),
                       ],
                     ),
@@ -832,10 +934,7 @@ class _ChargeTable extends StatelessWidget {
               return Container(
                 width: double.infinity,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-                ),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
                 child: compact
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,7 +959,6 @@ class _ChargeTable extends StatelessWidget {
                                     line.period,
                                     style: const TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.w500,
                                       color: kReceiptMuted,
                                       height: 1.3,
                                     ),
@@ -869,17 +967,14 @@ class _ChargeTable extends StatelessWidget {
                               ],
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 88,
-                            child: Text(
-                              line.amount,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: kReceiptInk,
-                              ),
+                          const SizedBox(width: 8),
+                          Text(
+                            line.amount,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: kReceiptInk,
                             ),
                           ),
                         ],
@@ -888,25 +983,21 @@ class _ChargeTable extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           SizedBox(
-                            width: 22,
+                            width: 28,
                             child: Text(
                               '${entry.key + 1}',
-                              textAlign: TextAlign.center,
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: kReceiptMuted,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: kReceiptInk,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
                           Expanded(
                             flex: 5,
                             child: Text(
                               line.particulars,
                               style: const TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600,
                                 color: kReceiptInk,
                               ),
                             ),
@@ -917,23 +1008,19 @@ class _ChargeTable extends StatelessWidget {
                             child: Text(
                               line.period,
                               style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: kReceiptMuted,
+                                fontSize: 13,
+                                color: kReceiptInk,
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          SizedBox(
-                            width: 88,
-                            child: Text(
-                              line.amount,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: kReceiptInk,
-                              ),
+                          Text(
+                            line.amount,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: kReceiptInk,
                             ),
                           ),
                         ],
@@ -944,7 +1031,7 @@ class _ChargeTable extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
               decoration: const BoxDecoration(
-                color: Color(0xFFEDF3F8),
+                color: kReceiptTint,
                 border: Border(top: BorderSide(color: kReceiptBorder)),
               ),
               child: Row(
@@ -952,22 +1039,27 @@ class _ChargeTable extends StatelessWidget {
                   const Expanded(
                     child: Text(
                       'TOTAL AMOUNT PAID',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
                         color: kReceiptNavy,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    totalAmount,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: kReceiptNavy,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      totalAmount,
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: kReceiptNavy,
+                      ),
                     ),
                   ),
                 ],
@@ -983,6 +1075,5 @@ class _ChargeTable extends StatelessWidget {
 const _headStyle = TextStyle(
   fontSize: 10,
   fontWeight: FontWeight.w700,
-  letterSpacing: 0.6,
   color: Colors.white,
 );

@@ -29,23 +29,23 @@ export type ReceiptPdfInput = {
 
 const PAGE_W = 595;
 const PAGE_H = 842;
-const LEFT = 40;
-const RIGHT = 555;
+const LEFT = 42;
+const RIGHT = 553;
 const CONTENT_W = RIGHT - LEFT;
 
-/** Dark navy header from the new invoice template (#1C395C). */
-const HEADER_NAVY = '0.110 0.224 0.361';
+/** HTML receipt template tokens (#0F3A5F / #1B5E8F / …). */
+const NAVY = '0.059 0.227 0.373';
+const ACCENT_BLUE = '0.106 0.369 0.561';
 const WHITE = '1 1 1';
-const INK = '0.059 0.090 0.165';
-const MUTED = '0.392 0.455 0.545';
-const BLUE = '0.043 0.235 0.408';
-const GREEN = '0.090 0.557 0.369';
-const BORDER = '0.886 0.910 0.941';
-const CARD_BG = '1 1 1';
-const PAGE_BG = '0.957 0.969 0.984';
-const TABLE_HEADER = '0.110 0.224 0.361';
-const TOTAL_BG = '0.929 0.949 0.969';
-const COL = [LEFT, LEFT + 36, LEFT + 248, LEFT + 386, RIGHT];
+const INK = '0.102 0.141 0.200';
+const MUTED = '0.420 0.467 0.529';
+const BLUE = '0.106 0.369 0.561';
+const GREEN = '0.118 0.557 0.353';
+const GREEN_BG = '0.902 0.961 0.929';
+const BORDER = '0.867 0.894 0.925';
+const TINT = '0.953 0.969 0.984';
+const HEADER_LABEL = '0.663 0.769 0.859';
+const COL = [LEFT, LEFT + 36, LEFT + 250, LEFT + 390, RIGHT];
 
 function formatPaidAtIst(paidAt: Date): string {
   return new Intl.DateTimeFormat('en-GB', {
@@ -239,7 +239,7 @@ function extraRefs(input: ReceiptPdfInput): { label: string; value: string }[] {
 
 /**
  * Official society payment receipt (A4).
- * Matches the dark-header invoice template — proposed society name on one line.
+ * Matches the HTML receipt template (navy header, tint meta card, charge table).
  */
 export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const ops: string[] = [];
@@ -283,9 +283,15 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const strokeRect = (x: number, y: number, w: number, h: number, color = BORDER) => {
     ops.push(`${color} RG 0.8 w ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`);
   };
+  const hLine = (x1: number, x2: number, y: number) => {
+    ops.push(`${BORDER} RG 0.6 w ${x1.toFixed(2)} ${y.toFixed(2)} m ${x2.toFixed(2)} ${y.toFixed(2)} l S`);
+  };
+  const vLine = (x: number, y1: number, y2: number) => {
+    ops.push(`${BORDER} RG 0.6 w ${x.toFixed(2)} ${y1.toFixed(2)} m ${x.toFixed(2)} ${y2.toFixed(2)} l S`);
+  };
 
-  // Page background
-  fillRect(0, 0, PAGE_W, PAGE_H, PAGE_BG);
+  // White page
+  fillRect(0, 0, PAGE_W, PAGE_H, WHITE);
 
   if (watermark) {
     const mark = pdfLatin(watermark);
@@ -296,83 +302,79 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     ops.push('Q');
   }
 
-  // Dark navy header band — society name stays on one white line.
-  const headerH = 88;
-  const headerBot = PAGE_H - 24 - headerH;
-  fillRect(24, headerBot, PAGE_W - 48, headerH, HEADER_NAVY);
+  // Full-bleed navy header + blue accent bar
+  const headerH = 96;
+  const headerBot = PAGE_H - headerH;
+  fillRect(0, headerBot, PAGE_W, headerH, NAVY);
+  fillRect(0, headerBot, PAGE_W, 4, ACCENT_BLUE);
 
-  text('F4', 14, LEFT, PAGE_H - 48, societyName, WHITE);
-  rightText('F2', 8, PAGE_H - 42, 'RECEIPT', '0.75 0.82 0.89', true);
-  rightText('F4', 13, PAGE_H - 58, pdfLatin(input.receiptNumber), WHITE, true);
+  text('F2', 16, LEFT, PAGE_H - 52, societyName, WHITE);
+  rightText('F1', 8, PAGE_H - 36, 'RECEIPT', HEADER_LABEL);
+  rightText('F2', 14, PAGE_H - 54, pdfLatin(input.receiptNumber), WHITE, true);
 
   const statusLabel = status.toUpperCase();
-  const badgeW = Math.max(86, estimateWidth(statusLabel, 8, true) + 28);
+  const badgeW = Math.max(92, estimateWidth(statusLabel, 8, true) + 30);
   const badgeH = 16;
   const badgeX = RIGHT - badgeW;
-  const badgeY = PAGE_H - 84;
-  fillRect(badgeX, badgeY, badgeW, badgeH, GREEN);
-  // Status dot
-  ops.push(`${WHITE} rg ${badgeX + 8} ${badgeY + 5} 6 6 re f`);
-  text('F2', 8, badgeX + 18, badgeY + 5, statusLabel, WHITE);
+  const badgeY = PAGE_H - 78;
+  fillRect(badgeX, badgeY, badgeW, badgeH, GREEN_BG);
+  // Soft pill corners approximated as filled rect; green status dot
+  ops.push(`${GREEN} rg ${badgeX + 9} ${badgeY + 5} 5 5 re f`);
+  text('F2', 8, badgeX + 18, badgeY + 4.5, statusLabel, GREEN);
 
-  // White meta card
-  let y = headerBot - 18;
+  // Tint meta card
+  let y = headerBot - 24;
+  const cardPadX = 14;
+  const midX = LEFT + CONTENT_W / 2;
+  const leftCol = LEFT + cardPadX;
+  const rightCol = midX + cardPadX;
+  const towardsH = towards.length * 13;
+  const rowH = 40;
+  const cardH = 10 + rowH * 2 + 12 + towardsH + 16;
   const cardTop = y;
-  const metaBlockH =
-    16 + // top pad
-    12 + 16 + // date/method labels+values
-    18 +
-    12 + 16 + // name/flat
-    18 +
-    12 +
-    towards.length * 14 +
-    16; // towards + bottom pad
-  const cardBot = cardTop - metaBlockH;
-  fillRect(LEFT - 4, cardBot, CONTENT_W + 8, metaBlockH, CARD_BG);
-  strokeRect(LEFT - 4, cardBot, CONTENT_W + 8, metaBlockH);
+  const cardBot = cardTop - cardH;
+  fillRect(LEFT, cardBot, CONTENT_W, cardH, TINT);
+  strokeRect(LEFT, cardBot, CONTENT_W, cardH);
 
-  y = cardTop - 18;
-  text('F1', 8, LEFT + 10, y, 'PAYMENT DATE', MUTED);
-  text('F1', 8, 320, y, 'PAYMENT METHOD', MUTED);
+  // Row 1 — date / method
+  y = cardTop - 16;
+  text('F1', 8, leftCol, y, 'PAYMENT DATE', MUTED);
+  text('F1', 8, rightCol, y, 'PAYMENT METHOD', MUTED);
   y -= 14;
-  text('F2', 11, LEFT + 10, y, paidAt, INK);
-  text('F2', 11, 320, y, method, INK);
+  text('F2', 11, leftCol, y, paidAt, INK);
+  text('F2', 11, rightCol, y, method, INK);
+  const row1Bot = cardTop - rowH;
+  hLine(LEFT + 1, RIGHT - 1, row1Bot);
+  vLine(midX, cardTop - 1, row1Bot);
 
-  y -= 22;
-  text('F1', 8, LEFT + 10, y, 'NAME', MUTED);
-  text('F1', 8, 320, y, 'WING / FLAT NO', MUTED);
+  // Row 2 — name / wing-flat
+  y = row1Bot - 14;
+  text('F1', 8, leftCol, y, 'NAME', MUTED);
+  text('F1', 8, rightCol, y, 'WING / FLAT NO', MUTED);
   y -= 14;
-  text('F2', 11, LEFT + 10, y, pdfLatin(payer), INK);
-  text('F2', 11, 320, y, pdfLatin(wingFlat), BLUE);
+  text('F2', 11, leftCol, y, pdfLatin(payer), INK);
+  text('F2', 11, rightCol, y, pdfLatin(wingFlat), BLUE);
+  const row2Bot = row1Bot - rowH;
+  hLine(LEFT + 1, RIGHT - 1, row2Bot);
+  vLine(midX, row1Bot, row2Bot);
 
-  y -= 22;
-  text('F1', 8, LEFT + 10, y, 'TOWARDS', MUTED);
-  y -= 14;
+  // Full-width towards
+  y = row2Bot - 14;
+  text('F1', 8, leftCol, y, 'TOWARDS', MUTED);
+  y -= 13;
   for (const line of towards) {
-    text('F2', 11, LEFT + 10, y, line, INK);
-    y -= 14;
+    text('F2', 10, leftCol, y, line, INK);
+    y -= 13;
   }
 
-  y = cardBot - 20;
+  y = cardBot - 24;
 
   const items = lines.filter((row) => !row.total);
   const total = lines.find((row) => row.total);
   const tableW = CONTENT_W;
-  const vlines = (top: number, bot: number, splits: number[]) => {
-    ops.push(`${BORDER} RG 0.5 w`);
-    for (const x of splits) {
-      ops.push(`${x.toFixed(2)} ${bot.toFixed(2)} m ${x.toFixed(2)} ${top.toFixed(2)} l S`);
-    }
-  };
   const box = (bot: number, h: number, fill?: string) => {
-    if (fill) {
-      ops.push(
-        `${fill} rg ${LEFT.toFixed(2)} ${bot.toFixed(2)} ${tableW.toFixed(2)} ${h.toFixed(2)} re f`,
-      );
-    }
-    ops.push(
-      `${BORDER} RG 0.6 w ${LEFT.toFixed(2)} ${bot.toFixed(2)} ${tableW.toFixed(2)} ${h.toFixed(2)} re S`,
-    );
+    if (fill) fillRect(LEFT, bot, tableW, h, fill);
+    strokeRect(LEFT, bot, tableW, h);
   };
   const cellRight = (
     right: number,
@@ -385,65 +387,60 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     text(font, size, right - 8 - estimateWidth(value, size, font !== 'F1'), ty, value, color);
   };
 
-  const headerHRow = 24;
-  box(y - headerHRow, headerHRow, TABLE_HEADER);
-  vlines(y, y - headerHRow, [COL[1], COL[2], COL[3]]);
-  text('F2', 7, COL[0] + 12, y - 15, '#', WHITE);
-  text('F2', 7, COL[1] + 8, y - 15, 'PARTICULARS / CHARGE DESCRIPTION', WHITE);
-  text('F2', 7, COL[2] + 8, y - 15, 'PERIOD / TENURE', WHITE);
-  cellRight(COL[4], y - 15, 'AMOUNT', 7, WHITE);
+  const headerHRow = 22;
+  box(y - headerHRow, headerHRow, NAVY);
+  text('F2', 7, COL[0] + 10, y - 14, '#', WHITE);
+  text('F2', 7, COL[1] + 8, y - 14, 'PARTICULARS / CHARGE DESCRIPTION', WHITE);
+  text('F2', 7, COL[2] + 8, y - 14, 'PERIOD / TENURE', WHITE);
+  cellRight(COL[4], y - 14, 'AMOUNT', 7, WHITE);
   y -= headerHRow;
 
   items.forEach((row, idx) => {
     const labelLines = wrapText(row.label, 36);
     const periodLines = wrapText(row.period?.trim() ? row.period : '-', 22);
-    const h = Math.max(26, 14 + Math.max(labelLines.length, periodLines.length) * 11);
-    box(y - h, h, CARD_BG);
-    vlines(y, y - h, [COL[1], COL[2], COL[3]]);
-    text('F1', 9, COL[0] + 14, y - 16, String(idx + 1), MUTED);
-    let ly = y - 16;
+    const h = Math.max(34, 16 + Math.max(labelLines.length, periodLines.length) * 11);
+    box(y - h, h, WHITE);
+    text('F1', 10, COL[0] + 12, y - 20, String(idx + 1), INK);
+    let ly = y - 20;
     for (const line of labelLines) {
-      text('F1', 9, COL[1] + 8, ly, line);
+      text('F1', 10, COL[1] + 8, ly, line);
       ly -= 11;
     }
-    ly = y - 16;
+    ly = y - 20;
     for (const line of periodLines) {
-      text('F1', 8, COL[2] + 8, ly, line, MUTED);
+      text('F1', 10, COL[2] + 8, ly, line, INK);
       ly -= 11;
     }
-    cellRight(COL[4], y - 16, inr(row.amountPaise), 9);
+    cellRight(COL[4], y - 20, inr(row.amountPaise), 10);
     y -= h;
   });
 
   if (total) {
-    const h = 30;
-    box(y - h, h, TOTAL_BG);
-    ops.push(
-      `${BORDER} RG 0.5 w ${COL[3].toFixed(2)} ${(y - h).toFixed(2)} m ${COL[3].toFixed(2)} ${y.toFixed(2)} l S`,
-    );
-    text('F2', 9, LEFT + 12, y - 18, 'TOTAL AMOUNT PAID', BLUE);
-    cellRight(COL[4], y - 18, inr(total.amountPaise), 12, BLUE, 'F4');
+    const h = 34;
+    box(y - h, h, TINT);
+    text('F2', 9, COL[1] + 8, y - 20, 'TOTAL AMOUNT PAID', NAVY);
+    cellRight(COL[4], y - 20, inr(total.amountPaise), 14, NAVY, 'F2');
     y -= h;
   }
 
   if (refs.length) {
-    y -= 20;
-    ops.push(`${BORDER} RG 0.6 w ${LEFT} ${y + 8} m ${RIGHT} ${y + 8} l S`);
-    y -= 4;
+    y -= 22;
+    hLine(LEFT, RIGHT, y + 10);
+    y -= 2;
     for (const ref of refs) {
       text('F1', 8, LEFT, y, ref.label.toUpperCase(), MUTED);
       y -= 14;
       const valueLines = wrapText(ref.value, 78);
       for (const line of valueLines) {
-        text('F2', 11, LEFT, y, line, BLUE);
-        y -= 13;
+        text('F2', 12, LEFT, y, line, NAVY);
+        y -= 14;
       }
-      y -= 8;
+      y -= 6;
     }
   }
 
-  const footerY = 48;
-  ops.push(`${BORDER} RG 0.6 w ${LEFT} ${footerY + 36} m ${RIGHT} ${footerY + 36} l S`);
+  const footerY = 42;
+  hLine(LEFT, RIGHT, footerY + 34);
   text(
     'F1',
     8,
@@ -464,7 +461,7 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
       : 'No signature is required for digitally issued receipts.',
     MUTED,
   );
-  rightText('F2', 8, footerY + 18, 'AUTHORIZED', GREEN, true);
+  rightText('F2', 9, footerY + 18, 'AUTHORIZED', GREEN, true);
   rightText('F1', 7, footerY + 6, societyName.toUpperCase(), MUTED);
 
   return assemblePdf(ops.join('\n'));

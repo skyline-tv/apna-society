@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { billedMonthsProgress } from '../../src/modules/billing/utils/bill-months';
+import {
+  billedMonthsProgress,
+  paymentCoveredPeriod,
+} from '../../src/modules/billing/utils/bill-months';
 import { nextPeriodStart, zonedMidnight } from '../../src/modules/billing/utils/billing-calendar';
 
 describe('billedMonthsProgress', () => {
@@ -36,6 +39,37 @@ describe('billedMonthsProgress', () => {
         status: 'PAID',
       }),
     ).toEqual({ paidMonths: 3, pendingMonths: 0 });
+  });
+});
+
+describe('paymentCoveredPeriod', () => {
+  const sepDecBill = {
+    billingPeriodStart: zonedMidnight(2026, 9, 1),
+    billingPeriodEnd: new Date('2026-12-31T23:59:59.999+05:30'),
+    monthlyRatePaise: 400_000,
+    numberOfMonths: 4,
+    baseAmountPaise: 1_600_000,
+  };
+
+  it('uses only the months this payment covered (oct-dec after sep was paid)', () => {
+    const covered = paymentCoveredPeriod(sepDecBill, {
+      priorPrincipalPaise: 400_000,
+      allocatedToPrincipalPaise: 1_200_000,
+    });
+    expect(covered.months).toBe(3);
+    expect(covered.periodStart.toISOString()).toBe(zonedMidnight(2026, 10, 1).toISOString());
+    expect(covered.periodEnd.toISOString()).toBe(
+      new Date('2026-12-31T23:59:59.999+05:30').toISOString(),
+    );
+  });
+
+  it('keeps the full bill period when one payment settles every month', () => {
+    const covered = paymentCoveredPeriod(sepDecBill, {
+      priorPrincipalPaise: 0,
+      allocatedToPrincipalPaise: 1_600_000,
+    });
+    expect(covered.months).toBe(4);
+    expect(covered.periodStart.toISOString()).toBe(zonedMidnight(2026, 9, 1).toISOString());
   });
 });
 

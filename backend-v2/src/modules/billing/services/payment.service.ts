@@ -25,7 +25,7 @@ import { ReceiptModel } from '../models/receipt.model';
 import { nextSequence } from '../models/sequence.model';
 import { getPaymentProvider } from '../providers/payment-provider.factory';
 import { startOfCivilDay } from '../utils/billing-calendar';
-import { billedMonthsProgress } from '../utils/bill-months';
+import { billedMonthsProgress, paymentCoveredPeriod } from '../utils/bill-months';
 import { unpaidInterestPaise } from '../utils/bill-totals';
 import { extendBillForAdvanceMonths } from './bill-generation.service';
 import { computeInterestForBillWithEvents, getBillInterest } from './interest.service';
@@ -1057,7 +1057,43 @@ export async function getReceipt(
     throw forbidden('Receipt access denied', 'RECEIPT_ACCESS_DENIED');
   }
 
-  const billingPeriod = billingPeriodLabel(bill?.billingPeriodStart, bill?.billingPeriodEnd);
+  // Period on the receipt / PDF filename = months this payment covered, not the full bill.
+  let coveredStart = bill?.billingPeriodStart;
+  let coveredEnd = bill?.billingPeriodEnd;
+  if (bill?.billingPeriodStart && bill?.billingPeriodEnd && payment) {
+    const earlier = await PaymentModel.find({
+      billId: bill._id,
+      status: 'SUCCESS',
+      _id: { $ne: payment._id },
+    })
+      .select('allocatedToPrincipalPaise paidAt _id')
+      .lean();
+    const paymentPaidAt = payment.paidAt?.getTime() ?? 0;
+    const priorPrincipalPaise = earlier
+      .filter((other) => {
+        const otherPaidAt = other.paidAt?.getTime() ?? 0;
+        if (otherPaidAt !== paymentPaidAt) return otherPaidAt < paymentPaidAt;
+        return String(other._id) < String(payment._id);
+      })
+      .reduce((sum, other) => sum + Math.max(0, other.allocatedToPrincipalPaise ?? 0), 0);
+    const covered = paymentCoveredPeriod(
+      {
+        billingPeriodStart: bill.billingPeriodStart,
+        billingPeriodEnd: bill.billingPeriodEnd,
+        monthlyRatePaise: bill.monthlyRatePaise,
+        numberOfMonths: bill.numberOfMonths,
+        baseAmountPaise: bill.baseAmountPaise,
+      },
+      {
+        priorPrincipalPaise,
+        allocatedToPrincipalPaise: payment.allocatedToPrincipalPaise ?? 0,
+      },
+    );
+    coveredStart = covered.periodStart;
+    coveredEnd = covered.periodEnd;
+  }
+
+  const billingPeriod = billingPeriodLabel(coveredStart, coveredEnd);
   const pdf = buildReceiptPdf({
     receiptNumber: receipt.receiptNumber,
     societyName: receipt.societyNameSnapshot,
@@ -1097,8 +1133,8 @@ export async function getReceipt(
       societyNameSnapshot: receipt.societyNameSnapshot,
       transactionReference: receipt.transactionReference,
       billNumber: bill?.billNumber,
-      billingPeriodStart: bill?.billingPeriodStart?.toISOString(),
-      billingPeriodEnd: bill?.billingPeriodEnd?.toISOString(),
+      billingPeriodStart: coveredStart?.toISOString(),
+      billingPeriodEnd: coveredEnd?.toISOString(),
     },
     pdfBase64: pdf.toString('base64'),
   };
