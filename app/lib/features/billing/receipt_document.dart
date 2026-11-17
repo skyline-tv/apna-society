@@ -203,15 +203,15 @@ class ReceiptActionBar extends StatelessWidget {
   const ReceiptActionBar({
     super.key,
     required this.onPrint,
-    required this.onDownload,
+    required this.onShare,
     this.printing = false,
-    this.downloading = false,
+    this.sharing = false,
   });
 
   final VoidCallback onPrint;
-  final VoidCallback onDownload;
+  final VoidCallback onShare;
   final bool printing;
-  final bool downloading;
+  final bool sharing;
 
   @override
   Widget build(BuildContext context) {
@@ -296,14 +296,14 @@ class ReceiptActionBar extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              onPressed: downloading ? null : onDownload,
+              onPressed: sharing ? null : onShare,
               style: FilledButton.styleFrom(
                 backgroundColor: kReceiptNavy,
                 foregroundColor: Colors.white,
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               ),
-              icon: downloading
+              icon: sharing
                   ? const SizedBox(
                       width: 14,
                       height: 14,
@@ -312,9 +312,9 @@ class ReceiptActionBar extends StatelessWidget {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.download_outlined, size: 16),
+                  : const Icon(Icons.ios_share_outlined, size: 16),
               label: const Text(
-                'Download PDF',
+                'Share PDF',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
@@ -416,15 +416,19 @@ class ReceiptSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    societyName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: kReceiptNavy,
-                      height: 1.2,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      societyName,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: kReceiptNavy,
+                        height: 1.2,
+                      ),
                     ),
                   ),
                 ),
@@ -481,20 +485,19 @@ class ReceiptSheet extends StatelessWidget {
             const SizedBox(height: 18),
             LayoutBuilder(builder: (context, constraints) {
               final stacked = constraints.maxWidth < 520;
-              final date = _MetaBlock(
+              final dateBlock = _MetaBlock(
                 label: 'PAYMENT DATE',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(paidAt, style: _valueStyle),
-                    const SizedBox(height: 4),
-                    Text(payer, style: _valueStyle),
-                    const SizedBox(height: 4),
-                    Text(
-                      flatLabel,
-                      style: _valueStyle.copyWith(color: kReceiptNavy),
-                    ),
-                  ],
+                child: Text(paidAt, style: _valueStyle),
+              );
+              final nameBlock = _MetaBlock(
+                label: 'NAME',
+                child: Text(payer, style: _valueStyle),
+              );
+              final flatBlock = _MetaBlock(
+                label: 'WING / FLAT NO',
+                child: Text(
+                  flatLabel,
+                  style: _valueStyle.copyWith(color: kReceiptNavy),
                 ),
               );
               final methodBlock = _MetaBlock(
@@ -505,18 +508,35 @@ class ReceiptSheet extends StatelessWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    date,
-                    const SizedBox(height: 16),
+                    dateBlock,
+                    const SizedBox(height: 14),
+                    nameBlock,
+                    const SizedBox(height: 14),
+                    flatBlock,
+                    const SizedBox(height: 14),
                     methodBlock,
                   ],
                 );
               }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              return Column(
                 children: [
-                  Expanded(child: date),
-                  const SizedBox(width: 24),
-                  Expanded(child: methodBlock),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: dateBlock),
+                      const SizedBox(width: 24),
+                      Expanded(child: methodBlock),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: nameBlock),
+                      const SizedBox(width: 24),
+                      Expanded(child: flatBlock),
+                    ],
+                  ),
                 ],
               );
             }),
@@ -566,14 +586,22 @@ class ReceiptSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    societyName.toUpperCase(),
-                    textAlign: stacked ? TextAlign.left : TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      letterSpacing: 0.8,
-                      fontWeight: FontWeight.w600,
-                      color: kReceiptInk,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: stacked
+                        ? Alignment.centerLeft
+                        : Alignment.centerRight,
+                    child: Text(
+                      societyName.toUpperCase(),
+                      maxLines: 1,
+                      softWrap: false,
+                      textAlign: stacked ? TextAlign.left : TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w600,
+                        color: kReceiptInk,
+                      ),
                     ),
                   ),
                 ],

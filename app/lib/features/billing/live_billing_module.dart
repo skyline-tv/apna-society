@@ -489,10 +489,7 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
     if (ok == true && mounted) reload();
   }
 
-  Future<void> _runReceiptAction(
-    Bill bill,
-    Future<void> Function(ReceiptDetail detail) action,
-  ) async {
+  Future<void> _openBillReceipt(Bill bill) async {
     try {
       final payment =
           await _latestSuccessfulPaymentForBill(bill, resident: false);
@@ -501,10 +498,8 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
         showWarningSnack(context, 'No receipt yet for ${bill.flatLabel}.');
         return;
       }
-      final detail =
-          await _loadReceiptDetail(context, payment, resident: false);
-      if (!mounted) return;
-      await action(detail);
+      await _openPaymentReceipt(context, payment, resident: false);
+      if (mounted) reload();
     } catch (e) {
       if (mounted) showErrorSnack(context, billingErrorMessage(e));
     }
@@ -637,7 +632,7 @@ class _LiveAdminBillsPageState extends State<LiveAdminBillsPage> {
                       onOpen: () => _openBill(bill),
                       onRecordPayment: () => _recordPayment(bill),
                       onReceipt: bill.amountPaidPaise > 0
-                          ? () => _runReceiptAction(bill, _downloadReceiptPdf)
+                          ? () => _openBillReceipt(bill)
                           : null,
                     ),
                     const SizedBox(height: 10),
@@ -1555,6 +1550,8 @@ class _LiveAdminBillDetailPageState extends State<LiveAdminBillDetailPage> {
                           hasReceipt ? () => _openReceipt(payments) : null,
                       onDownload:
                           hasReceipt ? () => _downloadReceipt(payments) : null,
+                      onShare:
+                          hasReceipt ? () => _shareReceipt(payments) : null,
                     ),
                   ],
                 ),
@@ -2257,8 +2254,8 @@ class _LiveAdminPaymentsPageState extends State<LiveAdminPaymentsPage> {
           if (_isSuccessfulPayment(p)) ...[
             const SizedBox(height: 14),
             PrimaryButton(
-              label: 'Download receipt',
-              icon: Icons.download_outlined,
+              label: 'Open receipt',
+              icon: Icons.receipt_long_outlined,
               onPressed: () {
                 Navigator.pop(ctx);
                 _openPaymentReceipt(context, p, resident: false);
@@ -2902,6 +2899,21 @@ class _LiveOwnerPaymentsPageState extends State<LiveOwnerPaymentsPage> {
   }
 }
 
+bool _receiptPaymentCancellable(ReceiptBody receipt, {required bool resident}) {
+  if (resident) return false;
+  switch (receipt.paymentMethod.toUpperCase()) {
+    case 'OFFLINE':
+    case 'CASH':
+    case 'CHEQUE':
+    case 'NEFT':
+    case 'BANK_TRANSFER':
+    case 'UPI':
+      return true;
+    default:
+      return false;
+  }
+}
+
 class LiveReceiptPage extends StatefulWidget {
   const LiveReceiptPage({
     super.key,
@@ -2918,6 +2930,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
   late Future<ReceiptDetail> _future = _load();
   bool _sharing = false;
   bool _downloading = false;
+  bool _cancelling = false;
 
   Future<ReceiptDetail> _load({bool force = false}) async {
     final session = authSession;
@@ -2932,20 +2945,7 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final bytes = base64Decode(detail.pdfBase64);
-      final name = receiptPdfFileNameFromBody(detail.receipt);
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile.fromData(
-              Uint8List.fromList(bytes),
-              mimeType: 'application/pdf',
-              name: name,
-            ),
-          ],
-          text: 'Receipt ${name.replaceFirst(RegExp(r'\.pdf$'), '')}',
-        ),
-      );
+      await _shareReceiptPdf(detail);
     } catch (e) {
       if (mounted) showErrorSnack(context, 'Could not share the receipt.');
     } finally {
@@ -2957,15 +2957,46 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
     if (_downloading) return;
     setState(() => _downloading = true);
     try {
-      final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
-      await Printing.layoutPdf(
-        name: receiptPdfFileNameFromBody(detail.receipt),
-        onLayout: (_) async => bytes,
-      );
+      await _downloadReceiptPdf(detail);
     } catch (e) {
       if (mounted) showErrorSnack(context, 'Could not open the receipt PDF.');
     } finally {
       if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Future<void> _cancelPayment(ReceiptDetail detail) async {
+    if (_cancelling || widget.resident) return;
+    final receipt = detail.receipt;
+    final reason = await promptTextDialog(
+      context,
+      title: 'Cancel ${moneyPaise(receipt.amountPaise)}?',
+      message:
+          'This undoes the office payment for ${receipt.flatLabel} and puts the amount back on the bill. Use this if it was recorded by mistake. This cannot be undone.',
+      label: 'Reason',
+      confirmLabel: 'Cancel payment',
+      required: true,
+      minLength: 3,
+      destructive: true,
+      maxLines: 2,
+    );
+    if (reason == null || reason.trim().isEmpty || !mounted) return;
+    setState(() => _cancelling = true);
+    try {
+      final session = authSession;
+      if (session == null) throw StateError('Not signed in.');
+      await ensureLiveRepositories(session.api)
+          .billing
+          .cancelPayment(receipt.paymentId, reason: reason.trim());
+      ensureLiveRepositories(session.api)
+          .invalidateAfterFinancialMutation(billId: receipt.billId);
+      if (!mounted) return;
+      showAppSnack(context, 'Payment cancelled.', tone: SnackTone.warning);
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) showErrorSnack(context, billingErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
     }
   }
 
@@ -2996,17 +3027,86 @@ class _LiveReceiptPageState extends State<LiveReceiptPage> {
             );
           }
           final detail = snap.data!;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          final receipt = detail.receipt;
+          final canCancel =
+              _receiptPaymentCancellable(receipt, resident: widget.resident);
+          final busy = _sharing || _downloading || _cancelling;
+          return Column(
             children: [
-              ReceiptActionBar(
-                printing: _downloading,
-                downloading: _sharing,
-                onPrint: () => _download(detail),
-                onDownload: () => _share(detail),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    Center(
+                      child: Column(
+                        children: [
+                          const AppAvatar(
+                            icon: Icons.check_rounded,
+                            color: C.green,
+                            size: 64,
+                          ),
+                          const SizedBox(height: 14),
+                          Text('Payment received', style: T.h2),
+                          const SizedBox(height: 4),
+                          Text(receipt.receiptNumber, style: T.secondary),
+                          const SizedBox(height: 14),
+                          Text(
+                            moneyPaise(receipt.amountPaise),
+                            style: T.display.copyWith(color: C.blue),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    DetailCard(children: [
+                      DetailRow('Flat', receipt.flatLabel),
+                      DetailRow(
+                        'Owner',
+                        receiptPayerName(receipt.ownerNameSnapshot),
+                      ),
+                      DetailRow('Paid at', fmtIsoDateTime(receipt.paidAt)),
+                      DetailRow(
+                        'Method',
+                        _paymentMethodLabel(receipt.paymentMethod),
+                      ),
+                      if ((receipt.billNumber ?? '').isNotEmpty)
+                        DetailRow('Bill', receipt.billNumber!),
+                      if ((receipt.billingPeriodStart ?? '').isNotEmpty)
+                        DetailRow(
+                          'Period',
+                          receiptPeriodRange(
+                            receipt.billingPeriodStart,
+                            receipt.billingPeriodEnd,
+                          ),
+                        ),
+                    ]),
+                    const SizedBox(height: 16),
+                    ReceiptSheet.fromBody(receipt),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              ReceiptSheet.fromBody(detail.receipt),
+              BottomActionBar(children: [
+                PrimaryButton(
+                  label: 'Share PDF',
+                  icon: Icons.ios_share_outlined,
+                  busy: _sharing,
+                  onPressed: busy ? null : () => _share(detail),
+                ),
+                SecondaryButton(
+                  label: 'Download receipt',
+                  icon: Icons.download_outlined,
+                  busy: _downloading,
+                  onPressed: busy ? null : () => _download(detail),
+                ),
+                if (canCancel)
+                  SecondaryButton(
+                    label: 'Cancel payment',
+                    icon: Icons.cancel_outlined,
+                    destructive: true,
+                    busy: _cancelling,
+                    onPressed: busy ? null : () => _cancelPayment(detail),
+                  ),
+              ]),
             ],
           );
         },

@@ -76,7 +76,7 @@ void main() {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ReceiptActionBar(onPrint: () {}, onDownload: () {}),
+              ReceiptActionBar(onPrint: () {}, onShare: () {}),
               const SizedBox(height: 12),
               ReceiptSheet.fromBody(receipt),
             ],
@@ -88,12 +88,15 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('A4 Paper'), findsOneWidget);
     expect(find.text('Print (A4)'), findsOneWidget);
-    expect(find.text('Download PDF'), findsOneWidget);
+    expect(find.text('Share PDF'), findsOneWidget);
     expect(find.text('Proposed Monarch Solitaire A to E'), findsWidgets);
     expect(find.text('RECEIPT'), findsOneWidget);
     expect(find.text('RCPT-2026-000001'), findsOneWidget);
     expect(find.text('SUCCESSFUL'), findsOneWidget);
     expect(find.text('PAYMENT DATE'), findsOneWidget);
+    expect(find.text('NAME'), findsOneWidget);
+    expect(find.text('WING / FLAT NO'), findsOneWidget);
+    expect(find.text('PAYMENT METHOD'), findsOneWidget);
     expect(find.text('27 Oct 2026'), findsOneWidget);
     expect(find.text('UPI'), findsOneWidget);
     expect(find.text('Wing A - Flat 101'), findsOneWidget);

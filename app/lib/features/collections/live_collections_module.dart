@@ -224,42 +224,51 @@ Future<void> _recordCollectionOfflinePayment(
   );
 }
 
-Future<void> _printCollectionChargeReceipt(
+Future<CollectionReceiptDetail?> _latestCollectionChargeReceipt(
+  BuildContext context,
+  CollectionCharge charge,
+) async {
+  final session = authSession;
+  if (session == null) throw StateError('Not signed in.');
+  final collections = ensureLiveRepositories(session.api).collections;
+  final payments = await collections.listAdminPayments(
+    charge.collectionId,
+    chargeId: charge.id,
+  );
+  final successful =
+      payments.items.where(_isSuccessfulPayment).toList(growable: false);
+  successful.sort((a, b) {
+    final left = DateTime.tryParse(a.paidAt ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    final right = DateTime.tryParse(b.paidAt ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    return right.compareTo(left);
+  });
+  if (successful.isEmpty) {
+    if (context.mounted) {
+      showWarningSnack(context, 'No receipt yet for ${charge.flatLabel}.');
+    }
+    return null;
+  }
+  return collections.adminPaymentReceipt(successful.first.id);
+}
+
+Future<void> _openCollectionChargeReceipt(
   BuildContext context,
   CollectionCharge charge,
 ) async {
   try {
-    final session = authSession;
-    if (session == null) throw StateError('Not signed in.');
-    final collections = ensureLiveRepositories(session.api).collections;
-    final payments = await collections.listAdminPayments(
-      charge.collectionId,
-      chargeId: charge.id,
-    );
-    final successful =
-        payments.items.where(_isSuccessfulPayment).toList(growable: false);
-    successful.sort((a, b) {
-      final left = DateTime.tryParse(a.paidAt ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final right = DateTime.tryParse(b.paidAt ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return right.compareTo(left);
-    });
-    final latest = successful.isEmpty ? null : successful.first;
-    if (latest == null) {
-      if (context.mounted) {
-        showWarningSnack(context, 'No receipt yet for ${charge.flatLabel}.');
-      }
-      return;
-    }
-    final detail = await collections.adminPaymentReceipt(latest.id);
-    if (!context.mounted) return;
-    final bytes = Uint8List.fromList(base64Decode(detail.pdfBase64));
-    await Printing.layoutPdf(
-      name: receiptPdfFileName(
-        flatLabel: detail.flatLabel,
-        paidAt: detail.paidAt,
-        fallback: detail.receiptNumber,
+    final detail = await _latestCollectionChargeReceipt(context, charge);
+    if (detail == null || !context.mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveCollectionReceiptPage(
+          paymentId: detail.paymentId,
+          receiptId: detail.paymentId == null ? detail.id : null,
+          resident: false,
+        ),
       ),
-      onLayout: (_) async => bytes,
     );
   } catch (e) {
     if (context.mounted) {
@@ -2088,7 +2097,8 @@ class _AdminCollectionChargeCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            moneyPaise(paid ? charge.assignedAmountPaise : charge.outstandingPaise),
+            moneyPaise(
+                paid ? charge.assignedAmountPaise : charge.outstandingPaise),
             style: T.money.copyWith(fontSize: 15),
           ),
           Text(paid ? 'paid' : 'due', style: T.caption),
@@ -2298,7 +2308,10 @@ class _LiveAdminCollectionFlatsPageState
                             }
                           : null,
                       onReceipt: row.amountPaidPaise > 0
-                          ? () => _printCollectionChargeReceipt(context, row)
+                          ? () async {
+                              await _openCollectionChargeReceipt(context, row);
+                              if (mounted) reload();
+                            }
                           : null,
                       onRemove: c.status == 'ACTIVE' &&
                               _canRemoveCollectionCharge(row)
@@ -3355,16 +3368,16 @@ class _LiveCollectionReceiptPageState extends State<LiveCollectionReceiptPage> {
             ),
             BottomActionBar(children: [
               PrimaryButton(
+                label: 'Share PDF',
+                icon: Icons.ios_share_outlined,
+                busy: sharing,
+                onPressed: downloading ? null : () => _share(detail),
+              ),
+              SecondaryButton(
                 label: 'Download receipt',
                 icon: Icons.download_outlined,
                 busy: downloading,
-                onPressed: () => _download(detail),
-              ),
-              SecondaryButton(
-                label: 'Share PDF receipt',
-                icon: Icons.ios_share_outlined,
-                busy: sharing,
-                onPressed: () => _share(detail),
+                onPressed: sharing ? null : () => _download(detail),
               ),
             ]),
           ]);

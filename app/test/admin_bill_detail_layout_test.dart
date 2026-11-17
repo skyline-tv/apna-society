@@ -104,7 +104,7 @@ void main() {
                 busy: false,
                 receiptLabel: 'Receipt',
                 onReceipt: () {},
-                onDownload: () {},
+                onShare: () {},
               ),
             ],
           ),
@@ -126,7 +126,7 @@ void main() {
     await tester.pump();
     expect(find.text('This bill is settled.'), findsOneWidget);
     expect(find.text('Receipt'), findsOneWidget);
-    expect(find.text('Download PDF'), findsOneWidget);
+    expect(find.text('Share PDF'), findsOneWidget);
   });
 
   testWidgets('open bill details keep collect actions on a phone',

@@ -561,6 +561,7 @@ class AdminBillCollectSection extends StatelessWidget {
     this.receiptLabel,
     this.onReceipt,
     this.onDownload,
+    this.onShare,
   });
 
   final bool settled;
@@ -574,6 +575,7 @@ class AdminBillCollectSection extends StatelessWidget {
   final String? receiptLabel;
   final VoidCallback? onReceipt;
   final VoidCallback? onDownload;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -632,7 +634,9 @@ class AdminBillCollectSection extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: kBillDetailMuted),
                 ),
-                if (onReceipt != null || onDownload != null) ...[
+                if (onReceipt != null ||
+                    onDownload != null ||
+                    onShare != null) ...[
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -659,9 +663,32 @@ class AdminBillCollectSection extends StatelessWidget {
                             ),
                           ),
                         ),
-                      if (onReceipt != null && onDownload != null)
+                      if (onReceipt != null &&
+                          (onShare != null || onDownload != null))
                         const SizedBox(width: 10),
-                      if (onDownload != null)
+                      if (onShare != null)
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: busy ? null : onShare,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kBillDetailNavy,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon:
+                                const Icon(Icons.ios_share_outlined, size: 14),
+                            label: const Text(
+                              'Share PDF',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (onDownload != null)
                         Expanded(
                           child: FilledButton.icon(
                             onPressed: busy ? null : onDownload,

@@ -242,8 +242,8 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   const payerLines = wrapText(displayPayerName(input.ownerName || ''), 42);
   const wingFlat = wingAndFlatLine(input.wingCode, input.flatNumber);
   const towards = wrapText(towardsLine(input), 78);
-  // CHS not formed yet — receipts always show the proposed society name.
-  const society = wrapText('Proposed Monarch Solitaire A to E', 32);
+  // CHS not formed yet — receipts always show the proposed society name on one line.
+  const society = ['Proposed Monarch Solitaire A to E'];
   const method = pdfLatin(paymentMethodLabel(input.paymentMethod));
   const paidAt = formatPaidAtIst(input.paidAt);
   const lines = amountLines(input);
@@ -309,14 +309,19 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
   text('F2', 11, LEFT, y, paidAt);
   text('F2', 11, 320, y, method);
 
-  y -= 16;
+  y -= 20;
+  text('F1', 8, LEFT, y, 'NAME', MUTED);
+  text('F1', 8, 320, y, 'WING / FLAT NO', MUTED);
+  y -= 14;
+  const nameStartY = y;
   for (const line of payerLines) {
     text('F2', 11, LEFT, y, line, INK);
     y -= 13;
   }
-  text('F2', 11, LEFT, y, pdfLatin(wingFlat), BLUE);
+  text('F2', 11, 320, nameStartY, pdfLatin(wingFlat), BLUE);
+  y = Math.min(y, nameStartY - 13);
 
-  y -= 24;
+  y -= 18;
   text('F1', 8, LEFT, y, 'TOWARDS', MUTED);
   y -= 14;
   for (const line of towards) {
@@ -435,13 +440,14 @@ export function buildReceiptPdf(input: ReceiptPdfInput): Buffer {
     MUTED,
   );
   ops.push(`${RULE} RG 0.6 w 365 ${footerY + 28} m 545 ${footerY + 28} l S`);
-  const societyFooter = wrapText('Proposed Monarch Solitaire A to E', 32);
   rightText('F1', 8, footerY + 16, 'AUTHORIZED', MUTED);
-  let authY = footerY;
-  for (const line of [...societyFooter].reverse()) {
-    rightText('F1', 8, authY, line.toUpperCase(), MUTED);
-    authY += 11;
-  }
+  rightText(
+    'F1',
+    8,
+    footerY,
+    'PROPOSED MONARCH SOLITAIRE A TO E',
+    MUTED,
+  );
 
   return assemblePdf(ops.join('\n'));
 }

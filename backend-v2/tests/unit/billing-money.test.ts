@@ -98,6 +98,9 @@ describe('receipt pdf', () => {
     expect(text).toContain('Proposed Monarch Solitaire');
     expect(text).toContain('15 Jul 2026');
     expect(text).not.toContain('10:30');
+    expect(text).toContain('NAME');
+    expect(text).toContain('WING / FLAT NO');
+    expect(text).toContain('Owner One');
     expect(text).toContain('Wing E');
     expect(text).toContain('Flat 303');
     expect(text).not.toContain('RECEIVED WITH THANKS FROM');
