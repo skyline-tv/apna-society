@@ -39,6 +39,16 @@ void main() {
       ),
       'a101-oct.pdf',
     );
+    // IST midnight on the 1st must not shift back a month in UTC.
+    expect(
+      receiptPdfFileName(
+        wingCode: 'E',
+        flatNumber: '303',
+        periodStart: '2026-10-01T00:00:00.000+05:30',
+        periodEnd: '2027-03-31T23:59:59.999+05:30',
+      ),
+      'e303-oct-mar.pdf',
+    );
   });
 
   testWidgets('receipt sheet matches the A4 template on a phone',
